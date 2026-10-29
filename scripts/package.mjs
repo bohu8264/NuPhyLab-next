@@ -91,6 +91,9 @@ await writeFile(
 <key>CFBundleName</key><string>NuPhy Lab</string><key>CFBundleDisplayName</key><string>NuPhy Lab</string>
 <key>CFBundleVersion</key><string>${version}</string><key>CFBundleShortVersionString</key><string>${version}</string>
 <key>CFBundlePackageType</key><string>APPL</string><key>CFBundleIconFile</key><string>AppIcon</string>
+<key>CFBundleDevelopmentRegion</key><string>en</string>
+<key>CFBundleLocalizations</key><array><string>zh-Hans</string><string>en</string></array>
+<key>CFBundleAllowMixedLocalizations</key><true/>
 <key>SUFeedURL</key><string>${updates.feedURL}</string>
 <key>SUPublicEDKey</key><string>${updates.publicKey}</string>
 <key>SUEnableAutomaticChecks</key><true/>
