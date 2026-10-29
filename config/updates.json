@@ -1,0 +1,8 @@
+{
+  "repository": "bohu8264/NuPhyLab-next",
+  "feedURL": "https://raw.githubusercontent.com/bohu8264/NuPhyLab-next/main/updates/appcast.xml",
+  "publicKey": "RBLxKmogGObihMW9Qu3mWOlICVNbzULScVsGroRqwfA=",
+  "keychainAccount": "com.nuphy.NuPhyLab-next",
+  "sparkleVersion": "2.10.1",
+  "sparkleSHA256": "1a856d2a9edb8e628de88121d7be04cf0e2167f8641650b78fca00b14244cf27"
+}

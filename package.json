@@ -1,0 +1,30 @@
+{
+  "name": "nuphy-lab",
+  "version": "1.2.0",
+  "private": true,
+  "type": "module",
+  "description": "NuPhy Lab for NuPhy Air75 V3 and Kick75",
+  "scripts": {
+    "setup": "npm --prefix ui install",
+    "build:native": "node scripts/build-native.mjs",
+    "build:ui": "npm --prefix ui run build",
+    "build:icon": "node scripts/build-icon.mjs",
+    "fetch-node": "node scripts/fetch-node.mjs",
+    "build": "npm run build:icon && npm run build:native && npm run build:ui",
+    "start": "node server/main.mjs",
+    "test": "node --test --test-concurrency=2 tests/*.test.mjs",
+    "package": "npm run build && node scripts/package.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bohu8264/NuPhyLab-next.git"
+  },
+  "homepage": "https://github.com/bohu8264/NuPhyLab-next",
+  "bugs": {
+    "url": "https://github.com/bohu8264/NuPhyLab-next/issues"
+  }
+}
