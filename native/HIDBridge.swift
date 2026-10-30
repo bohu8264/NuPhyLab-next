@@ -197,7 +197,7 @@ final class KeyAdaptation {
         client = IOHIDEventSystemClientCreateSimpleClient(kCFAllocatorDefault)
         let devices = try targetServices(command)
         if rows.isEmpty { return ["applied":true,"verified":true,"services":0] }
-        guard CGPreflightListenEventAccess() else { throw failure("INPUT_MONITORING_REQUIRED", "请先允许输入监控，再继续适配。") }
+        guard IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted else { throw failure("INPUT_MONITORING_REQUIRED", "请先允许输入监控，再继续适配。") }
         guard !devices.isEmpty else { throw failure("DEVICE_NOT_FOUND", "请连接要适配的键盘。") }
         var records = [[String:Any]]()
         do {
@@ -255,9 +255,9 @@ func diagnostic(_ message: String) {
     FileHandle.standardError.write(Data((message + "\n").utf8))
 }
 func permissionSnapshot() -> [String: Any] {
-    ["inputMonitoring": CGPreflightListenEventAccess(),
+    ["inputMonitoring": IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted,
      "accessibility": AXIsProcessTrusted(),
-     "canPostEvents": CGPreflightPostEventAccess(),
+     "canPostEvents": IOHIDCheckAccess(kIOHIDRequestTypePostEvent) == kIOHIDAccessTypeGranted,
      "promptsRequested": false]
 }
 func permissionSettingsURL(_ value: Any?) throws -> URL {
@@ -273,7 +273,7 @@ func openPermissionSettings(_ permission: Any?) throws -> [String: Any] {
     let url = try permissionSettingsURL(permission)
     // The app uses its own permission bridge. The standalone/browser fallback
     // still needs to request trust before opening a page on a clean Mac.
-    if permission as? String == "inputMonitoring", !CGPreflightListenEventAccess() {
+    if permission as? String == "inputMonitoring", IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) != kIOHIDAccessTypeGranted {
         _ = CGRequestListenEventAccess()
     } else if permission as? String == "accessibility", !AXIsProcessTrusted() {
         _ = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String:true] as CFDictionary)
@@ -1980,7 +1980,7 @@ final class KeyHooks {
         guard let targetApp = NSWorkspace.shared.frontmostApplication, targetApp.bundleIdentifier == target else {
             throw failure("TARGET_NOT_FRONTMOST", "Codex did not become the foreground application; no shortcut was sent.")
         }
-        guard CGPreflightPostEventAccess() else { throw failure("ACCESSIBILITY_REQUIRED", "Enable Accessibility for the parent application to send shortcuts.") }
+        guard IOHIDCheckAccess(kIOHIDRequestTypePostEvent) == kIOHIDAccessTypeGranted else { throw failure("ACCESSIBILITY_REQUIRED", "Enable Accessibility for the parent application to send shortcuts.") }
         releaseShortcut()
         if let delivery = command["delivery"] as? String, ["globalHold","globalTap"].contains(delivery) {
             guard phase == (delivery == "globalHold" ? "down" : "tap") else { throw failure("INVALID_SHORTCUT", "Invalid global dictation gesture.") }

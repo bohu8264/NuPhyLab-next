@@ -4,7 +4,7 @@ import {nativeCodexKeys,nativeCodexRequest} from './codexKeys';
 import {useLanguage,t} from './i18n';
 import {Button,Modal,run} from './primitives';
 import type {AppState,Command} from './types';
-import {coalescePermissionRefresh,watchPermissionRefresh} from '../../shared/permission-refresh.mjs';
+import {refreshPermissionSession,watchPermissionRefresh} from '../../shared/permission-refresh.mjs';
 
 export const OFFICIAL_DRIVER_URL='https://drive.nuphy.io/?lang=zh-CN';
 type Permission='inputMonitoring'|'accessibility';
@@ -15,10 +15,10 @@ const firmwareEvent='nuphylab:firmware-guide';
 
 export function useStartupCopy(){const language=useLanguage();return useCallback((zh:string,en:string)=>language==='en'?en:zh,[language]);}
 export function showFirmwareGuide(){window.dispatchEvent(new Event(firmwareEvent));}
-export function refreshAppPermissions(command:Command){return coalescePermissionRefresh(command,async()=>{await nativeCodexKeys({kind:'refreshPermissions'}).catch(()=>false);return command({op:'refreshPermissions'});});}
+export function refreshAppPermissions(command:Command){return refreshPermissionSession(command,()=>nativeCodexRequest({kind:'refreshPermissions'}));}
 export async function requestAppPermission(command:Command,permission:Permission){
   if(!await nativeCodexKeys({kind:'permission',permission}))return command({op:'openPermissionSettings',permission});
-  return command({op:'refreshPermissions'});
+  return refreshAppPermissions(command);
 }
 function officialUpdateURL(value:unknown){
   const raw=value&&typeof value==='object'&&'url' in value?String(value.url):'';

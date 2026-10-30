@@ -3,6 +3,7 @@ import WebKit
 import Carbon
 import Darwin
 import ApplicationServices
+import IOKit.hidsystem
 #if canImport(Sparkle)
 import Sparkle
 #endif
@@ -488,8 +489,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                   let result=requestNativePermission(permission) else{replyHandler(nil,"Invalid permission");return}
             replyHandler(result,nil);return
         case "permissions","refreshPermissions":
-            reportNativePermissions(force:true)
             refreshHotkeys()
+            // The caller sends this exact snapshot with its helper refresh.
+            // A fire-and-forget POST here races that refresh and can leave the
+            // response using the host's previous (denied) permissions.
             replyHandler(nativePermissionSnapshot(),nil);return
         case "capture":
             let session=body["session"] as? String
@@ -506,8 +509,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         replyHandler(true,nil)
     }
     func nativePermissionSnapshot()->[String:Any] {
-        ["inputMonitoring":CGPreflightListenEventAccess(),"accessibility":AXIsProcessTrusted(),
-         "canPostEvents":CGPreflightPostEventAccess(),"promptsRequested":false]
+        // Query current TCC authorization. CoreGraphics preflight can retain a
+        // denied result from before the first grant for this process lifetime.
+        // IOHIDCheckAccess is a public, read-only API; unknown stays denied.
+        ["inputMonitoring":IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted,
+         "accessibility":AXIsProcessTrusted(),
+         "canPostEvents":IOHIDCheckAccess(kIOHIDRequestTypePostEvent) == kIOHIDAccessTypeGranted,"promptsRequested":false]
     }
     func reportNativePermissions(force:Bool=false) {
         guard baseURL != nil,!terminating else{return}
@@ -522,7 +529,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         switch permission {
         case "inputMonitoring":
             pane="Privacy_ListenEvent"
-            if !CGPreflightListenEventAccess() { _ = CGRequestListenEventAccess() }
+            if IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) != kIOHIDAccessTypeGranted { _ = CGRequestListenEventAccess() }
         case "accessibility":
             pane="Privacy_Accessibility"
             if !AXIsProcessTrusted() {

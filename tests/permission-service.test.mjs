@@ -23,6 +23,37 @@ const lightingSnapshot = state => ({
   scenes: state.scenes,
 });
 
+test('one refresh publishes the current host and helper grants without waiting for a separate native report',async t=>{
+  const granted={...denied,inputMonitoring:true,accessibility:true,canPostEvents:true};
+  const service=await fakeService(t,{permissions:denied});
+  await service.command({op:'disconnect'});
+  await service.command({op:'nativePermissions',permissions:denied});
+  const before=lightingSnapshot(await service.state());
+  await service.configure({permissions:granted});
+  const response=await service.command({op:'refreshPermissions',hostPermissions:granted});
+  assert.equal(response.ok,true);
+  for(const key of ['inputMonitoring','accessibility','canPostEvents'])assert.equal(response.result[key],true);
+  assert.deepEqual(response.result.host,{inputMonitoring:true,accessibility:true,canPostEvents:true});
+  assert.deepEqual(lightingSnapshot(await service.state()),before);
+  const revoked=await service.command({op:'refreshPermissions',hostPermissions:denied});
+  assert.equal(revoked.result.accessibility,false,'host revocation immediately wins over helper grant');
+});
+
+test('refresh never uses malformed host or helper permission results as a grant',async t=>{
+  const granted={...denied,inputMonitoring:true,accessibility:true,canPostEvents:true};
+  const service=await fakeService(t,{permissions:granted});
+  await service.command({op:'disconnect'});
+  await service.command({op:'nativePermissions',permissions:granted});
+  assert.equal((await service.command({op:'refreshPermissions',hostPermissions:{accessibility:true}})).ok,false);
+  await service.configure({permissions:{...granted,canPostEvents:null}});
+  const failed=await service.command({op:'refreshPermissions',hostPermissions:denied});
+  assert.equal(failed.ok,false);
+  const state=await service.state();
+  assert.equal(state.native.host.accessibility,false);
+  assert.equal(state.native.canPostEvents,false);
+  assert.equal(state.native.helper.canPostEvents,null);
+});
+
 test("both permission settings and permission refresh work while the keyboard is disconnected", async t => {
   const service = await fakeService(t, { permissions: denied });
   assert.equal((await service.command({ op: "disconnect" })).ok, true);

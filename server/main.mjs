@@ -805,10 +805,25 @@ async function command(req) {
     }
     case "refreshPermissions": {
       const previous=hardware.state.permissions;
-      const permissions = await hardware.request("permissions");
-      hardware.state.permissions = permissions;
-      const changed=permissionKeys.some(key=>previous?.[key]!==permissions?.[key]);
+      const previousHost=nativeHostPermissions;
+      if(Object.hasOwn(req,'hostPermissions')) {
+        const host=req.hostPermissions;
+        if(!host || typeof host!=='object' || permissionKeys.some(key=>typeof host[key]!=='boolean')) throw new Error('原生权限状态无效');
+        nativeHostPermissions=Object.fromEntries(permissionKeys.map(key=>[key,host[key]]));
+      }
+      let refreshError;
+      try {
+        const permissions=await hardware.request("permissions");
+        if(!permissions || permissionKeys.some(key=>typeof permissions[key]!=='boolean')) throw new Error('暂时无法检查权限，请稍后重试。');
+        hardware.state.permissions=permissions;
+        nativeHelperPermissionsCheckedAt=Date.now();
+      } catch(error) {
+        hardware.state.permissions=Object.fromEntries(permissionKeys.map(key=>[key,null]));
+        refreshError=error;
+      }
+      const changed=permissionKeys.some(key=>previous?.[key]!==hardware.state.permissions?.[key] || previousHost?.[key]!==nativeHostPermissions?.[key]);
       if(changed && (agentEnabled() || keyCapture.active)) await syncKeyAdaptation(true);
+      if(refreshError)throw refreshError;
       return nativePermissions();
     }
     case "connect": {

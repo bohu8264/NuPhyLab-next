@@ -11,6 +11,16 @@ export function coalescePermissionRefresh(owner, refresh) {
   return next;
 }
 
+// Carry the native reply into the same server operation that reads the helper.
+// Waiting for WKScriptMessage completion alone did not wait for the host's
+// separate HTTP POST, so the returned state could still contain its old grant.
+export function refreshPermissionSession(command, readNative) {
+  return coalescePermissionRefresh(command, async () => {
+    const reply = await readNative();
+    return command({op:'refreshPermissions', ...(reply.available ? {hostPermissions:reply.result} : {})});
+  });
+}
+
 // Only used while permission setup is incomplete. It never requests trust,
 // opens settings, changes a keyboard, or restarts an application.
 export function watchPermissionRefresh({ refresh, isVisible, windowTarget, documentTarget,

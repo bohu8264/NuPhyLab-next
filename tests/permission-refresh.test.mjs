@@ -1,8 +1,32 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {coalescePermissionRefresh,watchPermissionRefresh} from '../shared/permission-refresh.mjs';
+import {coalescePermissionRefresh,refreshPermissionSession,watchPermissionRefresh} from '../shared/permission-refresh.mjs';
 
 const flush = async () => { for (let i=0;i<6;i++) await Promise.resolve(); };
+
+test('native grant is carried into the helper refresh, never raced against a separate host report',async()=>{
+  const operations=[];let resolveHost;
+  const granted={inputMonitoring:true,accessibility:true,canPostEvents:true};
+  const command=async req=>{operations.push(req);return 'ready';};
+  const readNative=()=>new Promise(resolve=>{resolveHost=resolve;});
+  const first=refreshPermissionSession(command,readNative);
+  assert.equal(first,refreshPermissionSession(command,readNative));
+  await flush();assert.deepEqual(operations,[]);
+  resolveHost({available:true,result:granted});
+  assert.equal(await first,'ready');
+  assert.deepEqual(operations,[{op:'refreshPermissions',hostPermissions:granted}]);
+});
+
+test('browser refresh works without a host while failed native reads never present an old grant as fresh',async()=>{
+  const operations=[],command=async req=>{operations.push(req);};
+  await refreshPermissionSession(command,async()=>({available:false,result:null}));
+  assert.deepEqual(operations,[{op:'refreshPermissions'}]);
+  await assert.rejects(refreshPermissionSession(command,async()=>{throw new Error('native unavailable');}),/native unavailable/);
+  assert.equal(operations.length,1);
+  const denied={inputMonitoring:false,accessibility:false,canPostEvents:false};
+  await refreshPermissionSession(command,async()=>({available:true,result:denied}));
+  assert.deepEqual(operations[1],{op:'refreshPermissions',hostPermissions:denied});
+});
 function fixture(refresh) {
   let visible=true,next=0;
   const timers=new Map(),windowTarget=new EventTarget(),documentTarget=new EventTarget();
