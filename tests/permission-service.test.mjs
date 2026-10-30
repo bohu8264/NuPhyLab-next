@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fakeService } from "./helpers/fake-service.mjs";
+import { fakeService, until } from "./helpers/fake-service.mjs";
 import { heart } from "../shared/layout.mjs";
+import { FACTORY_MAC_ROW } from "../shared/keycap-functions.mjs";
 
 const denied = {
   inputMonitoring: false,
@@ -113,4 +114,123 @@ test("refreshPermissions returns the latest native snapshot and updates both sta
   const reopened = await service.command({ op: "openPermissionSettings", permission: "accessibility" });
   assert.deepEqual(reopened.result.permissions, revoked);
   assert.deepEqual((await service.state()).native, revoked);
+});
+
+test("native authorization changes refresh the helper immediately without changing lighting or requesting trust", async t => {
+  const service = await fakeService(t, { permissions: denied });
+  await service.command({ op: "preview", colors: heart() });
+  assert.equal((await service.command({ op: "nativePermissions", permissions: denied })).ok, true);
+  const before = lightingSnapshot(await service.state());
+  const start = (await service.operations()).length;
+  const granted = { ...denied, inputMonitoring: true, accessibility: true, canPostEvents: true };
+  await service.configure({ permissions: granted });
+  const response = await service.command({ op: "nativePermissions", permissions: granted });
+  assert.equal(response.ok, true);
+  const current = await service.state();
+  assert.equal(current.native.accessibility, true);
+  assert.equal(current.native.canPostEvents, true);
+  assert.deepEqual(current.native.helper, granted);
+  assert.deepEqual(lightingSnapshot(current), before);
+  for (let i = 0; i < 3; i++) {
+    assert.equal((await service.command({ op: "nativePermissions", permissions: granted })).ok, true);
+  }
+  let operations = (await service.operations()).slice(start);
+  assert.equal(operations.filter(({ op }) => op === "permissions").length, 1, "unchanged granted host reports do not repeatedly query the helper");
+  assert(operations.every(({ op }) => ["permissions", "status", "bluetoothDevices", "systemIdle"].includes(op)), JSON.stringify(operations));
+
+  const revoked = { ...granted, accessibility: false, canPostEvents: false };
+  await service.configure({ permissions: revoked });
+  assert.equal((await service.command({ op: "nativePermissions", permissions: revoked })).ok, true);
+  const after = await service.state();
+  assert.equal(after.native.accessibility, false);
+  assert.equal(after.native.canPostEvents, false);
+  assert.deepEqual(after.native.helper, revoked);
+  assert.deepEqual(lightingSnapshot(after), before);
+});
+
+test("a delayed helper grant is picked up from unchanged native reports without a window focus event", async t => {
+  const service = await fakeService(t, { permissions: denied });
+  await service.command({ op: "disconnect" });
+  const granted = { ...denied, inputMonitoring: true, accessibility: true, canPostEvents: true };
+  assert.equal((await service.command({ op: "nativePermissions", permissions: granted })).ok, true);
+  assert.equal((await service.state()).native.accessibility, false, "host trust alone never grants helper access");
+  const before = lightingSnapshot(await service.state());
+  const start = (await service.operations()).length;
+  await service.configure({ permissions: granted });
+  assert.equal((await service.command({ op: "nativePermissions", permissions: granted })).ok, true);
+  assert.equal((await service.state()).native.accessibility, false, "pending helper checks are throttled");
+  await until(async () => {
+    assert.equal((await service.command({ op: "nativePermissions", permissions: granted })).ok, true);
+    return service.state();
+  }, state => state.native.accessibility && state.native.canPostEvents && state.native.inputMonitoring,
+  "helper grant did not become visible from the host reports", 4000);
+  const operations = (await service.operations()).slice(start);
+  assert.equal(operations.filter(({ op }) => op === "permissions").length, 1, "waiting host reports coalesce into one throttled read-only helper check");
+  assert(operations.every(({ op }) => ["permissions", "status", "bluetoothDevices"].includes(op)), JSON.stringify(operations));
+  assert.deepEqual(lightingSnapshot(await service.state()), before);
+});
+
+test("an invalid helper refresh cannot preserve a stale grant or hide host revocation", async t => {
+  const granted = { ...denied, inputMonitoring: true, accessibility: true, canPostEvents: true };
+  const service = await fakeService(t, { permissions: granted });
+  await service.command({ op: "disconnect" });
+  assert.equal((await service.command({ op: "nativePermissions", permissions: granted })).ok, true);
+  const before = lightingSnapshot(await service.state());
+  await service.configure({ permissions: { ...granted, accessibility: null } });
+  const revoked = { ...granted, accessibility: false, canPostEvents: false };
+  const response = await service.command({ op: "nativePermissions", permissions: revoked });
+  assert.equal(response.ok, false, "a malformed helper reply is reported as a failed refresh");
+  let state = await service.state();
+  assert.equal(state.native.host.accessibility, false);
+  assert.equal(state.native.accessibility, false);
+  assert.equal(state.native.canPostEvents, false);
+  assert.equal(state.native.helper.accessibility, null, "the old helper grant was invalidated");
+  assert.deepEqual(lightingSnapshot(state), before);
+
+  assert.equal((await service.command({ op: "nativePermissions", permissions: granted })).ok, false);
+  state = await service.state();
+  assert.equal(state.native.host.accessibility, true);
+  assert.equal(state.native.accessibility, false, "an unverified helper can never inherit host trust");
+  await service.configure({ permissions: granted });
+  await until(async () => {
+    assert.equal((await service.command({ op: "nativePermissions", permissions: granted })).ok, true);
+    return service.state();
+  }, next => next.native.accessibility === true, "a failed helper check did not retry", 4000);
+  assert.deepEqual(lightingSnapshot(await service.state()), before);
+});
+
+test("unchanged pending permission checks do not force agent key writes, while grant and revocation still synchronize", async t => {
+  const win = Array(98).fill(0), mac = Array(98).fill(0);
+  for (let i = 0; i < 12; i++) { win[i + 1] = 58 + i; mac[i + 1] = FACTORY_MAC_ROW[i]; }
+  const keymap = { mode: 0, locationId: 1, firmwareVersion: "1.0.16.6", active: mac, defaults: [mac, win] };
+  const service = await fakeService(t, { permissions: denied, keymap });
+  assert.equal((await service.command({ op: "codexAdapt" })).ok, true);
+  assert.equal((await service.command({ op: "nativePermissions", permissions: denied })).ok, true);
+  assert.equal((await service.state()).codex.adaptation.status, "permissions");
+  const start = (await service.operations()).length;
+  await until(async () => {
+    assert.equal((await service.command({ op: "nativePermissions", permissions: denied })).ok, true);
+    return (await service.operations()).slice(start);
+  }, ops => ops.some(({ op }) => op === "permissions"), "pending permissions were not rechecked", 3500);
+  for (let i = 0; i < 3; i++) {
+    assert.equal((await service.command({ op: "refreshPermissions" })).ok, true);
+  }
+  const pendingOps = (await service.operations()).slice(start);
+  assert(!pendingOps.some(({ op }) => ["readKeymap", "prepareFunctionKey", "adaptKeys", "restoreKeys", "restoreFunctionKey"].includes(op)),
+    "rechecking the same denied values must not force another key setup");
+
+  const granted = { ...denied, inputMonitoring: true, accessibility: true, canPostEvents: true };
+  await service.configure({ permissions: granted });
+  assert.equal((await service.command({ op: "nativePermissions", permissions: granted })).ok, true);
+  assert.equal((await service.state()).codex.adaptation.status, "ready", "grant immediately resumes pending adaptation");
+  const grantedOps = (await service.operations()).slice(start);
+  assert(grantedOps.some(({ op }) => op === "adaptKeys"));
+  const revokedStart = (await service.operations()).length;
+  await service.configure({ permissions: denied });
+  assert.equal((await service.command({ op: "nativePermissions", permissions: denied })).ok, true);
+  assert.equal((await service.state()).codex.adaptation.status, "permissions", "revocation immediately pauses adaptation");
+  const revokedOps = (await service.operations()).slice(revokedStart);
+  assert(revokedOps.some(({ op }) => op === "restoreKeys"));
+  assert(revokedOps.some(({ op }) => op === "restoreFunctionKey"));
+  assert(!revokedOps.some(({ op }) => op === "adaptKeys"));
 });

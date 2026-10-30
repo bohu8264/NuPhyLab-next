@@ -139,6 +139,8 @@ const claudeSlots = () => resolveClaudeSlots(claudeTasks(), store.data.settings)
 const claudeSelected = () => claudeTasks().find((task) => task.id === claudeLights.selectedId) ?? null;
 let codexKeyHost = null, codexKeyEvent = null, codexKeyEventId = 0;
 let nativeHostPermissions = null, driverHandoff = false, applicationUpdating = false, reconnectPlayback = null;
+let nativeHelperPermissionsCheckedAt = 0;
+const permissionKeys = ['inputMonitoring','accessibility','canPostEvents'];
 function nativePermissions() {
   const helper=hardware.state.permissions ?? {inputMonitoring:null,accessibility:null,canPostEvents:null};
   if (!nativeHostPermissions) return helper;
@@ -762,10 +764,34 @@ async function command(req) {
     case "nativePermissions": {
       const permissions=req.permissions;
       if(!permissions || typeof permissions!=='object' || ['inputMonitoring','accessibility','canPostEvents'].some(key=>typeof permissions[key]!=='boolean')) throw new Error('原生权限状态无效');
-      const next=Object.fromEntries(['inputMonitoring','accessibility','canPostEvents'].map(key=>[key,permissions[key]]));
+      const next=Object.fromEntries(permissionKeys.map(key=>[key,permissions[key]]));
       const changed=JSON.stringify(next)!==JSON.stringify(nativeHostPermissions);
+      const previousHelper=hardware.state.permissions;
       nativeHostPermissions=next;
-      if(changed && (agentEnabled() || keyCapture.active)) await syncKeyAdaptation(true);
+      // A WKWebView does not always get a focus/visibility event when the user
+      // returns from System Settings. Keep the helper's independent snapshot
+      // fresh when the native host reports a grant or while setup is pending.
+      // A successful unchanged report does no extra work; denied/unknown helper
+      // values retry at a bounded rate without opening USB or requesting trust.
+      const helperPending=permissionKeys.some(key=>hardware.state.permissions?.[key]!==true);
+      const refreshHelper=changed || (helperPending && Date.now()-nativeHelperPermissionsCheckedAt>=2000);
+      let refreshError;
+      if(refreshHelper) {
+        nativeHelperPermissionsCheckedAt=Date.now();
+        try {
+          const latest=await hardware.request('permissions');
+          if(!latest || permissionKeys.some(key=>typeof latest[key]!=='boolean')) throw new Error('暂时无法检查权限，请稍后重试。');
+          hardware.state.permissions=latest;
+        } catch(error) {
+          // Never reuse a previous grant after a failed check. Retain the new
+          // host snapshot so revocation takes effect even if the helper failed.
+          hardware.state.permissions=Object.fromEntries(permissionKeys.map(key=>[key,null]));
+          refreshError=error;
+        }
+      }
+      const helperChanged=permissionKeys.some(key=>previousHelper?.[key]!==hardware.state.permissions?.[key]);
+      if((changed || helperChanged) && (agentEnabled() || keyCapture.active)) await syncKeyAdaptation(true);
+      if(refreshError) throw refreshError;
       return {received:true};
     }
     case "openPermissionSettings": {
@@ -778,9 +804,11 @@ async function command(req) {
       return result;
     }
     case "refreshPermissions": {
+      const previous=hardware.state.permissions;
       const permissions = await hardware.request("permissions");
       hardware.state.permissions = permissions;
-      if(agentEnabled() || keyCapture.active) await syncKeyAdaptation(true);
+      const changed=permissionKeys.some(key=>previous?.[key]!==permissions?.[key]);
+      if(changed && (agentEnabled() || keyCapture.active)) await syncKeyAdaptation(true);
       return nativePermissions();
     }
     case "connect": {

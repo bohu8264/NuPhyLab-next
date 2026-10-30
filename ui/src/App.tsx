@@ -1,4 +1,4 @@
-import {nativeLightingOnly} from '../../shared/device-status.mjs';
+import {nativeLightingOnly,sidebarDeviceIdentity} from '../../shared/device-status.mjs';
 import {keyRecoveryProblem,friendlyConnectionError} from './KeyRecoveryPanel';
 import { t as tr } from "./i18n";
 import { useCallback, useEffect, useState } from "react";
@@ -76,9 +76,7 @@ export default function App() {
   const { state, layout, serviceError, command, exiting } = useAirApi(notify);
   const modelId = layout.length === 80 ? "kick75" : "air75-v3";
   const nativeOnly = nativeLightingOnly(state);
-  const modelName = state?.device.connected || state?.device.identified
-    ? state.device.model?.replace(/ ANSI$/, "") || (modelId === "kick75" ? "Kick75" : "Air75 V3")
-    : state?.bluetooth?.connected ? "Air75 V3" : "AIR75 V3 / Kick75";
+  const sidebarIdentity=sidebarDeviceIdentity(state);
   const draftKey = (model: string) => model === "kick75" ? "nuphylab-draft-kick75-v1" : "air-studio-draft-v1";
   useEffect(()=>{if(page!=="codex")setFocusCodexColors(false);},[page]);
   useCodexKeys(state,command,notify);
@@ -244,13 +242,13 @@ export default function App() {
         <button className="sidebar-device" onClick={() => setPage("device")}>
           <Keyboard className="nav-icon" size={18} strokeWidth={1.75} />
           <span>
-            {modelName}
-            <small>
+            {sidebarIdentity.modelName||tr("等待连接")}
+            {sidebarIdentity.modelName&&<small>
               <i
-                className={`status-dot ${state?.device.readOnly && state?.device.identified ? "coral" : state?.device.connected || state?.bluetooth?.connected ? "green" : ""}`}
+                className={`status-dot ${sidebarIdentity.transport==='bluetooth'?"green":state?.device.readOnly && state?.device.identified ? "coral" : "green"}`}
               />
-              {tr(state?.firmware?.upgradeRecommended ? "固件待更新" : state?.device.connection?.status==='reconnecting'?"正在重新连接":state?.device.connection?.status==='attention'?"连接暂时中断":state?.device.connection?.status==='updateRequired'?"请更新 NuPhy Lab":keyRecoveryProblem(state) ? "连接尚未完成" : state?.device.readOnly && state?.device.identified ? "已识别 · 请检查连接" : state?.device.connected ? "已连接" : state?.bluetooth?.connected ? "蓝牙已连接" : state?.device.autoConnecting ? "等待连接" : "未连接")}
-            </small>
+              {tr(sidebarIdentity.transport==='bluetooth'?"蓝牙已连接":state?.firmware?.upgradeRecommended ? "固件待更新" : state?.device.connection?.status==='reconnecting'?"正在重新连接":state?.device.connection?.status==='attention'?"连接暂时中断":state?.device.connection?.status==='updateRequired'?"请更新 NuPhy Lab":keyRecoveryProblem(state) ? "连接尚未完成" : state?.device.readOnly && state?.device.identified ? "已识别 · 请检查连接" : "已连接")}
+            </small>}
           </span>
         </button>
       </aside>

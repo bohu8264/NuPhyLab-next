@@ -3,6 +3,18 @@ export function nativeLightingOnly(state) {
   return device?.connected===true && device.modelId==='kick75' && device.readOnly!==true &&
     device.capabilities?.stockEffects===true && device.capabilities?.perKey===false;
 }
+// A retained USB identity is recovery metadata, not a currently connected
+// keyboard. In particular, never infer the sidebar name from the last canvas.
+export function sidebarDeviceIdentity(state) {
+  const device=state?.device;
+  if(device?.connected===true) {
+    const modelName=device.modelId==='kick75'?'Kick75':device.modelId==='air75-v3'?'Air75 V3':
+      typeof device.model==='string'?device.model.replace(/ ANSI$/, ''):null;
+    return {modelName,transport:'usb'};
+  }
+  if(state?.bluetooth?.connected===true)return {modelName:'Air75 V3',transport:'bluetooth'};
+  return {modelName:null,transport:null};
+}
 export function lightingUnavailableMessage(state) {
   if(state?.firmware?.upgradeRecommended===true || nativeLightingOnly(state))
     return '请前往 NuPhyIO 更新键盘固件。作品可继续编辑和保存。';

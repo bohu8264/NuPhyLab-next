@@ -4,6 +4,7 @@ import {nativeCodexKeys,nativeCodexRequest} from './codexKeys';
 import {useLanguage,t} from './i18n';
 import {Button,Modal,run} from './primitives';
 import type {AppState,Command} from './types';
+import {coalescePermissionRefresh,watchPermissionRefresh} from '../../shared/permission-refresh.mjs';
 
 export const OFFICIAL_DRIVER_URL='https://drive.nuphy.io/?lang=zh-CN';
 type Permission='inputMonitoring'|'accessibility';
@@ -14,7 +15,7 @@ const firmwareEvent='nuphylab:firmware-guide';
 
 export function useStartupCopy(){const language=useLanguage();return useCallback((zh:string,en:string)=>language==='en'?en:zh,[language]);}
 export function showFirmwareGuide(){window.dispatchEvent(new Event(firmwareEvent));}
-export async function refreshAppPermissions(command:Command){await nativeCodexKeys({kind:'refreshPermissions'}).catch(()=>false);return command({op:'refreshPermissions'});}
+export function refreshAppPermissions(command:Command){return coalescePermissionRefresh(command,async()=>{await nativeCodexKeys({kind:'refreshPermissions'}).catch(()=>false);return command({op:'refreshPermissions'});});}
 export async function requestAppPermission(command:Command,permission:Permission){
   if(!await nativeCodexKeys({kind:'permission',permission}))return command({op:'openPermissionSettings',permission});
   return command({op:'refreshPermissions'});
@@ -83,7 +84,8 @@ export function StartupGuide({state,command,disabled=false}:{state:AppState|null
     catch{setReconnectFailed(true);}finally{setReconnecting(false);}
   };
   useEffect(()=>{if(!state||disabled||initialCheck.current)return;initialCheck.current=true;void refreshAppPermissions(command).catch(()=>{});},[state,disabled,command]);
-  useEffect(()=>{if(disabled)return;const refresh=()=>{if(!document.hidden)void refreshAppPermissions(command).catch(()=>{});};window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',refresh);return()=>{window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh);};},[disabled,command]);
+  const hasState=state!==null;
+  useEffect(()=>{if(disabled||!hasState||permissionsReady)return;return watchPermissionRefresh({refresh:()=>refreshAppPermissions(command),isVisible:()=>!document.hidden,windowTarget:window,documentTarget:document});},[disabled,hasState,permissionsReady,command]);
   useEffect(()=>{if(disabled||!permissionKnown||permissionsReady||prompted.current||firmwareOpen||candidate||awaitingUpdate)return;prompted.current=true;setPermissionOpen(true);},[disabled,permissionKnown,permissionsReady,firmwareOpen,candidate?.key,awaitingUpdate]);
   useEffect(()=>{if(permissionsReady){setPermissionError('');setPermissionOpen(false);}},[permissionsReady]);
   const closeFirmware=()=>{if(!opening)setFirmwareOpen(false);};

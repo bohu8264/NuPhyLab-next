@@ -37,6 +37,15 @@ struct PendingAppUpdate: Codable {
     // macOS 26 that context may not reach the user's TCC or accessibility
     // services. Before AppKit or HID starts, reopen in this same user's normal
     // session once. Existing permission grants are neither changed nor reset.
+    static var handoffURL: URL { fileURL.deletingLastPathComponent().appendingPathComponent("app-update-handoff.json") }
+    static func acknowledgeGUIRelaunch() {
+        guard let index=CommandLine.arguments.firstIndex(of:relaunchArgument),CommandLine.arguments.count>index+1,
+              let version=Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String,
+              var handoff=AppUpdateHandoff.read(from:handoffURL),
+              handoff.isCurrent(token:CommandLine.arguments[index+1],version:version,now:Date().timeIntervalSince1970) else{return}
+        handoff.acknowledgedPID=getpid()
+        try? handoff.write(to:handoffURL)
+    }
     static func finishRelaunchIfNeeded() {
         guard let data=try? Data(contentsOf:fileURL),
               let pending=try? JSONDecoder().decode(Self.self,from:data),
@@ -45,9 +54,39 @@ struct PendingAppUpdate: Codable {
         guard pending.targetVersion == version || Date().timeIntervalSince1970 - pending.createdAt >= 86400 else{return}
         do {try FileManager.default.removeItem(at:fileURL)} catch {return}
         guard relaunch else{return}
+        let handoff=AppUpdateHandoff(token:UUID().uuidString,sourcePID:getpid(),targetVersion:version,
+                                    createdAt:Date().timeIntervalSince1970,acknowledgedPID:nil)
+        do {try handoff.write(to:handoffURL)} catch {return}
         let process=Process();process.executableURL=URL(fileURLWithPath:"/bin/launchctl")
-        process.arguments=["asuser",String(getuid()),"/usr/bin/open","-n",Bundle.main.bundleURL.path,"--args",relaunchArgument]
-        do {try process.run();process.waitUntilExit();if process.terminationStatus == 0 {exit(0)}} catch {return}
+        process.arguments=["asuser",String(getuid()),"/usr/bin/open","-n",Bundle.main.bundleURL.path,"--args",relaunchArgument,handoff.token]
+        do {try process.run()} catch {recordRelaunch(outcome:"dispatcher-start-failed",status:nil,acknowledgedPID:nil);return}
+        // open can dispatch the new process and still return a nonzero status.
+        // Wait for that process to own the singleton lock before deciding whether
+        // this installer-context process may continue. Never start two workers.
+        let deadline=Date().addingTimeInterval(8)
+        while Date()<deadline {
+            if let receipt=AppUpdateHandoff.read(from:handoffURL),
+               receipt.isCurrent(token:handoff.token,version:version,now:Date().timeIntervalSince1970),
+               let pid=receipt.acknowledgedPID,pid>0,pid != getpid() {
+                recordRelaunch(outcome:"gui-owner-acknowledged",status:process.isRunning ? nil : process.terminationStatus,acknowledgedPID:pid)
+                exit(0)
+            }
+            Thread.sleep(forTimeInterval:0.05)
+        }
+        if process.isRunning || process.terminationStatus == 0 {
+            recordRelaunch(outcome:"dispatcher-accepted",status:process.isRunning ? nil : process.terminationStatus,acknowledgedPID:nil)
+            exit(0)
+        }
+        recordRelaunch(outcome:"dispatcher-failed-without-owner",status:process.terminationStatus,acknowledgedPID:nil)
+    }
+    private static func recordRelaunch(outcome:String,status:Int32?,acknowledgedPID:Int32?) {
+        let result:[String:Any]=["outcome":outcome,"dispatcherStatus":status.map{NSNumber(value:$0)} ?? NSNull(),
+                                 "acknowledgedPID":acknowledgedPID.map{NSNumber(value:$0)} ?? NSNull(),
+                                 "date":ISO8601DateFormatter().string(from:Date())]
+        guard let data=try? JSONSerialization.data(withJSONObject:result,options:.sortedKeys) else{return}
+        let url=fileURL.deletingLastPathComponent().appendingPathComponent("update-relaunch-result.json")
+        try? data.write(to:url,options:.atomic)
+        try? FileManager.default.setAttributes([.posixPermissions:0o600],ofItemAtPath:url.path)
     }
 }
 

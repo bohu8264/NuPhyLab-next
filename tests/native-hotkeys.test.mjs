@@ -79,6 +79,6 @@ check(!pending.needsGUIRelaunch(version:"1.2.1",arguments:[],now:99),"future-dat
 print("native-hotkeys-passed")
 `;
   const file=path.join(dir,'main.swift'),binary=path.join(dir,'check');await writeFile(file,body);
-  await promisify(execFile)('swiftc',[file,decodeURIComponent(new URL('../native/AudioCapture.swift',import.meta.url).pathname),'-o',binary,'-framework','AppKit','-framework','WebKit','-framework','Carbon','-framework','AVFoundation','-framework','CoreAudio','-framework','Accelerate']);
+  await promisify(execFile)('swiftc',['-module-cache-path',path.join(dir,'module-cache'),file,decodeURIComponent(new URL('../native/AppInstance.swift',import.meta.url).pathname),decodeURIComponent(new URL('../native/AudioCapture.swift',import.meta.url).pathname),'-o',binary,'-framework','AppKit','-framework','WebKit','-framework','Carbon','-framework','AVFoundation','-framework','CoreAudio','-framework','Accelerate']);
   assert.match((await promisify(execFile)(binary,[])).stdout,/native-hotkeys-passed/);
 });
