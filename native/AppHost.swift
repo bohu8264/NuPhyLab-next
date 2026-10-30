@@ -18,6 +18,39 @@ struct WorkerRestartPolicy {
     }
 }
 
+struct PendingAppUpdate: Codable {
+    let targetVersion: String
+    let createdAt: TimeInterval
+    static let relaunchArgument = "--nuphylab-update-gui-relaunch"
+    static var fileURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Air Studio/pending-app-update.json")
+    }
+    func needsGUIRelaunch(version: String, arguments: [String], now: TimeInterval) -> Bool {
+        targetVersion == version && now >= createdAt && now - createdAt < 86400 && !arguments.contains(Self.relaunchArgument)
+    }
+    static func stage(version: String) throws {
+        let data = try JSONEncoder().encode(Self(targetVersion:version,createdAt:Date().timeIntervalSince1970))
+        try data.write(to:fileURL,options:.atomic)
+        try FileManager.default.setAttributes([.posixPermissions:0o600],ofItemAtPath:fileURL.path)
+    }
+    // Sparkle can relaunch from its installer agent's bootstrap context. On
+    // macOS 26 that context may not reach the user's TCC or accessibility
+    // services. Before AppKit or HID starts, reopen in this same user's normal
+    // session once. Existing permission grants are neither changed nor reset.
+    static func finishRelaunchIfNeeded() {
+        guard let data=try? Data(contentsOf:fileURL),
+              let pending=try? JSONDecoder().decode(Self.self,from:data),
+              let version=Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String else{return}
+        let relaunch=pending.needsGUIRelaunch(version:version,arguments:CommandLine.arguments,now:Date().timeIntervalSince1970)
+        guard pending.targetVersion == version || Date().timeIntervalSince1970 - pending.createdAt >= 86400 else{return}
+        do {try FileManager.default.removeItem(at:fileURL)} catch {return}
+        guard relaunch else{return}
+        let process=Process();process.executableURL=URL(fileURLWithPath:"/bin/launchctl")
+        process.arguments=["asuser",String(getuid()),"/usr/bin/open","-n",Bundle.main.bundleURL.path,"--args",relaunchArgument]
+        do {try process.run();process.waitUntilExit();if process.terminationStatus == 0 {exit(0)}} catch {return}
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandlerWithReply {
     let audioCapture = AudioCapture()
     var pendingAudio: [String:Any]?
@@ -77,6 +110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     var updaterController: SPUStandardUpdaterController?
     #endif
     var pendingUpdateInstall: (() -> Void)?
+    var pendingUpdateVersion: String?
     var preparingUpdate = false
     var workerRestartPolicy = WorkerRestartPolicy()
     let windowFrameName = "AirStudio.CompactWindow.v1"
@@ -320,6 +354,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
     func prepareUpdateInstallation(){
         guard !preparingUpdate, pendingUpdateInstall != nil, let base=baseURL else {return}
+        guard let version=pendingUpdateVersion else{return}
+        do {try PendingAppUpdate.stage(version:version)} catch {
+            appendWorkerLog(Data("Unable to prepare update relaunch: \(error.localizedDescription)\n".utf8))
+            let alert=NSAlert();alert.messageText=english ? "Unable to install the update yet" : "暂时无法安装更新"
+            alert.informativeText=english ? "Please try again later. Your app and work are kept." : "请稍后重试。当前软件和作品会保留。"
+            alert.addButton(withTitle:english ? "OK" : "知道了");alert.runModal();return
+        }
         preparingUpdate=true
         setExitPresentation(true)
         var request=URLRequest(url:base.appendingPathComponent("api/command"),timeoutInterval:60)
@@ -903,6 +944,7 @@ extension AppDelegate: SPUUpdaterDelegate {
     func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem,
                  untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {
         pendingUpdateInstall=installHandler
+        pendingUpdateVersion=item.versionString
         prepareUpdateInstallation()
         return true
     }

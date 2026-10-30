@@ -70,6 +70,12 @@ check(recovery.nextDelay(now:1)==1.5,"repeat failure backs off")
 check(recovery.nextDelay(now:3)==4.0,"last bounded retry")
 check(recovery.nextDelay(now:8)==nil,"permanent crash does not loop")
 check(recovery.nextDelay(now:64)==0.5,"stable later session gets its own retry window")
+let pending=PendingAppUpdate(targetVersion:"1.2.1",createdAt:100)
+check(pending.needsGUIRelaunch(version:"1.2.1",arguments:[],now:101),"installed update reopens in the user's GUI session")
+check(!pending.needsGUIRelaunch(version:"1.2.0",arguments:[],now:101),"cancelled or incomplete install cannot relaunch old app")
+check(!pending.needsGUIRelaunch(version:"1.2.1",arguments:[PendingAppUpdate.relaunchArgument],now:101),"relaunch is bounded to one attempt")
+check(!pending.needsGUIRelaunch(version:"1.2.1",arguments:[],now:100+86400),"expired update marker cannot change ordinary startup")
+check(!pending.needsGUIRelaunch(version:"1.2.1",arguments:[],now:99),"future-dated marker is ignored")
 print("native-hotkeys-passed")
 `;
   const file=path.join(dir,'main.swift'),binary=path.join(dir,'check');await writeFile(file,body);

@@ -21,7 +21,7 @@ try {await access(path.join(root,'updates/appcast.xml'));await copyFile(path.joi
 const bin=path.join(root,'vendor/sparkle/bin');
 const prefix=`https://github.com/${config.repository}/releases/download/v${version}/`;
 run(path.join(bin,'generate_appcast'),['--account',config.keychainAccount,'--download-url-prefix',prefix,
-  '--maximum-deltas','0','--link',`https://github.com/${config.repository}`,'--versions',version,directory]);
+  '--maximum-deltas','0','--maximum-versions','1','--link',`https://github.com/${config.repository}`,'--versions',version,directory]);
 const feed=path.join(directory,'appcast.xml');
 run(path.join(bin,'sign_update'),['--account',config.keychainAccount,'--verify',feed]);
 const xml=await readFile(feed,'utf8');
