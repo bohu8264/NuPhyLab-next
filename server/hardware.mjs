@@ -152,7 +152,7 @@ export class Hardware extends EventEmitter {
     this.requests.clear();
   }
   request(op, args = {}) {
-    const deviceOperation = ['connect','status','arm','paint','readColors','nativeLighting','readKeymap',
+    const deviceOperation = ['connect','status','arm','paint','restore','disconnect','readColors','nativeLighting','readKeymap',
       'prepareFunctionKey','previewFunctionKeyRecovery','confirmFunctionKeyRecovery','side'].includes(op) ||
       (['adaptKeys','keyMappingStatus'].includes(op) && args.transport !== 'bluetooth');
     const epoch = deviceOperation ? this.transportEpoch : null;
@@ -179,7 +179,15 @@ export class Hardware extends EventEmitter {
         );
       });
     };
-    const promise = this.tail.then(run, run);
+    const promise = this.tail.then(run, run).then(result => {
+      // One stdout chunk can contain a successful reply followed immediately
+      // by a removal event. Resolving the reply only schedules an await
+      // continuation; the later event must still invalidate that result before
+      // connect/status/arm/restore can commit it back into the current state.
+      if (epoch !== null && epoch !== this.transportEpoch)
+        throw Object.assign(new Error('键盘连接正在恢复，请稍候。'), {code:'SESSION_CHANGED'});
+      return result;
+    });
     this.tail = promise.catch(() => {});
     return promise;
   }

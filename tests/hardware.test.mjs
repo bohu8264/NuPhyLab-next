@@ -42,8 +42,15 @@ import {createInterface} from 'node:readline';
 import {readFileSync,appendFileSync} from 'node:fs';
 const file=process.argv[process.argv.indexOf('--backup')+1];
 const config=JSON.parse(readFileSync(file,'utf8'));
-let connected=false,armed=false,pending=Boolean(config.recoveryPending),restoreAttempts=0;
-const answer=(message,result)=>process.stdout.write(JSON.stringify({id:message.id,ok:true,result})+'\\n');
+let connected=false,armed=false,pending=Boolean(config.recoveryPending),restoreAttempts=0,sameChunkRemoved=false,matchingReplies=0;
+const answer=(message,result)=>{
+ let output=JSON.stringify({id:message.id,ok:true,result})+'\\n';
+ if(config.sameChunkRemovalOp===message.op&&!sameChunkRemoved&&matchingReplies++>=(config.sameChunkRemovalSkip??0)){
+  sameChunkRemoved=true;connected=false;armed=false;pending=true;
+  output+=JSON.stringify({event:'disconnected',needsRestore:pending})+'\\n';
+ }
+ process.stdout.write(output);
+};
 const lines=createInterface({input:process.stdin});
 lines.on('line',line=>{
  const message=JSON.parse(line);appendFileSync(file+'.log',message.op+'\\n');
@@ -252,3 +259,25 @@ test("concurrent connect requests share one complete identification",async t=>{
   assert(results.every(result=>result.connected));
   assert.equal((await operations()).filter(op=>op==='connect').length,1);
 });
+
+for(const operation of ['connect','status','arm','restore','disconnect','paint']) {
+  test(`${operation}: a reply and following removal in one stdout chunk cannot revive stale state or clear the backup`,async t=>{
+    const {hardware,operations}=await fakeHardware(t,{sameChunkRemovalOp:operation,sameChunkRemovalSkip:operation==='status'?1:0});
+    if(operation!=='connect')await hardware.connect();
+    if(['status','restore','disconnect','paint'].includes(operation))await hardware.arm();
+    let removalObserved=false;
+    hardware.on('disconnected',()=>{removalObserved=true;assert.equal(hardware.state.connected,false);});
+    const action=operation==='paint'?()=>hardware.paint([]):()=>hardware[operation]();
+    await assert.rejects(action(),error=>error.code==='SESSION_CHANGED');
+    assert.equal(removalObserved,true);
+    assert.equal(hardware.state.connected,false);
+    assert.equal(hardware.state.armed,false);
+    assert.equal(hardware.state.identified,false);
+    assert.equal(hardware.state.recoveryPending,true);
+    assert.equal(hardware.state.needsRestore,true);
+    const commands=await operations();
+    assert.equal(commands.filter(op=>op===operation).length,operation==='status'?2:1,'uncertain USB writes must not be replayed');
+    if(operation==='connect')assert.deepEqual(commands,['connect'],'stale identification cannot start restoration');
+    await hardware.close();
+  });
+}

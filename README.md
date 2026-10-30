@@ -10,7 +10,7 @@ Download the signed and Apple-notarized DMG from [Releases](https://github.com/b
 
 Allow Input Monitoring and Accessibility when prompted. Audio permissions are requested when using audio reactive lighting. Switch the keyboard to wired mode. If its firmware needs updating, follow the NuPhyIO reminder, close the website after the upgrade, then return to the app.
 
-Version 1.2.2 includes signed in-app updates. New releases appear automatically, or choose **Check for Updates** in the app menu or Device page. Artwork and settings remain intact. Users on 1.1.x need to install 1.2.2 once manually.
+Version 1.2.3 includes signed in-app updates. New releases appear automatically, or choose **Check for Updates** in the app menu or Device page. Artwork and settings remain intact. Users on 1.1.x need to install 1.2.3 once manually.
 
 ## Build
 
