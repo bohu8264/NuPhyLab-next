@@ -1,20 +1,23 @@
-<?xml version="1.0" standalone="yes"?><!-- sparkle-sign-warning:
+<?xml version="1.0" standalone="yes"?>
+<!-- sparkle-sign-warning:
 IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires re-signing this file with generate_appcast or sign_update! The signed signature will be embedded at the end of this file.
---><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+-->
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
     <channel>
         <title>NuPhy Lab</title>
         <item>
-            <title>1.2.0</title>
-            <pubDate>Fri, 30 Oct 2026 08:20:52 +0800</pubDate>
+            <title>1.2.1</title>
+            <pubDate>Fri, 30 Oct 2026 09:22:34 +0800</pubDate>
             <link>https://github.com/bohu8264/NuPhyLab-next</link>
-            <sparkle:version>1.2.0</sparkle:version>
-            <sparkle:shortVersionString>1.2.0</sparkle:shortVersionString>
+            <sparkle:version>1.2.1</sparkle:version>
+            <sparkle:shortVersionString>1.2.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.5</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <enclosure url="https://github.com/bohu8264/NuPhyLab-next/releases/download/v1.2.0/NuPhyLab-1.2.0-macOS-AppleSilicon.dmg" length="27263965" type="application/octet-stream" sparkle:edSignature="Z4TaAfVwT/F4fIVN0UGiczlwfCqHmAzhjoqCX3s1QgKhPX2gKiknY+44PY7u1ms2WOmSsXK4wzv5Su8N3h8aDA=="></enclosure>
+            <enclosure url="https://github.com/bohu8264/NuPhyLab-next/releases/download/v1.2.1/NuPhyLab-1.2.1-macOS-AppleSilicon.dmg" length="27252265" type="application/octet-stream" sparkle:edSignature="xhmaxyXQCIAglmvAphRJlxuMc2RH7NJpNV4heQ4gfnJwC370pVHmu52J6nRUPj0o7JnyZFZnsO7t+1TBXPMFBQ=="/>
         </item>
     </channel>
-</rss><!-- sparkle-signatures:
-edSignature: wbb0+xkW0bEIVvW+9ZTQ9D4PUi8Q55zjTmuBkeyOGBB+VvRMPuOfIp1uFkc5hJMrBYRK1fwwEcrkFOpsA4x4AA==
-length: 1217
+</rss>
+<!-- sparkle-signatures:
+edSignature: 3H3xmwsYK0grAl5Q2ecpbYoM1JiyD7DFdlk+fFg1EGq/PUUG8+S8p0lViIRojhJd0v3HiPTYJl0IQ2HovMsABA==
+length: 1209
 -->
