@@ -6,18 +6,18 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>NuPhy Lab</title>
         <item>
-            <title>1.2.1</title>
-            <pubDate>Fri, 30 Oct 2026 09:22:34 +0800</pubDate>
+            <title>1.2.3</title>
+            <pubDate>Fri, 30 Oct 2026 11:02:31 +0800</pubDate>
             <link>https://github.com/bohu8264/NuPhyLab-next</link>
-            <sparkle:version>1.2.1</sparkle:version>
-            <sparkle:shortVersionString>1.2.1</sparkle:shortVersionString>
+            <sparkle:version>1.2.3</sparkle:version>
+            <sparkle:shortVersionString>1.2.3</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.5</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <enclosure url="https://github.com/bohu8264/NuPhyLab-next/releases/download/v1.2.1/NuPhyLab-1.2.1-macOS-AppleSilicon.dmg" length="27252265" type="application/octet-stream" sparkle:edSignature="xhmaxyXQCIAglmvAphRJlxuMc2RH7NJpNV4heQ4gfnJwC370pVHmu52J6nRUPj0o7JnyZFZnsO7t+1TBXPMFBQ=="/>
+            <enclosure url="https://github.com/bohu8264/NuPhyLab-next/releases/download/v1.2.3/NuPhyLab-1.2.3-macOS-AppleSilicon.dmg" length="27320184" type="application/octet-stream" sparkle:edSignature="hzPpsgQ/97GyzI3XvnIOu307zRXMvSXF3JCc+5+CgAlYoZSv+gvd1yCZyJmUj2Y7Hi+yaj7JW5Gme0xDNe1pBQ=="/>
         </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: 3H3xmwsYK0grAl5Q2ecpbYoM1JiyD7DFdlk+fFg1EGq/PUUG8+S8p0lViIRojhJd0v3HiPTYJl0IQ2HovMsABA==
+edSignature: 6bqniIAxvFK2QkhZyQRo6fm5SwJHttdR4m+84/g4A4ICgaAha6WFiZ9tZsg43S943SVRRzT3jqsQNuvzZngODw==
 length: 1209
 -->
