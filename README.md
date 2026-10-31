@@ -6,7 +6,7 @@ Includes drawing, animation, key-triggered effects, games, audio reactive lighti
 
 ## Install
 
-Download the signed and Apple-notarized DMG from [Releases](https://github.com/bohu8264/NuPhyLab-next/releases), then drag **NuPhy Lab** to Applications. The current release requires Apple Silicon and macOS 13.5 or later.
+Download the signed and Apple-notarized DMG using the [latest version download](https://github.com/bohu8264/NuPhyLab-next/releases/latest/download/NuPhyLab-macOS-AppleSilicon.dmg), then drag **NuPhy Lab** to Applications. This download link stays the same for future stable releases. The current release requires Apple Silicon and macOS 13.5 or later. See [release notes and older versions](https://github.com/bohu8264/NuPhyLab-next/releases).
 
 Allow Input Monitoring and Accessibility when prompted. Audio permissions are requested when using audio reactive lighting. Switch the keyboard to wired mode. If its firmware needs updating, follow the NuPhyIO reminder, close the website after the upgrade, then return to the app.
 

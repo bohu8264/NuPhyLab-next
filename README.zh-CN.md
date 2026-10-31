@@ -6,7 +6,7 @@
 
 ## 安装
 
-从 [Releases](https://github.com/bohu8264/NuPhyLab-next/releases) 下载公司 Developer ID 签名并经过 Apple 公证的安装包，将 **NuPhy Lab** 拖入“应用程序”。当前发行包支持 Apple Silicon 和 macOS 13.5 及以上版本。
+通过 [最新版固定下载链接](https://github.com/bohu8264/NuPhyLab-next/releases/latest/download/NuPhyLab-macOS-AppleSilicon.dmg) 下载公司 Developer ID 签名并经过 Apple 公证的安装包，将 **NuPhy Lab** 拖入“应用程序”。后续正式版继续使用同一链接。当前发行包支持 Apple Silicon 和 macOS 13.5 及以上版本。[更新说明与历史版本](https://github.com/bohu8264/NuPhyLab-next/releases)。
 
 首次使用按提示授权输入监控和辅助功能。声音权限在实际启用声音律动时请求。连接 AIR75 V3 或 Kick75，并将键盘切到有线模式。旧固件会提示在 NuPhyIO 更新；完成后关闭官网页面，再回到应用。
 

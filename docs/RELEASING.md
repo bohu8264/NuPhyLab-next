@@ -6,9 +6,15 @@ GitHub 仓库：`bohu8264/NuPhyLab-next`。旧 `bohu8264/NuPhyLab` 不参与新�
 2. 使用本机有效的 NuPhy Developer ID 身份打包。发布不得使用 ad-hoc 签名。Sparkle 的嵌套代码由 `scripts/signing.mjs` 逐层签名。
 3. 对 app 公证、staple 后制作 DMG；对最终 DMG 签名、公证、staple，再验证其中 app。钥匙串公证 profile 为 `nuphy-notary`。
 4. 运行 `node scripts/prepare-appcast.mjs /绝对路径/最终安装包.dmg /绝对路径/输出目录`，生成签名更新源。更新私钥仅存于本机钥匙串，account 见 `config/updates.json`；不得导出到源码或 GitHub。
-5. 将经过检查的源码上传 **新仓库**，创建与版本一致的标签和 GitHub Release，上传最终 DMG。先保持草稿，核对后发布。
-6. 从公开 Release 地址下载 DMG 并核对 SHA-256。仅在公开下载可用后，将生成的 `appcast.xml` 原样提交到新仓库 `main` 的 `updates/appcast.xml`，不得手工修改签名后的 XML。
+5. 将经过检查的源码上传 **新仓库**，创建与版本一致的标签和 GitHub Release，上传带版本号的最终 DMG，并上传一份字节完全相同、固定命名为 `NuPhyLab-macOS-AppleSilicon.dmg` 的副本。固定命名副本必须来自同一个已签名、公证和 staple 的最终包，不重新生成或修改 DMG 内容。先保持草稿，核对后发布为 Latest 正式版。
+6. 从公开 Release 地址和下方固定下载链接分别下载 DMG，核对两者的字节数与 SHA-256 均与最终包一致；固定链接必须指向本次版本。以后每次正式发布都必须保留同名固定下载资产。仅在公开下载可用后，将生成的 `appcast.xml` 原样提交到新仓库 `main` 的 `updates/appcast.xml`，不得手工修改签名后的 XML。更新源继续使用带版本号的不可变安装包地址。
 7. 用上一版应用完整验证“检查更新 → 下载 → 安装并重新打开”，确认作品、设置与权限仍在。
+
+对外固定下载链接（Apple Silicon）：
+
+<https://github.com/bohu8264/NuPhyLab-next/releases/latest/download/NuPhyLab-macOS-AppleSilicon.dmg>
+
+GitHub 根据 Latest 正式版解析此链接。发布预览版时不得将其设置为 Latest；发布新版正式版前先确认草稿含有固定命名资产，避免切换后出现 404。
 
 应用每小时在后台检查新版本；断网不影响键盘使用。用户可从应用菜单或设备页主动检查。更新内容和安装包都经过 Ed25519 验证，安装包同时需要通过 Developer ID 验证。安装前暂停灯效并确认键盘已安全释放；恢复记录不会混入发行包。
 
