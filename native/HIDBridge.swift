@@ -252,7 +252,17 @@ func failure(_ code: String, _ message: String) -> BridgeError {
     BridgeError(code: code, message: message)
 }
 func diagnostic(_ message: String) {
-    FileHandle.standardError.write(Data((message + "\n").utf8))
+    writePipe(STDERR_FILENO, Data((message + "\n").utf8))
+}
+func writePipe(_ descriptor:Int32, _ data:Data) {
+    data.withUnsafeBytes { raw in
+        var offset=0
+        while offset<raw.count {
+            let written=Darwin.write(descriptor,raw.baseAddress!.advanced(by:offset),raw.count-offset)
+            if written>0 {offset+=written}
+            else if written==0 || errno != EINTR {break}
+        }
+    }
 }
 func permissionSnapshot() -> [String: Any] {
     ["inputMonitoring": IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted,
@@ -290,14 +300,7 @@ func emit(_ object: [String: Any]) {
     var output = data; output.append(10)
     // A vanished parent must not throw an Objective-C broken-pipe exception
     // before the device's shutdown restoration has run.
-    output.withUnsafeBytes { raw in
-        var offset = 0
-        while offset < raw.count {
-            let written = Darwin.write(STDOUT_FILENO, raw.baseAddress!.advanced(by: offset), raw.count - offset)
-            if written > 0 { offset += written }
-            else if errno != EINTR { break }
-        }
-    }
+    writePipe(STDOUT_FILENO, output)
 }
 func pump(_ seconds: TimeInterval) {
     let deadline = ProcessInfo.processInfo.systemUptime + seconds
@@ -1842,6 +1845,38 @@ struct ShortcutChord {
         down = press; up = release
     }
 }
+// A handler lookup is a read-only snapshot, not an acknowledgement from that
+// application. openAccepted reports macOS acceptance, never the final chat.
+struct TaskOpenHandlerSnapshot {
+    let available: Bool
+    let bundleId: String?
+    let version: String?
+    let build: String?
+    var json: [String: Any] {
+        func field(_ value: String?, _ limit: Int) -> Any {
+            guard let value = value, !value.isEmpty, value.count <= limit,
+                  value.range(of: "^[A-Za-z0-9._-]+$", options: .regularExpression) != nil else { return NSNull() }
+            return value
+        }
+        return ["available":available,"bundleId":field(bundleId,160),"version":field(version,80),"build":field(build,80)]
+    }
+}
+enum TaskOpenDiagnostics {
+    static func deliver(url: URL, threadId: String, diagnosticId: String?,
+                        handler: (URL) -> TaskOpenHandlerSnapshot, open: (URL) -> Bool,
+                        now: () -> Double, report: ([String: Any]) -> Void) -> Bool {
+        guard let diagnosticId = diagnosticId,
+              diagnosticId.range(of: "^task-open:[a-f0-9]{32}$", options: .regularExpression) != nil else {
+            return open(url)
+        }
+        let snapshot = handler(url)
+        let accepted = open(url)
+        report(["event":"taskOpenResult","diagnosticId":diagnosticId,"threadId":threadId,"uri":url.absoluteString,
+                "at":now(),"handler":snapshot.json,"osAccepted":accepted])
+        return accepted
+    }
+}
+
 final class KeyHooks {
     private struct HeldShortcut {
         let code: CGKeyCode
@@ -1959,7 +1994,15 @@ final class KeyHooks {
                   let url = URL(string: "codex://threads/\(threadID)") else {
                 throw failure("INVALID_TASK", "threadId must contain only letters, digits, underscores and hyphens.")
             }
-            guard NSWorkspace.shared.open(url) else { throw failure("TASK_OPEN_FAILED", "macOS could not open the Codex task URL.") }
+            let accepted = TaskOpenDiagnostics.deliver(url:url,threadId:threadID,diagnosticId:command["diagnosticId"] as? String,
+                handler:{ url in
+                    let applicationURL = NSWorkspace.shared.urlForApplication(toOpen:url)
+                    let bundle = applicationURL.flatMap { Bundle(url:$0) }
+                    return TaskOpenHandlerSnapshot(available:applicationURL != nil,bundleId:bundle?.bundleIdentifier,
+                        version:bundle?.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String,
+                        build:bundle?.object(forInfoDictionaryKey:"CFBundleVersion") as? String)
+                },open:{ NSWorkspace.shared.open($0) },now:{ Date().timeIntervalSince1970 * 1000 },report:emit)
+            guard accepted else { throw failure("TASK_OPEN_FAILED", "macOS could not open the Codex task URL.") }
             return ["opened": true, "threadId": threadID]
         }
         guard let code = command["keyCode"] as? Int, (0...127).contains(code) else {

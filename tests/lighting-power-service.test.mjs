@@ -9,7 +9,8 @@ test('successful Codex task keys, task buttons and command keys wake the global 
  await s.command({op:'settings',settings:{codexEnabled:true,codexSelectedPulse:false,brightness:100,lightDurationMs:1000,lightIdleMs:0}});
  await s.command({op:'settings',settings:{codexEnabled:true}});
  for(const request of [{op:'codexKey',code:'F1',phase:'down'},{op:'codexAction',action:'task',threadId:'a'},{op:'codexKey',code:'F12',phase:'down'}]) {
-  await until(s.state,v=>v.lightPower.sleeping&&v.colors.every(c=>c==='#000000'),'timer did not send black');
+  const asleep=await until(s.state,v=>v.lightPower.sleeping&&v.colors[1]==='#304ffe','background timer did not expire with persistent AI status');
+  assert.equal(asleep.codex.lighting.sleeping,false);assert.equal(asleep.codex.lighting.backgroundSleeping,true);
   assert.equal((await s.command(request)).ok,true);
   const awake=await until(s.state,v=>!v.lightPower.sleeping&&v.colors[1]==='#304ffe','Codex interaction left keyboard asleep');
   assert.equal(awake.colors[1],'#304ffe');
@@ -27,27 +28,28 @@ test('successful Codex task keys, task buttons and command keys wake the global 
  assert.equal((await s.command({op:'codexKey',code:'F12'})).ok,false);
  assert.equal((await s.state()).lightPower.sleeping,true,'failed or release actions woke the timer');
 });
-test('enabling Codex on an already armed scene starts a fresh timer, while ordinary edits do not',async t=>{
+test('enabling, switching and editing AI mode preserves an ordinary background timer',async t=>{
  const s=await fakeService(t,{tasks:[{id:'a',status:'running'}]});
  await s.command({op:'settings',settings:{lightDurationMs:2000,lightIdleMs:0}});
  await s.command({op:'preview',colors:art});
  await wait(1100);
+ const before=(await s.state()).lightPower.remainingMs;
  await s.command({op:'settings',settings:{codexEnabled:true}});
- assert.ok((await s.state()).lightPower.remainingMs>1800);
+ assert.ok((await s.state()).lightPower.remainingMs<=before,'mode On must not restart the running work timer');
  await wait(1100);
  await s.command({op:'settings',settings:{codexBrightness:90,language:'en'}});
  const lit=await s.state();
- assert.equal(lit.lightPower.sleeping,false);assert.ok(lit.lightPower.remainingMs<1100);
+ assert.equal(lit.lightPower.sleeping,true);assert.equal(lit.lightPower.remainingMs,0);
  assert.notEqual(lit.colors[1],'#000000');
- await until(s.state,v=>v.lightPower.sleeping&&v.colors.every(c=>c==='#000000'),'Codex timer never expired');
+ await until(s.state,v=>v.lightPower.sleeping&&v.colors[20]==='#000000'&&v.colors[1]!=='#000000','background did not sleep independently of AI status');
  await s.command({op:'settings',settings:{codexEnabled:false}});
  await s.command({op:'settings',settings:{codexEnabled:true}});
- const restarted=await until(s.state,v=>!v.lightPower.sleeping&&v.colors[1]!=='#000000','re-enabling Codex left lighting asleep');
- assert.ok(restarted.lightPower.remainingMs>1800);
- // Changing to the other enabled integration starts its lighting session too.
+ const resumed=await until(s.state,v=>v.lightPower.sleeping&&v.colors[1]!=='#000000','re-enabling Codex did not resume its persistent overlay');
+ assert.equal(resumed.lightPower.remainingMs,0);assert.equal(resumed.codex.lighting.sleeping,false);
+ // Source handoff changes only the overlay, not the ordinary work timer.
  await wait(300);
  await s.command({op:'settings',settings:{agentSource:'claude',claudeEnabled:true}});
- assert.ok((await s.state()).lightPower.remainingMs>1800);
+ const switched=await s.state();assert.equal(switched.lightPower.sleeping,true);assert.equal(switched.lightPower.remainingMs,0);assert.equal(switched.claude.lighting.ownsOutput,true);
 });
 test('whole keyboard duration blacks main and side lights, survives language changes, and wakes back to artwork',async t=>{
  const s=await fakeService(t);
@@ -68,28 +70,28 @@ test('whole keyboard duration blacks main and side lights, survives language cha
  const saved=JSON.parse(await readFile(s.dataDir+'/library.json','utf8'));
  assert.equal(saved.settings.language,'en');assert.equal(saved.settings.lightDurationMs,1000);
 });
-test('global idle timer sleeps and wakes exclusive Codex lights, ignoring legacy timeout',async t=>{
+test('global idle timer sleeps only the background, preserving Codex status and ignoring legacy timeout',async t=>{
  const s=await fakeService(t,{tasks:[{id:'a',status:'running'}]});
  await s.command({op:'settings',settings:{brightness:100,codexEnabled:true,codexAutoOffMs:1000,lightIdleMs:2200}});
  await s.command({op:'settings',settings:{codexEnabled:true}});
  await wait(1200);
  const lit=await s.state();assert.equal(lit.colors[0],'#000000');assert.equal(lit.colors[1],'#304ffe');assert.equal(lit.codex.lighting.sleeping,false);
- const asleep=await until(s.state,v=>v.lightPower.sleeping&&v.colors.every(c=>c==='#000000'),'whole keyboard did not send its sleeping frame');
- assert.equal(asleep.codex.lighting.sleeping,true);assert.ok(asleep.colors.every(c=>c==='#000000'));
+ const asleep=await until(s.state,v=>v.lightPower.sleeping&&v.colors[1]==='#304ffe','background did not reach its idle state');
+ assert.equal(asleep.codex.lighting.sleeping,false);assert.equal(asleep.codex.lighting.backgroundSleeping,true);
  await s.configure({systemIdleMs:0});
- const awake=await until(s.state,v=>v.colors[1]==='#304ffe','system activity did not wake');
+ const awake=await until(s.state,v=>!v.lightPower.sleeping&&v.colors[1]==='#304ffe','system activity did not wake the background');
  assert.equal(awake.colors[1],'#304ffe');assert.equal(awake.codex.lighting.sleeping,false);
 });
-test('global duration controls Codex too; legacy wake also restores the whole keyboard',async t=>{
+test('global duration leaves persistent Codex status visible; explicit wake still wakes the background',async t=>{
  const s=await fakeService(t,{tasks:[{id:'a',status:'completed'}]});
  await s.command({op:'settings',settings:{brightness:100,codexEnabled:true,codexAutoOffMs:0,lightDurationMs:1000}});
  await s.command({op:'settings',settings:{codexEnabled:true}});
- const asleep=await until(s.state,v=>v.lightPower.sleeping&&v.colors.every(c=>c==='#000000'),'duration did not send the sleeping frame');
- assert.ok(asleep.colors.every(c=>c==='#000000'));assert.equal(asleep.codex.lighting.sleeping,true);
+ const asleep=await until(s.state,v=>v.lightPower.sleeping&&v.colors[1]==='#00ff4c','background duration did not expire');
+ assert.equal(asleep.codex.lighting.sleeping,false);assert.equal(asleep.codex.lighting.backgroundSleeping,true);
  await s.configure({tasks:[{id:'a',status:'running'}]});await wait(100);
  assert.equal((await s.state()).lightPower.sleeping,true);
  await s.command({op:'codexWake'});
- const awake=await until(s.state,v=>v.colors[1]==='#304ffe','legacy wake did not restore');
+ const awake=await until(s.state,v=>!v.lightPower.sleeping&&v.colors[1]==='#304ffe','explicit wake did not restore the background');
  assert.equal(awake.colors[1],'#304ffe');assert.equal(awake.codex.lighting.sleeping,false);
 });
 test('animation and game clocks pause during whole-keyboard sleep',async t=>{

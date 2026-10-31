@@ -6,6 +6,7 @@ import { GAME_TYPES, validateGameType } from "../shared/games.mjs";
 import { validateTrigger } from "../shared/trigger.mjs";
 import { validateStatusColors } from "../shared/codex-lighting.mjs";
 import { DEFAULT_LIGHT_TIME_MS, validLightTime } from "../shared/lighting-power.mjs";
+import { validateOutputColorProfile } from "../shared/output-color-profile.mjs";
 export function validateColors(colors) {
   if (
     !Array.isArray(colors) ||
@@ -39,6 +40,21 @@ export function validateAnimation(a = {}, { legacy = false } = {}) {
   if (a.loop !== undefined) {
     if (typeof a.loop !== "boolean") throw new Error("循环设置无效");
     out.loop = a.loop;
+  }
+  if (a.hueShift !== undefined) {
+    if (!Number.isFinite(a.hueShift) || a.hueShift < -180 || a.hueShift > 180)
+      throw new Error("色相偏移应在 -180–180 度之间");
+    out.hueShift = a.hueShift;
+  }
+  if (a.colorOverride !== undefined) {
+    if (typeof a.colorOverride !== "string" || !/^#[a-f0-9]{6}$/i.test(a.colorOverride))
+      throw new Error("整体颜色必须是有效的 RGB 颜色");
+    out.colorOverride = a.colorOverride.toLowerCase();
+  }
+  if (a.brightness !== undefined) {
+    if (!Number.isFinite(a.brightness) || a.brightness < 0 || a.brightness > 100)
+      throw new Error("作品亮度应在 0–100 之间");
+    out.brightness = a.brightness;
   }
   if (a.frames !== undefined) {
     if (!Array.isArray(a.frames) || a.frames.length > 120)
@@ -102,6 +118,7 @@ export const defaultSettings = {
   codexTaskKeys: [...DEFAULT_TASK_KEYS],
   codexCommandKeys: [...DEFAULT_COMMAND_KEYS],
   language: "zh-CN",
+  airTopRightModule: "rotary",
   lightDurationMs: DEFAULT_LIGHT_TIME_MS,
   lightIdleMs: DEFAULT_LIGHT_TIME_MS,
   brightness: 70,
@@ -135,9 +152,13 @@ export const defaultSettings = {
 export function validateSettings(input, previous = defaultSettings) {
   if (!input || typeof input !== "object" || Array.isArray(input))
     throw new Error("设置格式无效");
-  const s = { ...previous };
+  const s = { airTopRightModule: defaultSettings.airTopRightModule, ...previous };
   for (const [k, v] of Object.entries(input)) {
-    if (k === "audio") {
+    if (k === "outputColorProfile") {
+      const profile = validateOutputColorProfile(v);
+      if (profile) s[k] = profile;
+      else delete s[k];
+    } else if (k === "audio") {
       s.audio = validateAudio(v,previous.audio ?? DEFAULT_AUDIO);
     } else if (k === "agentSource") {
       if (!["codex", "claude"].includes(v)) throw new Error("任务来源应用无效");
@@ -194,6 +215,9 @@ export function validateSettings(input, previous = defaultSettings) {
     } else if (k === "language") {
       if (!["zh-CN", "en"].includes(v)) throw new Error("不支持的界面语言");
       s[k] = v;
+    } else if (k === "airTopRightModule") {
+      if (!["rotary", "keycap"].includes(v)) throw new Error("Air 右上角模块设置无效");
+      s[k] = v;
     } else if (k === "codexCommandIds") {
       if (!Array.isArray(v) || v.length !== 6 || v.some(id => typeof id !== "string" || !/^[a-zA-Z0-9.]{1,80}$/.test(id))) throw new Error("命令键配置无效");
       s[k] = [...v];
@@ -209,6 +233,8 @@ export function validateSettings(input, previous = defaultSettings) {
       s[k] = v;
     } else throw new Error("不支持的设置项：" + k);
   }
+  if (!["rotary", "keycap"].includes(s.airTopRightModule))
+    throw new Error("Air 右上角模块设置无效");
   validateCodexKeys(s);
   validateClaudeKeys(s);
   return s;
@@ -241,12 +267,17 @@ export class Store {
         const value = data.gameBestScores?.[type];
         return [type, Number.isInteger(value) && value >= 0 ? value : type === "snake" ? oldBest : 0];
       }));
+      // Retired UI preferences are ignored only on read. Do not rewrite the
+      // library during load or relax unknown-key validation for new requests.
+      const settings = { ...data.settings };
+      delete settings.appearanceStyle;
+      delete settings.glassStrength;
       this.data = {
         version: 1,
         scenes: data.scenes.map((s) => validateScene(s, s.updatedAt)),
         settings: validateSettings({
-          ...data.settings,
-          ...(!data.settings?.codexTaskSource && data.settings?.slotIds?.some(Boolean)
+          ...settings,
+          ...(!settings.codexTaskSource && settings.slotIds?.some(Boolean)
             ? {codexTaskSource:"custom"} : {}),
         }),
         bestScore: gameBestScores.snake,

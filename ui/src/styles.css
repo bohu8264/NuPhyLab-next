@@ -19,6 +19,14 @@
 * {
   box-sizing: border-box;
 }
+/* Keep page width steady when content starts or stops scrolling. */
+html {
+  scrollbar-gutter: stable;
+}
+@supports not (scrollbar-gutter: stable) {
+  /* Let the existing modal body overflow lock keep controlling the viewport. */
+  body { overflow-y: scroll; }
+}
 body {
   margin: 0;
   min-width: 360px;

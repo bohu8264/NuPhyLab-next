@@ -1,7 +1,27 @@
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { EventEmitter } from "node:events";
-import {randomUUID} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
+import path from 'node:path';
+import {applyOutputColorProfile, deriveOutputColorProfileStatus, validateOutputColorProfile} from '../shared/output-color-profile.mjs';
+import {scaleColor} from '../shared/render-animation.mjs';
+
+// Native's Kick journal directory is scoped to its serial (or USB location).
+// The legacy AIR backup directory identifies the application, not a keyboard,
+// so it must never silently qualify an AIR profile for a different device.
+export function outputColorBinding(state) {
+  if (state?.connected !== true || state.identified !== true || state.readOnly === true ||
+      state.modelId !== 'kick75' || ![0x1026, 0x1027].includes(state.productId)) return null;
+  const firmwareVersion = state.firmwareVersion ?? state.firmware;
+  const backupPath = state.backupPath;
+  if (typeof firmwareVersion !== 'string' || !/^\d{1,4}(?:\.\d{1,5}){3}$/.test(firmwareVersion) ||
+      typeof backupPath !== 'string' || !path.isAbsolute(backupPath) || path.normalize(backupPath) !== backupPath) return null;
+  const directory = path.dirname(backupPath), identity = path.basename(directory);
+  if (path.basename(path.dirname(directory)) !== 'devices' ||
+      !new RegExp(`^kick75-${state.productId.toString(16)}-(?:[a-f0-9]+|location-[1-9][0-9]*)$`).test(identity)) return null;
+  return {modelId: state.modelId, productId: state.productId, firmwareVersion,
+    deviceKey: 'native-device-v1:' + createHash('sha256').update(identity).digest('hex')};
+}
 // A retained record belonging to an earlier USB handle is history, not proof
 // that this handle has settings to restore. Native code alone classifies it.
 export function hasUnownedFunctionKeyHistory(state) {
@@ -46,6 +66,8 @@ export class Hardware extends EventEmitter {
     this.identityPresent = false;
     this.transportEpoch = 0;
     this.connecting = null;
+    this.outputColorProfile = null;
+    this.lastPaintAcknowledgement = null;
   }
   start() {
     if (this.child) return;
@@ -267,8 +289,33 @@ export class Hardware extends EventEmitter {
     const result = await this.request("arm");
     this.updateState({ ...result, armed: true, error: null, errorCode: null });
   }
-  async paint(colors) {
-    await this.request("paint", { colors });
+  async paint(colors, options) {
+    const wire=this.outputColors(colors, options),session=this.state.connectionSessionId,epoch=this.transportEpoch;
+    const result=await this.request("paint", {colors:wire});
+    const previous=this.lastPaintAcknowledgement,reused=result?.skipped === true;
+    const known=reused && previous?.session === session && previous.epoch === epoch && previous.signature === wire.join('');
+    // This is acknowledgement metadata, never another write-skipping cache.
+    // A native "unchanged" reply can reuse only a frame this process observed
+    // on the same connection; it must not invent a new RGB-commit timestamp.
+    const frameCommittedAt=reused ? (known ? previous.frameCommittedAt : null) : Date.now();
+    this.lastPaintAcknowledgement={session,epoch,signature:wire.join(''),frameCommittedAt};
+    return {...result,frameCommittedAt,reusedCommittedFrame:reused};
+  }
+  setOutputColorProfile(profile) {
+    this.outputColorProfile = validateOutputColorProfile(profile);
+  }
+  outputColorProfileStatus() {
+    return deriveOutputColorProfileStatus(this.outputColorProfile, outputColorBinding(this.state));
+  }
+  outputColors(colors, {brightness} = {}) {
+    const corrected = applyOutputColorProfile(colors, this.outputColorProfile, outputColorBinding(this.state));
+    // Omitted brightness retains the original Hardware API. The service passes
+    // its unscaled frame explicitly: global dimming is linear output intensity,
+    // after the profile's transfer/gains, rather than an sRGB colour edit.
+    if (brightness === undefined) return corrected;
+    if (!Number.isFinite(brightness) || brightness < 0 || brightness > 100)
+      throw new RangeError("输出亮度应在 0–100 之间");
+    return corrected.map(color => scaleColor(color, brightness / 100));
   }
   async restore() {
     if (this.state.readOnly === true && !this.state.recoveryPending && !this.state.needsRestore && !this.state.unsafeWritesNeeded)

@@ -15,7 +15,7 @@ test('official driver safely opens once and reconnects only once after the app r
  const main=path.join(directory,'main.swift'),binary=path.join(directory,'check');
  await writeFile(main,source+'\n'+assertions);
  const run=promisify(execFile);
- await run('swiftc',['-module-cache-path',path.join(directory,'module-cache'),main,fileURLToPath(new URL('../native/AppInstance.swift',import.meta.url)),fileURLToPath(new URL('../native/AudioCapture.swift',import.meta.url)),'-o',binary,'-framework','AppKit','-framework','WebKit','-framework','Carbon','-framework','AVFoundation','-framework','CoreAudio','-framework','Accelerate']);
+ await run('swiftc',['-module-cache-path',path.join(directory,'module-cache'),main,...['AppInstance.swift','AudioCapture.swift','KeyGestureGate.swift'].map(name=>fileURLToPath(new URL('../native/'+name,import.meta.url))),'-o',binary,'-framework','AppKit','-framework','WebKit','-framework','Carbon','-framework','AVFoundation','-framework','CoreAudio','-framework','Accelerate']);
  const result=JSON.parse((await run(binary)).stdout.trim());
  assert.equal(result.passed,true);assert.equal(result.checks,55);
  assert.equal(result.browserOpened,false);assert.equal(result.GUIOpened,false);

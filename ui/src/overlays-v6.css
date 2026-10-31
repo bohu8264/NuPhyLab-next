@@ -1,0 +1,67 @@
+/* v6-overlays / interaction-contract B01–B05. Last global layer. */
+.modal-shade.overlay-v6{inset:0;z-index:100;display:grid;place-items:center;padding:24px 16px;background:#00000088;backdrop-filter:none;overflow:hidden}
+.overlay-v6 .modal{display:flex;flex-direction:column;min-width:0;min-height:0;max-width:calc(100vw - 32px);max-height:min(624px,calc(100dvh - 48px));padding:0;border:0;border-radius:14px;background:#fff;box-shadow:none;color:#202020;overflow:hidden;font-size:13px;line-height:21px;outline:none}
+.overlay-v6 .modal-header{height:64px;min-height:64px;display:flex;align-items:center;gap:16px;padding:16px 16px 16px 24px}
+.overlay-v6 .modal-header h2{flex:1;margin:0;min-width:0;font-size:18px;line-height:25px;font-weight:500;letter-spacing:0;overflow-wrap:anywhere;outline:none}
+.overlay-v6 .modal-header .modal-close{width:32px;height:32px;min-width:32px;min-height:32px;padding:8px;color:#777;border-radius:8px;background:transparent}
+.overlay-v6 .modal-header .modal-close:hover{background:#f5f5f5}
+.overlay-v6 .modal-body{padding:0 24px 8px;overflow:auto;overscroll-behavior:contain;min-height:0;overflow-wrap:anywhere;scrollbar-width:thin;flex:0 1 auto}
+.overlay-v6 .modal-footer{min-height:64px;padding:14px 24px 16px;display:flex;justify-content:flex-end;align-items:center;gap:8px;flex-shrink:0}
+.overlay-v6 .modal-footer .modal-actions{margin:0;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.overlay-v6 .modal-body>.modal-actions{margin:12px 0 0}
+.overlay-v6 .modal-body p{margin:0 0 8px;line-height:21px}
+.overlay-v6 .modal-body h3{font-size:14px;line-height:21px;font-weight:500;margin:0 0 12px}
+.overlay-v6 .modal-body h4{font-size:13px;font-weight:500;margin:12px 0 8px}
+.overlay-v6 .modal-body .muted,.overlay-v6 .modal-description,.overlay-helper{font-size:11.5px;line-height:19px;color:#777}
+.overlay-v6 .form-field{gap:8px;font-size:11.5px;color:#777;margin:0 0 8px}
+.overlay-v6 input:not([type=checkbox]):not([type=range]):not([type=color]),.overlay-v6 select,.overlay-v6 textarea{min-height:34px;border:1px solid #e8e8e8;border-radius:8px;background:#fff;color:#202020;padding:6px 12px;font-size:13px;line-height:20px;box-shadow:none;width:100%;max-width:100%}
+.overlay-v6 input:not([type=checkbox]):focus,.overlay-v6 select:focus,.overlay-v6 textarea:focus{outline:1px solid #202020;outline-offset:-1px;border-color:#202020}
+.overlay-v6 input[aria-invalid=true]{border-color:#b56860;outline-color:#b56860}
+.overlay-v6 .checkbox-field{margin:10px 0 12px;font-size:12px;color:#202020;gap:10px}
+.overlay-v6 input[type=checkbox]{width:16px;height:16px;accent-color:#202020;flex-shrink:0}
+.overlay-v6 .button{min-height:34px;min-width:72px;padding:7px 14px;border:0;border-radius:8px;font-size:12px;font-weight:500;line-height:20px;box-shadow:none}
+.overlay-v6 .button.icon-button{min-width:32px}
+.overlay-v6 .button.ghost{background:transparent;color:#202020}
+.overlay-v6 .button.primary{background:#202020;color:white}
+.overlay-v6 .button.danger{background:#b56860;color:white}
+.overlay-v6 .button:disabled{background:#e6e6e6;color:#999;opacity:1}
+.overlay-v6 .modal-close:disabled,.overlay-v6 .button.ghost:disabled{background:transparent;color:#b5b5b5}
+.overlay-v6 :focus-visible,.lab-library-dropdown :focus-visible{outline:1px solid #202020;outline-offset:2px}
+.overlay-v6 details{font-size:12px;color:#777;margin:12px 0 0}
+.overlay-v6 summary{cursor:pointer;min-height:30px;line-height:20px;list-style-position:inside}
+.overlay-v6 details[open]>:not(summary){margin-top:10px}
+.overlay-v6 pre{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;font-size:11.5px;line-height:19px;background:#f7f7f7;border-radius:8px;padding:12px;max-width:100%;overflow:visible}
+.overlay-error,.overlay-notice{display:flex;gap:8px;align-items:flex-start;padding:10px 12px;background:#f7f7f7;border-radius:8px;color:#777;font-size:11.5px;line-height:19px;margin:8px 0 12px;overflow-wrap:anywhere}
+.overlay-error{background:#faf0ee;color:#b56860}
+.overlay-error svg,.overlay-notice svg{width:14px;height:14px;margin-top:2px;flex-shrink:0}
+.overlay-field-error{font-size:11.5px;line-height:19px;color:#b56860;margin:6px 0 8px}
+/* Single-slot feedback: success expires, errors stay. */
+.toast.overlay-toast{left:auto;right:32px;bottom:32px;transform:none;z-index:200;width:420px;max-width:calc(100vw - 32px);padding:13px 14px;border:1px solid #e8e8e8;border-radius:10px;box-shadow:0 6px 24px #0000000d;background:#fff;color:#202020;align-items:flex-start;font-size:12px;line-height:20px;gap:10px}
+.toast.overlay-toast>svg{color:#699d83;margin-top:2px;flex:0 0 auto;width:16px;height:16px}
+.toast.overlay-toast.error{background:#fff;border-color:#e8e8e8;color:#202020}
+.toast.overlay-toast.error>svg{color:#b56860}
+.toast.overlay-toast>span{flex:1;min-width:0;overflow-wrap:anywhere;max-height:240px;overflow:auto}
+.toast.overlay-toast>button{color:#777;margin:0;padding:2px;flex:0 0 auto}
+.lab-v5 .lab-library-dropdown{min-width:171px;max-width:240px;padding:4px;border:1px solid #e8e8e8;border-radius:8px;box-shadow:0 6px 20px #0000000d;z-index:30}
+.lab-v5 .lab-library-dropdown button{min-height:36px;padding:8px 12px;font-size:12px;border-radius:5px}
+.lab-v5 .lab-library-dropdown button:hover{background:#f5f5f5}
+.lab-v5 .lab-library-dropdown[data-flip=true]{top:auto;bottom:calc(100% + 5px)}
+.lab-v5 .lab-preset-description[open]>p{padding:12px;background:#f7f7f7;border-radius:8px;font-size:11.5px;line-height:19px}
+.lab-v5 .empty-state{border:0;background:transparent;padding:64px 24px;color:#777;font-size:12px;line-height:20px}
+.lab-v5 .empty-state h3{color:#202020;font-size:14px;font-weight:500;margin:12px 0 8px}
+@media(max-width:480px){.overlay-v6 .modal-footer{flex-direction:column;align-items:stretch;gap:8px}.overlay-v6 .modal-footer>.modal-actions{flex-direction:column;align-items:stretch;width:100%}.overlay-v6 .modal-footer .button{width:100%}.toast.overlay-toast{right:16px;bottom:16px}.overlay-v6 .modal-header h2{font-size:18px}.overlay-v6 .modal-body{padding-bottom:12px}}
+
+.lab-v5 .service-error-v6{display:flex;align-items:center;gap:10px}.service-error-v6>span{flex:1;min-width:0;overflow-wrap:anywhere}.service-error-v6>svg{flex:none}.service-error-v6 .button{flex:none}
+
+.lab-v5 .lab-library-dropdown button:disabled{opacity:.4;cursor:default}
+
+.overlay-v6 [tabindex="-1"]:focus-visible{outline:none}
+
+/* Final UI handoff: feedback above the task area, x400/y12 at 1080. */
+.toast.overlay-toast{left:calc(50% + 70px);right:auto;top:12px;bottom:auto;transform:translateX(-50%);height:56px;min-height:56px;padding:7px 14px;align-items:center}
+.toast.overlay-toast>svg{margin-top:0}
+.toast.overlay-toast>span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;max-height:40px;overflow:hidden}
+@media(max-width:900px){.toast.overlay-toast{left:calc(50% + 75px);width:min(420px,calc(100vw - 182px))}body:has(.overlay-toast) .lab-v5 .lab-page-header{margin-bottom:94px}}
+@media(max-width:700px){.toast.overlay-toast{left:calc(50% + 32px);width:min(420px,calc(100vw - 96px))}}
+
+@media(max-width:760px){.agent-tabs{min-width:0;max-width:100%;overflow-x:auto;white-space:nowrap}.agent-tabs>button{flex-shrink:0}.agent-tabbar{min-width:0;max-width:100%}}

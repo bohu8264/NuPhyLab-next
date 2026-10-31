@@ -42,6 +42,11 @@ final class AudioCapture {
     private var session = ""
     private var desiredSignature = ""
     private var engine: AVAudioEngine?
+    // AVAudioIOUnit property listeners run asynchronously. Releasing the
+    // engine at every Stop can deallocate their target while an OS callback
+    // is queued. Keep one engine alive for this capture controller's lifetime;
+    // Stop still stops IO and removes its tap immediately.
+    private var microphoneEngine: AVAudioEngine?
     private var inputTapInstalled = false
     private var analyzer: AudioFeatureAnalyzer?
     private var tap: AudioObjectID = 0
@@ -151,7 +156,7 @@ final class AudioCapture {
     }
     private func startMicrophone(_ device:AudioObjectID,token:Int) {
         guard device != 0 else{fail("inputUnavailable");return}
-        let engine=AVAudioEngine();self.engine=engine
+        let engine=microphoneEngineForSession()
         let input=engine.inputNode
         do {
             guard let unit=input.audioUnit else{fail("inputUnavailable");return}
@@ -169,6 +174,11 @@ final class AudioCapture {
             inputTapInstalled=true
             engine.prepare();try engine.start();reportStatus("listening")
         } catch {fail("inputUnavailable")}
+    }
+    func microphoneEngineForSession() -> AVAudioEngine {
+        let value=microphoneEngine ?? AVAudioEngine()
+        microphoneEngine=value;engine=value
+        return value
     }
     @available(macOS 14.2, *)
     private func startSystem(token:Int) {

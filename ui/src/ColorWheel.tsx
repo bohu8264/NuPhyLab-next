@@ -1,3 +1,5 @@
+import { rangeStyle } from "./rangeStyle";
+import './creation-experience-v7.css';
 import { t as tr } from "./i18n";
 import { useEffect, useId, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactNode, RefObject } from "react";
@@ -135,19 +137,20 @@ export function ColorWheel({ color, onChange, memory, entry, onChangeStart, onCh
       <div className="color-controls">
         {tr(entry)}
         <div className="color-value-heading">
-          <label htmlFor={valueId}>{tr("明暗")}</label>
+          <label htmlFor={valueId}>{tr("颜色明度")}</label>
           <span>{tr(Math.round(hsv.v * 100))}%</span>
         </div>
         <input
           id={valueId}
           className="color-value-range"
-          aria-label={tr("颜色明暗")}
+          aria-label={tr("颜色明度")}
+          aria-describedby={`${valueId}-help`}
           type="range"
           min="0"
           max="100"
           step="any"
           value={hsv.v * 100}
-          style={{ background: `linear-gradient(to right, #000, ${hsvToHex({ ...hsv, v: 1 })})` }}
+          style={rangeStyle(hsv.v*100,0,100,color)}
           onPointerDown={()=>onChangeStart?.()}
           onPointerUp={()=>onChangeEnd?.()}
           onPointerCancel={()=>onChangeEnd?.()}
@@ -164,6 +167,7 @@ export function ColorWheel({ color, onChange, memory, entry, onChangeStart, onCh
             update({ ...current.current, v: Math.max(0, Math.min(100, value)) / 100 });
           }}
         />
+        <p id={`${valueId}-help`} className="v7-color-value-help">{tr("改变 HEX 颜色值")}</p>
       </div>
     </div>
   );

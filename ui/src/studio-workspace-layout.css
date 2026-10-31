@@ -1,0 +1,22 @@
+/* Local adaptive workspace; existing colors, controls and output behavior remain. */
+.lab-v5 .studio-v5[data-workspace-layout] .v5-canvas,
+.lab-v5 .studio-v5[data-workspace-layout] .v5-workspace-core,
+.lab-v5 .studio-v5[data-workspace-layout] .v5-workspace-aux { min-width:0; min-height:0; }
+.lab-v5 .studio-v5[data-workspace-layout] .v5-workspace-core,
+.lab-v5 .studio-v5[data-workspace-layout] .v5-workspace-aux { display:flow-root; }
+.lab-v5 .studio-v5[data-workspace-layout] .v5-workspace-core { scroll-margin-top:calc(var(--workspace-header-height,54px) + 12px); }
+.lab-v5 .studio-v5[data-workspace-layout] .v5-canvas-tools { height:auto; min-height:32px; flex-wrap:wrap; }
+.lab-v5 .studio-v5[data-workspace-layout] .v5-quick-patterns + .v8-animation-palette { margin-block-start:24px; }
+.lab-v5 .studio-v5[data-workspace-layout="split"] .v5-studio-grid { grid-template-columns:minmax(0,1fr) 224px; gap:24px; }
+.lab-v5 .studio-v5[data-workspace-layout="split"] .v5-studio-grid > .v5-properties { min-height:0; max-height:var(--workspace-available-height); overflow-y:auto; overscroll-behavior-y:contain; scrollbar-gutter:stable; scroll-padding:20px; }
+.lab-v5 .studio-v5[data-workspace-layout="split"] .v5-workspace-core > .v5-keyboard { width:var(--workspace-keyboard-width); max-width:100%; }
+.lab-v5 .studio-v5[data-workspace-layout="flow"] .v5-studio-grid { grid-template-columns:minmax(0,1fr); }
+.lab-v5 .studio-v5[data-workspace-layout="flow"] .v5-studio-grid > .v5-properties { min-height:0; max-height:none; overflow:visible; }
+.lab-v5 .studio-v5[data-workspace-layout="flow"] .v5-paint-properties > .v8-animation-palette { grid-column:1/-1; }
+.lab-v5 .studio-v5[data-workspace-layout="flow"] > .v5-work-row { position:sticky; top:0; z-index:4; height:auto; min-height:54px; flex-wrap:wrap; padding-bottom:12px; gap:12px 20px; background:#fff; }
+.lab-v5 .studio-v5[data-workspace-layout="flow"] .v5-work-actions { max-width:100%; flex-wrap:wrap; }
+.lab-v5 .studio-v5[data-workspace-layout="flow"] .v5-workspace-core > .v5-keyboard { width:100%; }
+.lab-v5 .studio-v5[data-workspace-layout] .v5-workspace-return { min-width:0; }
+/* Keep the functional sync-control grouping in the original opaque UI. */
+.lab-v5 .studio-v5 .v5-canvas-tools .switch-field { flex:0 0 auto; justify-content:flex-start; gap:8px; margin-left:auto; }
+@media(max-width:820px) { .lab-v5 .studio-v5 .v5-canvas-tools .switch-field { margin-left:0; } }

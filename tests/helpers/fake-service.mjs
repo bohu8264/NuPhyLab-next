@@ -37,6 +37,10 @@ export async function fakeService(t, initialControl = {}) {
   const dir = await mkdtemp(path.join(tmpdir(), "air-studio-main-recovery-"));
   const dataDir = path.join(dir, "data");
   await mkdir(dataDir);
+  if (initialControl.storedSettings !== undefined) {
+    await writeFile(path.join(dataDir, 'library.json'), JSON.stringify({version:1, scenes:[],
+      settings:initialControl.storedSettings, bestScore:0}));
+  }
   if(initialControl.codexKeybindings) {
     await mkdir(path.join(dir,'codex-home'));
     await writeFile(path.join(dir,'codex-home/keybindings.json'),JSON.stringify(initialControl.codexKeybindings));
@@ -65,7 +69,7 @@ const send=(entry)=>process.stdout.write(JSON.stringify(entry)+'\\n');
 const permissions=()=>({inputMonitoring:false,accessibility:false,canPostEvents:false,...configuration().permissions,promptsRequested:false});
 const keyRecovery=()=>recoveryConfirmed?{status:'none',pending:false,blocking:false}:configuration().keyRecovery??{status:functionKeyLease?'active':'none',pending:functionKeyLease,blocking:false};
 const selectProfile=()=>{const next=configuration().lightingProfile??0;if(next!==lightingProfile){lightingProfile=next;armed=false;pending=pendingProfiles.has(next);lighting=[...original];}};
-const state=()=>({keyRecovery:keyRecovery(),functionKeyRecoveryPending:keyRecovery().pending,connected,identified:connected,firmwareDetectionAvailable:connected,readOnly:configuration().readOnly===true,error:configuration().readOnly?'灯位数量校验失败：应为 85，实际为 218。已停止灯效写入。':null,errorCode:configuration().readOnly?'WRONG_LED_COUNT':null,armed,recoveryPending:pending,needsRestore:pending,deferredProfiles:[...pendingProfiles].filter(p=>p!==lightingProfile),lightingProfile,state:[...lighting],firmwareVersion:configuration().firmwareVersion??'1.0.16.6',modelId:configuration().modelId??'air75-v3',model:configuration().modelId==='kick75'?'Kick75 ANSI':'Air75 V3 ANSI',keyLedCount:configuration().modelId==='kick75'?80:84,capabilities:{perKey:configuration().readOnly?false:configuration().compatible??true,mainWholeZone:configuration().readOnly?false:configuration().mainWholeZone??false,functionKeyAdaptation:configuration().readOnly?false:configuration().functionKeyAdaptation??true},permissions:permissions()});
+const state=()=>({...configuration().outputIdentity,keyRecovery:keyRecovery(),functionKeyRecoveryPending:keyRecovery().pending,connected,identified:connected,firmwareDetectionAvailable:connected,readOnly:configuration().readOnly===true,error:configuration().readOnly?'灯位数量校验失败：应为 85，实际为 218。已停止灯效写入。':null,errorCode:configuration().readOnly?'WRONG_LED_COUNT':null,armed,recoveryPending:pending,needsRestore:pending,deferredProfiles:[...pendingProfiles].filter(p=>p!==lightingProfile),lightingProfile,state:[...lighting],firmwareVersion:configuration().firmwareVersion??'1.0.16.6',modelId:configuration().modelId??'air75-v3',model:configuration().modelId==='kick75'?'Kick75 ANSI':'Air75 V3 ANSI',keyLedCount:configuration().modelId==='kick75'?80:84,capabilities:{perKey:configuration().readOnly?false:configuration().compatible??true,mainWholeZone:configuration().readOnly?false:configuration().mainWholeZone??false,functionKeyAdaptation:configuration().readOnly?false:configuration().functionKeyAdaptation??true},permissions:permissions()});
 const answer=(request,result)=>send({id:request.id,ok:true,result});
 const reject=(request,message,code)=>send({id:request.id,ok:false,error:{message,code}});
 const restore=()=>{log({event:'simulatedRestore',lightingProfile});armed=false;pending=false;pendingProfiles.delete(lightingProfile);lighting=[...original];};
@@ -104,7 +108,22 @@ input.on('line',line=>{
    if(functionKeyLease){map.active[map.defaults[1].indexOf(61)]=61;map.functionKeyLease=true;}if(keyRecovery().blocking){map.functionKeyLeaseSupported=false;map.functionKeyLease=false;map.keyRecovery=keyRecovery();}answer(request,map);break;
   }
   case 'systemIdle':answer(request,{idleMs:configuration().systemIdleMs??100000,recordsKeys:false});break;
-  case 'shortcut':if(configuration().shortcutPermissionError&&request.action!=='task'){reject(request,'Enable Accessibility for the parent application to send shortcuts.','ACCESSIBILITY_REQUIRED');break;}answer(request,{sent:true});break;
+  case 'shortcut':{
+   const c=configuration();
+   if(c.shortcutPermissionError&&request.action!=='task'){reject(request,'Enable Accessibility for the parent application to send shortcuts.','ACCESSIBILITY_REQUIRED');break;}
+   if(request.action==='task'&&c.taskOpenDiagnostics){
+    const event={event:'taskOpenResult',diagnosticId:request.diagnosticId,threadId:request.threadId,uri:'codex://threads/'+request.threadId,at:Date.now(),
+     handler:{available:true,bundleId:'com.openai.codex',version:'26.1021.31345',build:'21828'},osAccepted:!c.taskOpenFail,...c.taskOpenEventOverrides};
+    const finish=()=>{
+     for(const extra of c.taskOpenExtraEvents??[])send({...extra,...(extra.diagnosticId==='$current'?{diagnosticId:request.diagnosticId}:{})});
+     if(c.taskOpenReport!==false)send(event);
+     if(c.taskOpenFail)reject(request,'macOS could not open the Codex task URL.',c.taskOpenFailureCode??'TASK_OPEN_FAILED');
+     else answer(request,{opened:true,threadId:request.threadId});
+    };
+    if(c.taskOpenDelayMs)setTimeout(finish,c.taskOpenDelayMs);else finish();
+   }else answer(request,{sent:true});
+   break;
+  }
   case 'readColors':answer(request,{customColorScale:configuration().customColorScale??255,colors:colors.map((color,index)=>configuration().mismatchIndex===index?'#010203':configuration().customColorScale===200?'#'+[1,3,5].map((start,c)=>{let v=Math.floor(parseInt(color.slice(start,start+2),16)*200/255);if(index===83&&c>0)v=Math.floor(v*150/255);return v.toString(16).padStart(2,'0')}).join(''):color)});break;
   case 'openPermissionSettings':
    if(!['inputMonitoring','accessibility'].includes(request.permission)){reject(request,'unsupported permission');break;}

@@ -11,6 +11,7 @@ import {DEFAULT_AUDIO} from '../shared/audio-reactive.mjs';
 test('native PCM analyser resolves low/mid/high bands at 44.1/48 kHz and keeps silence zero',{skip:process.platform!=='darwin'},async t=>{
  const dir=await mkdtemp(path.join(tmpdir(),'nuphylab-audio-unit-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  const source=`import Foundation
+import AVFoundation
 func check(_ condition:Bool,_ text:String){if !condition{fatalError(text)}}
 for rate:Double in [44100,48000] {
  for (frequency,band) in [(60.0,0),(240.0,2),(1000.0,4),(4000.0,6),(8000.0,7)] {
@@ -30,6 +31,18 @@ check((silent["bands"] as! [Double]).allSatisfy{$0==0},"silence spectrum")
 let invalid=AudioFeatureAnalyzer().consume(Array(repeating:Float.nan,count:2048),rate:48000,now:0)!
 check(invalid["rms"] as! Double==0,"invalid PCM sanitized")
 print("audio-analysis-passed")
+// No inputNode, permission prompt or microphone IO is used in this check.
+let capture=AudioCapture()
+weak var retained:AVAudioEngine?
+do {let engine=capture.microphoneEngineForSession();retained=engine;capture.stop()}
+check(retained != nil,"stopping must retain the audio property-listener owner")
+for _ in 0..<300 {
+ let engine=capture.microphoneEngineForSession()
+ check(engine === retained,"reuse the same engine across sessions")
+ capture.stop()
+ check(retained != nil,"a queued listener must keep its target alive")
+}
+print("audio-engine-lifetime-passed")
 // Real PCM through the same analyser as system/microphone capture: sustained
 // bass plus regular kicks, including 200 ms attacks at the lighting cadence.
 for rate:Double in [44100,48000] {
@@ -53,6 +66,7 @@ for rate:Double in [44100,48000] {
  await promisify(execFile)('swiftc',[main,fileURLToPath(new URL('../native/AudioCapture.swift',import.meta.url)),'-o',binary,'-framework','AppKit','-framework','AVFoundation','-framework','CoreAudio','-framework','Accelerate']);
  const output=(await promisify(execFile)(binary)).stdout;
  assert.match(output,/audio-analysis-passed/);
+ assert.match(output,/audio-engine-lifetime-passed/);
  const frames=output.split('\n').filter(line=>line.startsWith('{')).map(line=>JSON.parse(line));
  for(const rate of [44100,48000])for(const period of [500,200]){
   const detector=new AudioBeatDetector(),beats=[];

@@ -12,19 +12,24 @@ const modes={
   trigger: async s=>{await s.command({op:'triggerArm',colors:drawing,trigger:{count:3,intervalMs:200}});return s.command({op:'triggerFire'});},
   audio: async s=>{await s.command({op:'audioInventory',systemSupported:true,devices:[],microphonePermission:true});return s.command({op:'audioStart'});},
 };
-for(const [name,start] of Object.entries(modes)) test(`Codex takes exclusive lighting ownership from ${name} and rejects stale output`,async t=>{
+for(const [name,start] of Object.entries(modes)) test(`Codex preserves ordinary ${name} or safely takes special-mode ownership, then rejects stopped stale output`,async t=>{
   const s=await fakeService(t,{tasks});
   await s.command({op:'settings',settings:{codexEnabled:true,brightness:100,codexBrightness:100,codexSelectedPulse:false,quotaSideEnabled:true}});
   assert.equal((await start(s)).ok,true);
-  const oldAudio=(await s.state()).audio.session;
+  const previous=await s.state(),oldAudio=previous.audio.session;
   const enabled=await s.command({op:'settings',settings:{codexEnabled:true}});
   assert.equal(enabled.ok,true,JSON.stringify(enabled));
   let state=await s.state();
-  assert.equal(state.playback.mode,'agent');assert.equal(state.game.status,'idle');
-  assert.equal(state.audio.capture.enabled,false);assert.equal(state.trigger.monitor,'off');
+  const ordinary=['drawing','animation','audio'].includes(name);
+  assert.equal(state.playback.mode,ordinary?previous.playback.mode:'agent');assert.equal(state.game.status,'idle');
+  assert.equal(state.audio.capture.enabled,name==='audio');assert.equal(state.trigger.monitor,'off');
+  if(name==='audio')assert.equal(state.audio.session,oldAudio,'mode activation retains the existing capture session');
   assert.equal(state.colors[1],'#304ffe');assert.equal(state.colors[2],'#00ff4c');
-  assert(state.colors.slice(13).every(c=>c==='#000000'));
-  assert.equal(state.device.state[10],0,'side lighting is off');
+  if(name==='drawing')assert.deepEqual(state.colors.slice(13),drawing.slice(13));
+  if(!ordinary){assert(state.colors.slice(13).every(c=>c==='#000000'));assert.equal(state.device.state[10],0,'dedicated AI side lighting is off');}
+  // An internal content stop clears the background/capture but keeps the AI
+  // mode. Stale packets from that stopped source cannot take its lights back.
+  await s.command({op:'stop'});
   await s.configure({trigger:1});
   if(oldAudio) assert.equal((await s.command({op:'audioPacket',session:oldAudio,status:'listening',rms:1,bands:Array(8).fill(1)})).result.accepted,false);
   await s.command({op:'pause'});

@@ -15,6 +15,43 @@ async function temp(t) {
   t.after(() => rm(dir, { recursive: true, force: true }));
   return dir;
 }
+test("Air module preference defaults for legacy libraries and persists without changing artwork", async t => {
+  const dir = await temp(t), file = path.join(dir, "library.json");
+  const legacy = JSON.stringify({ version: 1, scenes: [], settings: { brightness: 42 } });
+  await writeFile(file, legacy);
+  const store = await new Store(dir).load();
+  assert.equal(store.warning, null);
+  assert.equal(store.data.settings.airTopRightModule, "rotary");
+  assert.equal(await readFile(file, "utf8"), legacy, "loading a legacy file does not rewrite it");
+  const scene = await store.saveScene({ name: "保留作品", colors: blank() });
+  for (const module of ["keycap", "rotary", "keycap"]) {
+    await store.settings({ airTopRightModule: module });
+    const reopened = await new Store(dir).load();
+    assert.equal(reopened.warning, null);
+    assert.equal(reopened.data.settings.airTopRightModule, module);
+    assert.equal(reopened.data.settings.brightness, 42);
+    assert.deepEqual(reopened.data.scenes, [scene]);
+  }
+});
+test("Air module validation rejects invalid patches and stored values atomically", async t => {
+  const store = await new Store(await temp(t)).load();
+  await store.settings({ airTopRightModule: "keycap" });
+  const before = await readFile(store.file, "utf8");
+  for (const value of [undefined, null, "", "knob", "Del", true, 0, [], {}]) {
+    assert.throws(() => validateSettings({ airTopRightModule: value }), /Air/);
+    await assert.rejects(store.settings({ airTopRightModule: value }), /Air/);
+    assert.equal(store.data.settings.airTopRightModule, "keycap");
+    assert.equal(await readFile(store.file, "utf8"), before);
+  }
+  assert.throws(() => validateSettings({ brightness: 30 }, { ...store.data.settings, airTopRightModule: "invalid" }), /Air/);
+  const corrupt = JSON.stringify({ version: 1, scenes: [], settings: { airTopRightModule: "invalid" } });
+  await writeFile(store.file, corrupt);
+  const reopened = await new Store(store.dir).load();
+  assert.ok(reopened.warning);
+  assert.equal(reopened.readOnly, true);
+  await assert.rejects(reopened.settings({ airTopRightModule: "rotary" }));
+  assert.equal(await readFile(store.file, "utf8"), corrupt);
+});
 test('legacy audio loads as single color and multicolor choice persists across reopen',async t=>{
   const dir=await temp(t);
   const original={version:1,scenes:[],settings:{audio:{source:'microphone',deviceId:'saved-mic',effect:'ripple',color:'#ac2345',sensitivity:2,noiseFloor:-40}}};
@@ -140,6 +177,52 @@ test("malformed colors and excessive frames are rejected before touching hardwar
   assert.throws(() => validateSettings({ brightness: NaN }));
   assert.throws(() => validateSettings({ __proto__: null, unknown: true }));
   assert.throws(() => validateSettings({ slotIds: [true] }));
+});
+
+test("optional animation hue shift round-trips without migrating legacy artwork or baking colors", async t => {
+  for (const value of [-180, -12.5, 0, 12.5, 180])
+    assert.equal(validateAnimation({ hueShift: value }).hueShift, value);
+  assert.equal(Object.hasOwn(validateAnimation({}), "hueShift"), false);
+  assert.equal(Object.hasOwn(validateAnimation({ hueShift: undefined }), "hueShift"), false);
+  const dir = await temp(t), store = await new Store(dir).load();
+  const legacy = await store.saveScene({ name: "旧作品", colors: blank(), animation: { effect: "pulse" } });
+  const legacyBytes = await readFile(store.file, "utf8");
+  const legacyReopened = await new Store(dir).load();
+  assert.equal(Object.hasOwn(legacyReopened.data.scenes[0].animation, "hueShift"), false);
+  assert.equal(await readFile(store.file, "utf8"), legacyBytes);
+  const colors = blank();colors[0] = "#c00000";colors[1] = "#004400";
+  const frameColors = blank();frameColors[4] = "#000088";
+  const saved = await store.saveScene({
+    name: "非破坏色相", colors,
+    animation: { effect: "frames", hueShift: 27.5, frames: [{ colors: frameColors, duration: 300 }] },
+  });
+  const reopened = await new Store(dir).load();
+  assert.equal(reopened.data.scenes[0].animation.hueShift, 27.5);
+  assert.deepEqual(reopened.data.scenes[0].colors, colors);
+  assert.deepEqual(reopened.data.scenes[0].animation.frames[0].colors, frameColors);
+  await reopened.importScenes(JSON.parse(JSON.stringify([{ ...saved, animation: { ...saved.animation, hueShift: -75.5 } }])));
+  const imported = (await new Store(dir).load()).data.scenes[0];
+  assert.equal(imported.animation.hueShift, -75.5);
+  assert.deepEqual(imported.colors, colors);
+  assert.deepEqual(imported.animation.frames, saved.animation.frames);
+  assert.notEqual(imported.id, saved.id);
+  assert.deepEqual(reopened.data.scenes.find(scene => scene.id === legacy.id), legacy);
+});
+
+test("invalid hue shift cannot partially save or import artwork", async t => {
+  const store = await new Store(await temp(t)).load();
+  await store.saveScene({ name: "保留", colors: blank() });
+  const originalBytes = await readFile(store.file, "utf8"), originalScenes = structuredClone(store.data.scenes);
+  for (const hueShift of [null, true, "0", NaN, Infinity, -Infinity, -180.001, 180.001, {}, []]) {
+    assert.throws(() => validateAnimation({ hueShift }), /色相/);
+    await assert.rejects(store.saveScene({ name: "不应保存", colors: blank(), animation: { hueShift } }), /色相/);
+    await assert.rejects(store.importScenes([
+      { name: "也不应部分导入", colors: blank(), animation: { hueShift: 30 } },
+      { name: "无效色相", colors: blank(), animation: { hueShift } },
+    ]), /色相/);
+    assert.equal(await readFile(store.file, "utf8"), originalBytes);
+    assert.deepEqual(store.data.scenes, originalScenes);
+  }
 });
 
 test("legacy Snake record is retained while arcade records persist independently", async (t) => {

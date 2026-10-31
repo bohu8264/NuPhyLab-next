@@ -48,7 +48,7 @@ print("permission-transition-checks=\\(checks)")
 `;
   const file=path.join(dir,'main.swift'),binary=path.join(dir,'check');await writeFile(file,source);
   const run=promisify(execFile);
-  await run('swiftc',[file,...['AppInstance.swift','AudioCapture.swift'].map(name=>fileURLToPath(new URL('../native/'+name,import.meta.url))),'-o',binary,
+  await run('swiftc',[file,...['AppInstance.swift','AudioCapture.swift','KeyGestureGate.swift'].map(name=>fileURLToPath(new URL('../native/'+name,import.meta.url))),'-o',binary,
     ...['AppKit','WebKit','Carbon','ApplicationServices','IOKit','AVFoundation','CoreAudio','Accelerate'].flatMap(name=>['-framework',name])]);
   assert.match((await run(binary)).stdout,/permission-transition-checks=56/);
 });

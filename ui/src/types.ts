@@ -20,6 +20,9 @@ export type Animation = {
   direction: Direction;
   speed: number;
   loop: boolean;
+  hueShift?: number;
+  colorOverride?: string;
+  brightness?: number;
   frames?: { colors: string[]; duration: number }[];
 };
 export type Scene = {
@@ -157,7 +160,9 @@ export type AppState = {
   };
   colors: string[];
   scenes: Scene[];
+  previewColors?: string[];
   settings: {
+    airTopRightModule?: "rotary" | "keycap";
     brightness: number;
     codexEnabled: boolean;
     quotaSideEnabled: boolean;
@@ -195,7 +200,7 @@ export type AppState = {
   native?: Record<string, unknown>;
   [key: string]: unknown;
 };
-export type Command = (body: Record<string, unknown>) => Promise<unknown>;
+export type Command = (body: Record<string, unknown>, options?: {silent?:boolean}) => Promise<unknown>;
 export type Notify = (message: string, kind?: "error" | "success") => void;
 export const DEFAULT_ANIMATION: Animation = {
   effect: "static",

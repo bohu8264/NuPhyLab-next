@@ -1,0 +1,23 @@
+/* Approved v7 01 reason page and 04 passive identity; existing controls stay v5/v6. */
+.lab-device-page.lab-device-connection-v7{max-width:640px;padding-top:40px}
+.lab-device-connection-v7 .lab-device-connection-intro h2{font-size:20px;font-weight:500;line-height:28px;margin:0}
+.lab-device-connection-v7 .lab-device-connection-intro p{font-size:13px;line-height:22px;margin:8px 0 0;overflow-wrap:anywhere}
+.lab-device-connection-v7 .lab-device-connection-scope{font-size:12px;line-height:20px;color:#333;margin:24px 0 0}
+.lab-device-connection-v7 .lab-device-local-capabilities{margin:14px 0 0;padding:0}
+.lab-device-connection-v7 .lab-device-local-capabilities>div{display:flex;justify-content:space-between;align-items:center;gap:24px;min-height:42px;border-bottom:1px solid #e8e8e8;font-size:13px;line-height:20px}
+.lab-device-connection-v7 .lab-device-local-capabilities dt{font-weight:400;min-width:0}
+.lab-device-connection-v7 .lab-device-local-capabilities dd{margin:0;flex:none;color:#333}
+.lab-device-connection-v7 .lab-device-local-capabilities dd.is-unavailable{color:#777}
+.lab-device-connection-v7 .lab-device-connection-actions{display:flex;align-items:center;flex-wrap:wrap;gap:12px 80px;margin-top:40px}
+.lab-device-connection-v7 .lab-device-connection-actions .button{min-width:76px}
+.lab-device-connection-v7 .lab-device-connection-actions .button.primary{min-width:100px}
+.lab-device-connection-v7 .lab-device-connection-hint{font-size:11.5px;line-height:20px;margin:16px 0 0;overflow-wrap:anywhere}
+.lab-device-page.lab-device-identified-v7{padding-top:40px}
+.lab-device-identified-v7 .lab-device-identity-v7 h2{font-size:20px;font-weight:500;line-height:28px;margin:0}
+.lab-device-identified-v7 .lab-device-identity-v7>.lab-device-status{margin-top:8px}
+.lab-device-identified-v7 .lab-device-identity-v7>p{margin-top:8px}
+.lab-device-identified-v7 .lab-device-identity-v7>.button{margin-top:10px}
+.lab-device-identified-v7 .lab-device-grid{margin-top:32px}
+.lab-device-identified-v7 .lab-device-canvas>.keyboard-case{margin-top:0}
+.lab-device-identified-v7 .lab-device-reconnect-v7{margin-top:16px}
+@media(max-width:760px){.lab-device-page.lab-device-connection-v7,.lab-device-page.lab-device-identified-v7{padding-top:24px}.lab-device-connection-v7 .lab-device-connection-actions{gap:12px 24px}.lab-device-connection-v7 .lab-device-local-capabilities>div{gap:16px}}

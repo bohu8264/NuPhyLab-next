@@ -1,54 +1,66 @@
-import {nativeLightingOnly,sidebarDeviceIdentity} from '../../shared/device-status.mjs';
-import {keyRecoveryProblem,friendlyConnectionError} from './KeyRecoveryPanel';
+import {nativeLightingOnly} from '../../shared/device-status.mjs';
+import {deriveConnectionDisplay} from '../../shared/connection-display.mjs';
+import {friendlyConnectionError,keyRecoveryProblem} from './KeyRecoveryPanel';
+import {connectionCopy,connectionHeader,connectionSidebar,presentConnectionDisplay} from './connection-copy-v7';
+import './connection-display-v7.css';
+import './library-play-edit-v8.css';
+import { parseDraftRecord } from './draftPersistence';
 import { t as tr } from "./i18n";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {useCodexKeys} from './codexKeys';
 import {
-  Check,
   CircleAlert,
   SquareTerminal,
   Folder,
   Keyboard,
-  PenLine,
-  LayoutGrid,
-  Play,
-  Heart,
   Gamepad2,
-  AudioLines,
-  Settings,
-  X,
+  Lightbulb,
+  SlidersHorizontal,
 } from "lucide-react";
 import { useAirApi } from "./api";
+import { FeedbackToast } from "./FeedbackToast";
 import {AudioPanel} from "./AudioPanel";
+import {AudioPendingNotice} from './AudioPendingNotice';
 import { NativeLighting } from "./NativeLighting";
 import { Studio } from "./Studio";
 import { Library } from "./Library";
 import { Codex } from "./Codex";
 import { ClaudeCode } from "./ClaudeCode";
-import { agentSource, AGENT_LABELS } from "./AgentSourceSwitch";
+import { agentSource } from "./AgentSourceSwitch";
 import { Device } from "./Device";
+import { Settings } from "./Settings";
+import { KeyboardModuleContext } from "./Keyboard";
 import { StartupGuide } from "./StartupGuide";
 import { useTriggerKeys } from "./TriggerPanel";
-import { validateTrigger } from "../../shared/trigger.mjs";
 import { Button, Modal, run } from "./primitives";
 import { presets } from "./presets";
-import { blankColors, DEFAULT_ANIMATION, STUDIO_MODES } from "./types";
+import { blankColors, DEFAULT_ANIMATION } from "./types";
 import type { Scene, StudioMode } from "./types";
-import {useLanguage, setLanguage, type Language} from "./i18n";
-type Page = "studio" | "library" | "codex" | "device" | "audio" | "offline";
-// One navigation entry, named after whichever integration is currently selected.
-const MODE_ICONS = { paint: PenLine, animation: Play, trigger: Heart, game: Gamepad2 };
+import {useLanguage, setLanguage} from "./i18n";
+type Page = "studio" | "library" | "codex" | "device" | "settings" | "game" | "audio" | "offline";
 const cloneScene = (scene: Scene): Scene => JSON.parse(JSON.stringify(scene));
 const modeForScene = (scene: Scene): StudioMode =>
   scene.trigger ? "trigger" : scene.animation.effect === "static" ? "paint" : "animation";
-const restoreTrigger = (value: unknown) => {
-  if (value === undefined) return undefined;
-  try { return validateTrigger(value); }
-  catch { return undefined; }
-};
+const sceneSignature = (scene: Scene) => JSON.stringify([
+  scene.name, scene.colors.map(color => color.toLowerCase()), scene.animation.effect,
+  scene.animation.direction, scene.animation.speed, scene.animation.loop, scene.animation.hueShift ?? 0, scene.animation.colorOverride?.toLowerCase() ?? null, scene.animation.brightness ?? 100,
+  (scene.animation.frames ?? []).map(frame => [frame.colors.map(color => color.toLowerCase()), Math.round(frame.duration)]),
+  scene.trigger?.code, scene.trigger?.count, scene.trigger?.intervalMs,
+]);
+type LibraryPlayRequest = { id: string; scene: Scene; action: 'play' | 'open' | 'new'; kind: 'animation' | 'trigger'; context: string; generation: number; restoreKey?: string; saved?: boolean };
 export default function App() {
-  const language = useLanguage();
+  const language=useLanguage();
   const [draftSession, setDraftSession] = useState(0);
+  const [settingsTab, setSettingsTab] = useState<"general"|"lighting"|"permissions"|"about">("general");
+  useEffect(()=>{
+    const navigate=(event:Event)=>{
+      const target=(event as CustomEvent<string>).detail;
+      if(target === "lighting" || target === "permissions" || target === "about" || target === "general") {setSettingsTab(target);setPage("settings");}
+      else if(target === "device" || target === "library")setPage(target);
+    };
+    window.addEventListener("nuphylab:navigate",navigate);
+    return()=>window.removeEventListener("nuphylab:navigate",navigate);
+  },[]);
   const [studioMode, setStudioMode] = useState<StudioMode>("paint");
   const [focusCodexColors,setFocusCodexColors] = useState(false);
   const [page, setPage] = useState<Page>("studio"),
@@ -67,16 +79,46 @@ export default function App() {
     [saveOpen, setSaveOpen] = useState(false),
     [saveName, setSaveName] = useState(""),
     [saveBusy, setSaveBusy] = useState(false),
+    [saveError,setSaveError] = useState(""),
+    [checkingService,setCheckingService]=useState(false),
     [saveCopy, setSaveCopy] = useState(false);
+  const [libraryPlayBusy,setLibraryPlayBusy] = useState(false);
+  const [draftTransitionBusy,setDraftTransitionBusy] = useState(false);
+  const transitionLock=useRef<string|null>(null);
+  const blockedDraftKeys=useRef(new Set<string>());
+  const untouchedNewDraft=useRef<{model:string;signature:string}|null>(null);
+  const setStudioDraft=useCallback<typeof setDraft>((next)=>{
+    // Any Studio edit permanently consumes this provenance, including undo
+    // or a later clear that happens to return to the same scene signature.
+    untouchedNewDraft.current=null;setDraft(next);
+  },[]);
+  const [draftStorageIssue,setDraftStorageIssue]=useState<{model:string;kind:'read'|'write'}|null>(null);
+  const [pendingLibraryPlay,setPendingLibraryPlay] = useState<LibraryPlayRequest|null>(null);
+  const [guardSaveName,setGuardSaveName] = useState('');
+  const [playRequestId,setPlayRequestId] = useState<string|null>(null);
+  const [playRequestKind,setPlayRequestKind] = useState<'animation'|'trigger'>('animation');
+  const libraryPlayRequest = useRef<LibraryPlayRequest|null>(null),libraryPlayGeneration=useRef(0);
   const notify = useCallback(
     (message: string, kind: "error" | "success" = "error") =>
       setToast({ id: Date.now(), message, kind }),
     [],
   );
-  const { state, layout, serviceError, command, exiting } = useAirApi(notify);
+  const { state, layout, serviceError, command, readState, refresh, exiting } = useAirApi(notify);
   const modelId = layout.length === 80 ? "kick75" : "air75-v3";
   const nativeOnly = nativeLightingOnly(state);
-  const sidebarIdentity=sidebarDeviceIdentity(state);
+  const connectionDisplay=presentConnectionDisplay(deriveConnectionDisplay({state,serviceError,canvasModelId:layout.length ? modelId : null,keyRecoveryProblem:keyRecoveryProblem(state)}));
+  const libraryPlayContext=`${modelId}:${state?.device.connectionSessionId ?? ''}:${Boolean(state?.device.connected)}`;
+  const canLibraryPlay=draftReady && draftModel===modelId && !serviceError && !exiting && Boolean(state?.device.connected) && state?.device.readOnly !== true
+    && state?.device.capabilities?.perKey !== false && state?.firmware?.compatible !== false;
+  const latestLibraryContext=useRef({context:libraryPlayContext,canPlay:canLibraryPlay});
+  latestLibraryContext.current={context:libraryPlayContext,canPlay:canLibraryPlay};
+  const latestDraftContext=useRef(`${modelId}:${draftSession}`);
+  latestDraftContext.current=`${modelId}:${draftSession}`;
+  useEffect(()=>{
+    libraryPlayGeneration.current++;
+    libraryPlayRequest.current=null;
+    setPendingLibraryPlay(null);setPlayRequestId(null);setLibraryPlayBusy(false);
+  },[libraryPlayContext,Boolean(serviceError),exiting]);
   const draftKey = (model: string) => model === "kick75" ? "nuphylab-draft-kick75-v1" : "air-studio-draft-v1";
   useEffect(()=>{if(page!=="codex")setFocusCodexColors(false);},[page]);
   useCodexKeys(state,command,notify);
@@ -89,41 +131,23 @@ export default function App() {
     return ()=>{window.removeEventListener("pointerdown",activity);window.removeEventListener("keydown",activity);};
   },[state?.settings.lightIdleMs,command]);
   useTriggerKeys(state, command);
-  useEffect(() => {
-    if (toast) {
-      const timer = setTimeout(() => setToast(null), 6000);
-      return () => clearTimeout(timer);
-    }
-  }, [toast]);
+  useEffect(()=>{
+    const show=(event:Event)=>{const value=(event as CustomEvent<{message:string;kind?:'success'|'error'}>).detail;if(value?.message)notify(value.message,value.kind??'success');};
+    window.addEventListener('nuphylab:notify',show);return()=>window.removeEventListener('nuphylab:notify',show);
+  },[notify]);
   useEffect(() => {
     if (!layout.length || draftModel === modelId) return;
-    let restored = presets(layout)[0];
+    untouchedNewDraft.current=null;
+    let restored = { ...presets(layout)[0], animation: { ...DEFAULT_ANIMATION } };
+    setDraftStorageIssue(null);
     try {
       const saved = localStorage.getItem(draftKey(modelId));
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (
-          Array.isArray(parsed.colors) &&
-          parsed.colors.length === 84 &&
-          parsed.colors.every(
-            (c: unknown) => typeof c === "string" && /^#[0-9a-f]{6}$/i.test(c),
-          ) &&
-          parsed.animation &&
-          parsed.name
-        )
-          restored = {
-            ...parsed,
-            trigger: restoreTrigger(parsed.trigger),
-            animation: {
-              ...parsed.animation,
-              effect:
-                parsed.animation.effect === "rainbow"
-                  ? "static"
-                  : parsed.animation.effect,
-            },
-          };
-      }
-    } catch {}
+      if (saved !== null) restored = parseDraftRecord(saved);
+      blockedDraftKeys.current.delete(draftKey(modelId));
+    } catch {
+      blockedDraftKeys.current.add(draftKey(modelId));
+      setDraftStorageIssue({model:modelId,kind:'read'});
+    }
     setDraft(restored);
     setStudioMode(modeForScene(restored));
     setDraftReady(true);
@@ -131,152 +155,190 @@ export default function App() {
     setSaveOpen(false);
     setDraftSession((value) => value + 1);
   }, [layout, modelId, draftModel]);
+  const writeLocalDraft = (model:string,scene:Scene) => {
+    if(blockedDraftKeys.current.has(draftKey(model)))return;
+    try {
+      localStorage.setItem(draftKey(model), JSON.stringify(scene));
+      setDraftStorageIssue(current=>current?.model===model?null:current);
+    } catch { setDraftStorageIssue({model,kind:'write'}); }
+  };
   useEffect(() => {
     if (draftReady && draftModel === modelId)
-      try {
-        localStorage.setItem(draftKey(modelId), JSON.stringify(draft));
-      } catch {}
+      writeLocalDraft(modelId,draft);
   }, [draft, draftReady, draftModel, modelId]);
+  const saveAttemptId=useRef<string|null>(null),saveLock=useRef(false);
+  useEffect(()=>{saveAttemptId.current=null;},[draftSession,modelId]);
   const openSave = () => {
+    setSaveError("");
     setSaveName(draft.name);
     setSaveCopy(false);
     setSaveOpen(true);
   };
-  const save = async () => {
-    if (!saveName.trim()) return;
-    setSaveBusy(true);
+  const persistDraft = async (name: string, copy = false):Promise<Scene|null> => {
+    if(saveLock.current)return null;
+    if(!name.trim()){setSaveError('请输入作品名称。');return null;}
+    saveLock.current=true;setSaveError('');setSaveBusy(true);
+    const context=latestDraftContext.current,newIdentity=copy||!draft.id;
+    const scene:Scene={...cloneScene(draft),name:name.trim(),id:newIdentity?(saveAttemptId.current??=crypto.randomUUID()):draft.id,...(copy?{createdAt:undefined,updatedAt:undefined}:{})};
     try {
-      const scene = {
-        ...draft,
-        name: saveName.trim(),
-        ...(saveCopy ? { id: undefined } : {}),
-      };
-      const raw = await command({ op: "saveScene", scene });
-      const value = raw as
-        | { savedScene?: Scene; scene?: Scene; id?: string }
-        | undefined;
-      const saved =
-        value?.savedScene ||
-        value?.scene ||
-        (value?.id ? (value as Scene) : undefined);
-      setDraft(saved?.colors ? saved : { ...scene, id: saved?.id || scene.id });
-      setSaveOpen(false);
-      notify("作品已保存到这台 Mac", "success");
-    } finally {
-      setSaveBusy(false);
+      const raw=await command({op:'saveScene',scene},{silent:true}) as {savedScene?:Scene;scene?:Scene;id?:string}|undefined;
+      saveAttemptId.current=null;
+      return raw?.savedScene??raw?.scene??{...scene,id:raw?.id??scene.id};
+    }catch(error){
+      const current=await readState().catch(()=>null);
+      const saved=current?.scenes.find(item=>item.id===scene.id);
+      if(saved&&sceneSignature(saved)===sceneSignature(scene)){saveAttemptId.current=null;return saved;}
+      if(latestDraftContext.current===context)setSaveError(tr(current?'未能完成保存。已保留名称和画布，请重试。':'暂时无法确认保存结果。名称和画布已保留，重试不会重复创建作品。')+(error instanceof Error?` ${tr(error.message)}`:''));
+      return null;
+    }finally{saveLock.current=false;setSaveBusy(false);}
+  };
+  const acceptSavedDraft = (source:Scene,saved:Scene) => {
+    // A connection failure may close the guard while a save is still pending.
+    // Keep later edits, but attach the acknowledged ID so a retry updates that work.
+    setDraft(current=>sceneSignature(current)===sceneSignature(source)?saved:{
+      ...current,id:saved.id,createdAt:saved.createdAt??current.createdAt,updatedAt:saved.updatedAt??current.updatedAt,
+    });
+  };
+  const save = async () => {
+    const context=latestDraftContext.current,source=cloneScene(draft);
+    const saved=await persistDraft(saveName,saveCopy);
+    if(!saved||latestDraftContext.current!==context)return;
+    acceptSavedDraft(source,saved);setSaveOpen(false);notify('作品已保存到这台 Mac','success');
+  };
+  const finishLibraryPlay = (id: string|null) => {
+    if(!id||libraryPlayRequest.current?.id!==id)return;
+    libraryPlayRequest.current=null;setPendingLibraryPlay(null);setLibraryPlayBusy(false);
+    setPlayRequestId(current=>current===id?null:current);
+  };
+  const adoptLibraryPlay = async (request:LibraryPlayRequest) => {
+    if(libraryPlayRequest.current?.id!==request.id || request.generation!==libraryPlayGeneration.current
+      || request.context!==latestLibraryContext.current.context || transitionLock.current)return;
+    if(request.action==='play'&&!latestLibraryContext.current.canPlay){
+      const message='当前连接暂不可播放到键盘，请检查连接后重试。';
+      if(pendingLibraryPlay)setSaveError(message);
+      else{notify(message);finishLibraryPlay(request.id);}
+      return;
     }
+    if(request.action!=='play'){
+      transitionLock.current=request.id;setDraftTransitionBusy(true);
+      try {
+        if(!request.restoreKey&&state&&(state.playback.mode!=='idle'||state.game.status!=='idle'||state.device.armed))await command({op:'stop'},{silent:true});
+        if(libraryPlayRequest.current?.id!==request.id || request.generation!==libraryPlayGeneration.current
+          || request.context!==latestLibraryContext.current.context)return;
+        if(request.restoreKey){blockedDraftKeys.current.delete(request.restoreKey);setDraftStorageIssue(null);}
+        untouchedNewDraft.current=request.action==='new'&&!request.restoreKey
+          ?{model:modelId,signature:sceneSignature(request.scene)}:null;
+        setDraft(cloneScene(request.scene));setStudioMode(modeForScene(request.scene));
+        setDraftSession(value=>value+1);setPage(nativeOnly?'offline':'studio');setSaveError('');finishLibraryPlay(request.id);
+      } catch(error){
+        const message=tr(request.saved?(request.action==='new'?'当前草稿已保存，但新建尚未完成。当前画布未替换，请重试。':'当前草稿已保存，但打开尚未完成。当前画布未替换，请重试。'):'未能切换作品，当前草稿已保留，请重试。')+(error instanceof Error?` ${tr(error.message)}`:'');
+        if(libraryPlayRequest.current?.id===request.id){
+          if(pendingLibraryPlay)setSaveError(message);else{notify(message);finishLibraryPlay(request.id);}
+        }
+      } finally {if(transitionLock.current===request.id){transitionLock.current=null;setDraftTransitionBusy(false);}}
+      return;
+    }
+    // One draft adoption, then Studio consumes this explicit request once.
+    // Do not call the ordinary load path: its stop would restore the old output.
+    untouchedNewDraft.current=null;
+    setPendingLibraryPlay(null);setSaveError('');
+    setDraft(cloneScene(request.scene));setStudioMode(modeForScene(request.scene));
+    setDraftSession(value=>value+1);setPage('studio');
+    setPlayRequestKind(request.kind);setPlayRequestId(request.id);
   };
-  const load = (scene: Scene) => {
-    run(
-      (async () => {
-        if (
-          state &&
-          (state.playback.mode !== "idle" ||
-            state.game.status !== "idle" ||
-            state.device.armed)
-        )
-          await command({ op: "stop" });
-        setDraft(cloneScene(scene));
-        setStudioMode(modeForScene(scene));
-        setDraftSession((value) => value + 1);
-        setPage(nativeOnly ? "offline" : "studio");
-      })(),
-    );
+  const saveThenLibraryPlay = async () => {
+    const request=libraryPlayRequest.current;
+    if(!request||saveLock.current)return;
+    if(request.saved){await adoptLibraryPlay(request);return;}
+    const context=latestDraftContext.current,source=cloneScene(draft);
+    const saved=await persistDraft(draft.name.trim()?draft.name:guardSaveName);
+    if(!saved||context!==latestDraftContext.current)return;
+    acceptSavedDraft(source,saved);notify('作品已保存到这台 Mac','success');
+    request.saved=true;
+    if(pendingLibraryPlay)setPendingLibraryPlay({...request});
+    if(libraryPlayRequest.current?.id===request.id)await adoptLibraryPlay(request);
   };
+  const load = (scene: Scene, options?:{play?:boolean;create?:boolean;restoreKey?:string}) => {
+    if(libraryPlayRequest.current||saveLock.current)return;
+    if(options?.play){
+      if(!canLibraryPlay)return;
+      if(scene.trigger&&!layout.some(key=>typeof scene.colors[key.index]==='string'&&scene.colors[key.index].toLowerCase()!=='#000000'))return;
+    }
+    const request:LibraryPlayRequest={id:crypto.randomUUID(),scene:cloneScene(scene),action:options?.play?'play':options?.create?'new':'open',kind:scene.trigger?'trigger':'animation',context:libraryPlayContext,generation:libraryPlayGeneration.current,restoreKey:options?.restoreKey};
+    libraryPlayRequest.current=request;setLibraryPlayBusy(true);setSaveError('');
+    const saved=draft.id?state?.scenes.find(item=>item.id===draft.id):undefined;
+    const untouchedNew=draftReady&&draftModel===modelId&&!draftStorageIssue&&!serviceError
+      &&!blockedDraftKeys.current.has(draftKey(modelId))&&untouchedNewDraft.current?.model===modelId
+      &&untouchedNewDraft.current.signature===sceneSignature(draft);
+    if((!saved||sceneSignature(saved)!==sceneSignature(draft))&&!untouchedNew){
+      setGuardSaveName(draft.name);setPendingLibraryPlay(request);
+    }else run(adoptLibraryPlay(request));
+  };
+  const retryDraftRead = () => {
+    try {
+      const raw=localStorage.getItem(draftKey(modelId));
+      if(raw===null)throw new Error('Missing draft');
+      load(parseDraftRecord(raw),{restoreKey:draftKey(modelId)});
+    } catch {notify('暂时无法读取本机草稿。原记录已保留，请重试读取。');}
+  };
+  const creative = ["studio", "audio", "offline"].includes(page);
+  const pageTitle = creative ? "灯光创作" : page === "library" ? "作品库" : page === "codex" ? "AI 助手" : page === "game" ? "灯光游戏" : page === "settings" ? "设置" : "设备";
+  const currentLibraryPlayId=libraryPlayRequest.current?.id??null;
   return (
-    <div className="app-shell">
+    <KeyboardModuleContext.Provider value={state?.settings.airTopRightModule === "keycap" ? "keycap" : "rotary"}>
+    <div className="app-shell lab-v5" data-page={page} data-native={Boolean((window as Window & {webkit?:unknown}).webkit)}>
       <aside className="sidebar">
-        <div className="brand">
-          <img className="brand-symbol" src="/nuphy-studio.png" alt="" width={32} height={32} />
-          <span>NuPhy Lab</span>
-        </div>
+        <div className="window-lights" aria-hidden="true"><i/><i/><i/></div>
+        <div className="brand"><img className="brand-symbol" src="/nuphy-studio.png" alt="" width={32} height={32}/><span>NuPhy Lab</span></div>
         <nav aria-label={tr("主导航")}>
-          <div className="studio-nav-group">
-            <button
-              className={`studio-nav-parent ${["studio","audio","offline"].includes(page) ? "section-active" : ""}`}
-              onClick={() => setPage("studio")}
-              aria-controls="studio-subnav"
-            >
-              <LayoutGrid className="nav-icon" size={18} strokeWidth={1.75} />
-              <span>{tr("创作台")}</span>
-            </button>
-            <div id="studio-subnav" className="studio-subnav" role="group" aria-label={tr("创作台功能")}>
-              {tr(STUDIO_MODES.map(({ id, label }) => { const Icon = MODE_ICONS[id]; return (
-                <button
-                  key={id}
-                  className={`studio-nav-child ${page === "studio" && studioMode === id ? "active" : ""}`}
-                  aria-current={page === "studio" && studioMode === id ? "page" : undefined}
-                  onClick={() => { setStudioMode(id); setPage("studio"); }}
-                >
-                  <Icon className="nav-icon" size={18} strokeWidth={1.75} />
-                  <span>{tr(label)}</span>
-                </button>
-              ); }))}
-              <button className={`studio-nav-child ${page === "audio" ? "active" : ""}`} aria-current={page === "audio" ? "page" : undefined} onClick={()=>setPage("audio")}><AudioLines className="nav-icon" size={18} strokeWidth={1.75}/><span>{tr("声音律动")}</span></button>
-            </div>
-          </div>
-          {tr((
-            [
-              ["library", "作品库", Folder],
-              ["codex", AGENT_LABELS[agentSource(state)], SquareTerminal],
-              ["device", "设备", Settings],
-            ] as const
-          ).map(([id, label, Icon]) => (
-            <button
-              key={id}
-              className={page === id ? "active" : ""}
-              onClick={() => setPage(id)}
-              aria-current={page === id ? "page" : undefined}
-            >
-              <Icon className="nav-icon" size={18} strokeWidth={1.75} />
-              <span>{tr(label)}</span>
-            </button>
-          )))}
+          {([
+            ["studio", "灯光创作", Lightbulb],
+            ["library", "作品库", Folder],
+            ["codex", "AI 助手", SquareTerminal],
+            ["game", "灯光游戏", Gamepad2],
+          ] as const).map(([id, label, Icon]) => <button key={id} aria-label={tr(label)} title={tr(label)} className={(id === "studio" ? creative : page === id) ? "active" : ""} aria-current={(id === "studio" ? creative : page === id) ? "page" : undefined} onClick={()=>setPage(id)}><Icon size={18} strokeWidth={1.5}/><span>{tr(label)}</span></button>)}
         </nav>
-        <label className="language-selector" translate="no">
-          <span>语言 / Language</span>
-          <select aria-label="Language / 语言" value={language} onChange={e=>run(command({op:"settings",settings:{language:e.target.value as Language}}))}>
-            <option value="zh-CN">简体中文</option><option value="en">English</option>
-          </select>
-        </label>
-        <button className="sidebar-device" onClick={() => setPage("device")}>
-          <Keyboard className="nav-icon" size={18} strokeWidth={1.75} />
-          <span>
-            {sidebarIdentity.modelName||tr("等待连接")}
-            {sidebarIdentity.modelName&&<small>
-              <i
-                className={`status-dot ${sidebarIdentity.transport==='bluetooth'?"green":state?.device.readOnly && state?.device.identified ? "coral" : "green"}`}
-              />
-              {tr(sidebarIdentity.transport==='bluetooth'?"蓝牙已连接":state?.firmware?.upgradeRecommended ? "固件待更新" : state?.device.connection?.status==='reconnecting'?"正在重新连接":state?.device.connection?.status==='attention'?"连接暂时中断":state?.device.connection?.status==='updateRequired'?"请更新 NuPhy Lab":keyRecoveryProblem(state) ? "连接尚未完成" : state?.device.readOnly && state?.device.identified ? "已识别 · 请检查连接" : "已连接")}
-            </small>}
-          </span>
-        </button>
+        <div className="sidebar-bottom">
+          <div className="sidebar-output sidebar-output-v7" role="status" data-connection-state={connectionDisplay.stateId}><span>{connectionCopy({zh:'键盘输出',en:'Keyboard output'})}</span><strong title={connectionSidebar(connectionDisplay)}>{connectionSidebar(connectionDisplay)}</strong></div>
+          <nav aria-label={tr("设备与设置")}>
+            <button aria-label={tr("设备")} title={tr("设备")} className={page === "device" ? "active" : ""} aria-current={page === "device" ? "page" : undefined} onClick={()=>setPage("device")}><Keyboard size={18} strokeWidth={1.5}/><span>{tr("设备")}</span></button>
+            <button aria-label={tr("设置")} title={tr("设置")} className={page === "settings" ? "active" : ""} aria-current={page === "settings" ? "page" : undefined} onClick={()=>setPage("settings")}><SlidersHorizontal size={18} strokeWidth={1.5}/><span>{tr("设置")}</span></button>
+          </nav>
+        </div>
       </aside>
       <main>
+        <header className="lab-page-header"><h1>{tr(pageTitle)}</h1><button className="lab-connection lab-connection-v7" data-connection-state={connectionDisplay.stateId} onClick={()=>setPage("device")}><Keyboard size={16} strokeWidth={1.5}/><span>{connectionHeader(connectionDisplay)}</span></button></header>
         {exiting && <div className="wireless-notice" role="status">{tr("正在完成当前操作…")}</div>}
-        {tr(serviceError && (
-          <div className="service-error" role="status">
-            <CircleAlert size={16} />
-            <span>{tr("本地服务未响应：")}{tr(friendlyConnectionError(serviceError))}</span>
-          </div>
-        ))}
+        {!state&&!serviceError&&<div className="service-error" role="status">{tr('正在读取键盘与本机数据…')}</div>}
+        {serviceError&&<div className="service-error service-error-v6" role="alert"><CircleAlert size={16}/><span>{tr('本地服务未响应：')}{tr(friendlyConnectionError(serviceError))}</span><Button kind="ghost" busy={checkingService} onClick={()=>{if(checkingService)return;setCheckingService(true);void refresh().finally(()=>setCheckingService(false));}}>{tr('重新检查')}</Button></div>}
         <StartupGuide state={state} command={command} disabled={exiting}/>
+        <AudioPendingNotice onReturn={()=>setPage('audio')}/>
+        {draftStorageIssue?.model===modelId&&<div className="service-error" role="alert"><CircleAlert size={16}/><span>{tr(draftStorageIssue.kind==='read'?'暂时无法读取本机草稿。原记录已保留，请重试读取。':'草稿自动保存失败。当前内容仍在本窗口，关闭前请重试或保存到作品库。')}</span><Button kind="ghost" onClick={()=>draftStorageIssue.kind==='read'?retryDraftRead():writeLocalDraft(modelId,draft)}>{tr(draftStorageIssue.kind==='read'?'重试读取':'重试自动保存')}</Button><Button kind="ghost" onClick={openSave}>{tr('保存作品')}</Button></div>}
         <div className="page-content" inert={exiting}>
-          {state?.bluetooth?.connected && !state.device.connected && ['studio','library'].includes(page) && <div className="wireless-notice" role="status"><strong>{tr("蓝牙已连接 · 灯光需接线")}</strong><p>{tr("可以编辑、预览和保存作品；播放到键盘、按键灯效及灯光游戏需要 USB 有线连接。")}</p></div>}
+          {creative && (!nativeOnly || page === "offline") && <nav className="lab-tabs creative-tabs" aria-label={tr("灯光创作")}>
+            {([["paint","绘制"],["animation","动画"],["trigger","按键触发"],["audio","声音律动"]] as const).map(([id,label])=><button key={id} aria-current={(id === "audio" ? page === "audio" : page !== "audio" && studioMode === id) ? "page" : undefined} className={(id === "audio" ? page === "audio" : page !== "audio" && studioMode === id) ? "active" : ""} onClick={()=>{if(id === "audio")setPage("audio");else{setStudioMode(id);setPage("studio");}}}>{tr(label)}</button>)}
+          </nav>}
+          {connectionDisplay.stateId === 'bluetoothOnly' && ['studio','library'].includes(page) && <div className="wireless-notice" role="status"><strong>{tr("蓝牙已连接 · 灯光需接线")}</strong><p>{tr("可以编辑、预览和保存作品；播放到键盘、按键灯效及灯光游戏需要 USB 有线连接。")}</p></div>}
           {nativeOnly && state && ["studio", "audio"].includes(page) && <NativeLighting state={state} layout={layout} command={command}
             onOffline={() => setPage("offline")} onDevice={() => setPage("device")}/>}
           {page === "offline" && nativeOnly && <div className="wireless-notice" role="status"><p>{tr("离线绘图仅编辑和保存作品，不向当前固件发送逐键颜色。")}</p><Button onClick={() => setPage("studio")}>{tr("返回原生灯效")}</Button></div>}
-          {tr((page === "studio" && !nativeOnly || page === "offline") && (
+          {tr((page === "studio" && !nativeOnly || page === "offline" || page === "game") && (
             <Studio
               key={draftSession}
-              mode={page === "offline" ? "paint" : studioMode}
+              mode={page === "game" ? "game" : page === "offline" ? "paint" : studioMode}
               layout={layout}
               state={state}
+              connectionDisplay={connectionDisplay}
+              playRequestId={playRequestId}
+              playRequestKind={playRequestKind}
+              onPlayRequestHandled={()=>{if(playRequestId)setPlayRequestId(current=>current===playRequestId?null:current);}}
+              onPlayRequestFinished={()=>finishLibraryPlay(currentLibraryPlayId)}
               command={command}
               draft={draft}
-              setDraft={setDraft}
+              setDraft={setStudioDraft}
               onSave={openSave}
               onBrowsePresets={() => setPage("library")}
+              onNavigateDevice={() => setPage("device")}
               onEditCodexColors={()=>{setFocusCodexColors(true);setPage("codex");}}
               notify={notify}
             />
@@ -286,6 +348,9 @@ export default function App() {
             <Library
               layout={layout}
               state={state}
+              display={connectionDisplay}
+              serviceError={serviceError}
+              transitionBusy={libraryPlayBusy || saveBusy || exiting}
               command={command}
               onLoad={load}
               onNew={() =>
@@ -293,72 +358,47 @@ export default function App() {
                   name: "未命名作品",
                   colors: blankColors(),
                   animation: { ...DEFAULT_ANIMATION },
-                })
+                },{create:true})
               }
               notify={notify}
             />
           ))}{tr(" ")}
           {tr(page === "codex" && (agentSource(state) === "claude"
-            ? <ClaudeCode state={state} command={command} notify={notify} focusColors={focusCodexColors} />
-            : <Codex state={state} command={command} focusColors={focusCodexColors} />))}{tr(" ")}
+            ? <ClaudeCode state={state} command={command} notify={notify} focusColors={focusCodexColors} readState={readState} serviceError={serviceError} />
+            : <Codex state={state} command={command} focusColors={focusCodexColors} readState={readState} serviceError={serviceError} />))}{tr(" ")}
           {tr(page === "device" && (
             <Device
               state={state}
               command={command}
               serviceError={serviceError}
+              display={connectionDisplay}
+              onRefresh={refresh}
+              layout={layout}
+              onOffline={()=>setPage(nativeOnly ? "offline" : "studio")}
             />
           ))}
+          {page === "settings" && <Settings state={state} command={command} display={connectionDisplay} onNavigateStudio={()=>setPage("studio")} initialTab={settingsTab}/>}
         </div>
       </main>
-      {tr(toast && (
-        <div
-          className={`toast ${toast.kind}`}
-          role={toast.kind === "error" ? "alert" : "status"}
-        >
-          {tr(toast.kind === "success" ? (
-            <Check size={17} />
-          ) : (
-            <CircleAlert size={17} />
-          ))}
-          <span>{tr(toast.message)}</span>
-          <button onClick={() => setToast(null)} aria-label={tr("关闭提示")}>
-            <X size={16} />
-          </button>
-        </div>
-      ))}
-      {tr(saveOpen && (
-        <Modal title={tr("保存作品")} onClose={() => setSaveOpen(false)}>
-          <label className="form-field">{tr("作品名称")}<input
-              autoFocus
-              aria-label={tr("保存作品名称")}
-              value={saveName}
-              onChange={(e) => setSaveName(e.target.value)}
-              maxLength={80}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") run(save());
-              }}
-            />
-          </label>
-          {tr(draft.id && (
-            <label className="checkbox-field">
-              <input
-                type="checkbox"
-                checked={saveCopy}
-                onChange={(e) => setSaveCopy(e.target.checked)}
-              />{tr("另存为新作品")}</label>
-          ))}
-          <p className="muted">{tr("图案、配色和灯效设置会一起保存。")}</p>
-          <div className="modal-actions">
-            <Button onClick={() => setSaveOpen(false)}>{tr("取消")}</Button>
-            <Button
-              kind="primary"
-              busy={saveBusy}
-              disabled={!saveName.trim()}
-              onClick={() => run(save())}
-            >{tr("保存作品")}</Button>
-          </div>
-        </Modal>
-      ))}
+      {toast&&<FeedbackToast key={toast.id} message={toast.message} kind={toast.kind} onClose={()=>setToast(null)}/>}
+      {pendingLibraryPlay&&<Modal title={tr('当前草稿有未保存修改')} width={560} busy={saveBusy||draftTransitionBusy} initialFocus="cancel" onClose={()=>{if(!saveLock.current&&!transitionLock.current){finishLibraryPlay(pendingLibraryPlay.id);setSaveError('');}}} className="library-play-guard-v8" footer={<>
+        <Button kind="ghost" data-modal-cancel disabled={saveBusy||draftTransitionBusy} onClick={()=>{finishLibraryPlay(pendingLibraryPlay.id);setSaveError('');}}>{tr('取消')}</Button>
+        <Button busy={draftTransitionBusy} disabled={saveBusy||(pendingLibraryPlay.action==='play'&&!canLibraryPlay)} onClick={()=>run(adoptLibraryPlay(pendingLibraryPlay))}>{tr(pendingLibraryPlay.action==='play'?'放弃修改并播放':pendingLibraryPlay.action==='new'?'放弃修改并新建':'放弃修改并打开')}</Button>
+        <Button kind="primary" data-modal-retry busy={saveBusy||draftTransitionBusy} disabled={(pendingLibraryPlay.action==='play'&&!canLibraryPlay)||(!pendingLibraryPlay.saved&&!(draft.name.trim()||guardSaveName.trim()))} onClick={()=>run(saveThenLibraryPlay())}>{tr(saveBusy?'保存中…':pendingLibraryPlay.saved?(pendingLibraryPlay.action==='new'?'重试新建':'重试打开'):pendingLibraryPlay.action==='play'?(saveError?'重试保存后播放':'保存后播放'):pendingLibraryPlay.action==='new'?(saveError?'重试保存后新建':'保存后新建'):(saveError?'重试保存后打开':'保存后打开'))}</Button>
+      </>}>
+        <p>{tr('先处理「')}<span translate="no">{draft.name||tr('未命名作品')}</span>{pendingLibraryPlay.action==='new'?tr('」的修改，再新建作品。'):<>{tr(pendingLibraryPlay.action==='play'?'」的修改，再播放「':'」的修改，再打开「')}<span translate="no">{pendingLibraryPlay.scene.name}</span>{language==='en'?'”.':'」。'}</>}</p>
+        {!draft.name.trim()&&<label className="form-field">{tr('作品名称')}<input aria-label={tr('保存当前草稿名称')} value={guardSaveName} disabled={saveBusy} maxLength={80} onChange={event=>{setGuardSaveName(event.target.value);setSaveError('');}}/></label>}
+        <p className="muted">{tr('取消会保留当前草稿和键盘输出。')}</p>
+        {saveError&&<div className="overlay-error" role="alert"><CircleAlert size={14}/><span>{tr(saveError)}</span></div>}
+      </Modal>}
+      {saveOpen&&<Modal title={tr('保存作品')} busy={saveBusy} initialFocus="input" onClose={()=>setSaveOpen(false)} footer={<><Button kind="ghost" disabled={saveBusy} onClick={()=>setSaveOpen(false)}>{tr('取消')}</Button><Button kind="primary" busy={saveBusy} disabled={!saveName.trim()} onClick={()=>run(save())}>{tr(saveBusy?'保存中…':saveError?'重试保存':'保存作品')}</Button></>}>
+        <label className="form-field">{tr('作品名称')}<input aria-label={tr('保存作品名称')} aria-invalid={!saveName.trim()&&Boolean(saveError)} value={saveName} disabled={saveBusy} maxLength={80} onChange={event=>{setSaveName(event.target.value);setSaveError('');}} onKeyDown={event=>{if(event.key==='Enter'&&!event.nativeEvent.isComposing){event.preventDefault();run(save());}}}/></label>
+        {!saveName.trim()&&<p className="overlay-field-error">{tr('请输入作品名称。')}</p>}
+        {draft.id&&<label className="checkbox-field"><input type="checkbox" checked={saveCopy} disabled={saveBusy} onChange={event=>setSaveCopy(event.target.checked)}/>{tr('另存为新作品')}</label>}
+        <p className="muted">{tr('图案、颜色、动画与触发规则一起保存。')}</p><p className="muted">{tr('输出亮度是全局设置，不随作品保存。')}</p><p className="muted">{tr('保存到')}{' '}{modelId==='kick75'?'Kick75':'Air75 V3'} · {tr('我的作品')}</p>
+        {saveError&&saveName.trim()&&<div className="overlay-error" role="alert"><CircleAlert size={14}/><span>{tr(saveError)}</span></div>}
+      </Modal>}
     </div>
+    </KeyboardModuleContext.Provider>
   );
 }

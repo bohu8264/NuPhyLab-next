@@ -1,0 +1,9 @@
+/* Final v6 E05: page-local empty-state actions, main toolbar remains available. */
+.lab-library-empty-v6{display:flex;align-items:center;justify-content:center;min-height:438px;width:100%}
+.lab-preset-library .lab-library-empty-v6{min-height:358px}
+.lab-v5 .lab-library-empty-v6 .empty-state{padding:0 24px;margin:0;display:flex;flex-direction:column;align-items:center;width:100%;color:#777}
+.lab-v5 .lab-library-empty-v6 .empty-state h3{font-size:20px;font-weight:500;line-height:28px;margin:0 0 17px;color:#202020;overflow-wrap:anywhere}
+.lab-v5 .lab-library-empty-v6 .empty-state p{font-size:12px;line-height:20px;margin:0;max-width:460px;overflow-wrap:anywhere}
+.lab-library-empty-v6 .empty-actions{display:flex;justify-content:center;margin-top:25px;gap:8px}
+.lab-v5 .lab-library-empty-v6 .empty-actions .button{min-width:72px;min-height:34px;padding:7px 14px;font-size:12px;line-height:20px;border-radius:8px}
+@media(max-width:700px){.lab-library-empty-v6,.lab-preset-library .lab-library-empty-v6{min-height:320px}.lab-v5 .lab-library-empty-v6 .empty-state{padding:0 12px}}

@@ -32,6 +32,12 @@ test("native trigger waits black, paints exactly three pulses, and remains armed
   state = await service.state();
   assert.equal(state.trigger.armed, false);
   assert.equal(state.trigger.monitor, "off");
+  assert.equal(state.playback.mode, "agent");
+  assert.equal(state.settings.codexEnabled, true);
+  assert.equal(state.device.armed, true);
+  assert.equal(state.device.state[10], 0);
+  assert.equal((await service.command({op:"agentMode",source:"codex",enabled:false})).ok,true);
+  state=await service.state();
   assert.equal(state.device.armed, false);
   assert.equal(state.device.state[10], 65);
 });

@@ -199,18 +199,22 @@ test('session gates stale data, host loss and sleep without persisting audio',()
   now=13000;assert(audio.expired());audio.stop();assert.equal(audio.snapshot(DEFAULT_AUDIO).capture.enabled,false);
 });
 test('real service integrates audio rendering, live edits, Codex lights and stop/scene/game handoffs',async t=>{
-  const s=await fakeService(t);
+  const s=await fakeService(t,{tasks:[{id:'audio-status-task',status:'running'}]});
   await s.command({op:'connect'});assert.equal((await s.command({op:'audioStart'})).ok,false);
-  await s.command(inventory);await s.command({op:'settings',settings:{brightness:100,codexEnabled:true,codexAmbient:true,audio:{color:'#ff0000'}}});
+  await s.command(inventory);await s.command({op:'settings',settings:{brightness:100,codexBrightness:100,codexEnabled:true,codexSelectedPulse:false,codexAmbient:false,audio:{color:'#ff0000'}}});
   assert.equal((await s.command({op:'audioStart'})).ok,true);
   let state=await s.state();const session=state.audio.session;
   assert.equal(state.codex.keys.enabled,true,'task shortcuts stay enabled');
   await s.command({op:'audioPacket',session,status:'listening',...input(1)});
-  state=await until(s.state,x=>x.colors[1]!=='#000000','audio output');
-  assert(state.colors.every(c=>/^#[\da-f]{2}0000$/.test(c)),'Codex colors must not overlay audio');
+  const background=colors=>colors.filter((_,i)=>i<1||i>12);
+  state=await until(s.state,x=>x.colors[1]==='#304ffe'&&background(x.colors).some(c=>c!=='#000000'),'audio background with persistent task status');
+  assert(background(state.colors).every(c=>/^#[\da-f]{2}0000$/.test(c)),'ordinary audio background retains its chosen red');
+  assert.equal(state.codex.lighting.ownsOutput,true);
   await s.command({op:'settings',settings:{audio:{color:'#00ff00'}}});
   await s.command({op:'audioPacket',session,status:'listening',...input(1)});
-  state=await until(s.state,x=>x.colors[1].startsWith('#00')&&x.colors[1]!=='#000000','live color');
+  state=await until(s.state,x=>background(x.colors).some(c=>/^#00[\da-f]{2}00$/.test(c)&&c!=='#000000'),'live audio background color');
+  assert.equal(state.colors[1],'#304ffe','editing audio must retain the task status color');
+  assert(background(state.colors).every(c=>/^#00[\da-f]{2}00$/.test(c)));
   await s.command({op:'play',colors:Array(84).fill('#010203'),animation:{effect:'static'}});
   assert.equal((await s.state()).audio.active,false);
   assert.equal((await s.command({op:'audioPacket',session,status:'listening',...input(1)})).result.accepted,false);
@@ -218,7 +222,9 @@ test('real service integrates audio rendering, live edits, Codex lights and stop
   state=await s.state();assert.equal(state.audio.active,false);assert.equal(state.playback.mode,'game');
   await s.command({op:'gameStop'});assert.equal((await s.state()).audio.active,false,'games must not silently restart recording');
   await s.command(inventory);await s.command({op:'audioStart'});await s.command({op:'audioStop'});
-  state=await s.state();assert.equal(state.device.armed,false);assert.equal(state.audio.capture.enabled,false);
+  state=await s.state();assert.equal(state.audio.capture.enabled,false);assert.equal(state.playback.mode,'agent');
+  assert.equal(state.device.armed,true);assert.equal(state.codex.lighting.ownsOutput,true);assert.equal(state.colors[1],'#304ffe');
+  assert(background(state.colors).every(c=>c==='#000000'),'audio stop clears the ordinary background and retains AI mode');
 });
 test('permission failure and disconnect end capture; duration sleep requires explicit wake',async t=>{
   const s=await fakeService(t);await s.command({op:'connect'});await s.command(inventory);

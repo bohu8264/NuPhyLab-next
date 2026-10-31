@@ -114,27 +114,29 @@ test('preview exposes acknowledged RGB, scales brightness once and diagnoses rea
  await service.configure({mismatchIndex:null});
  await service.command({op:'settings',settings:{brightness:50,codexEnabled:true,codexBrightness:50,codexSelectedPulse:false}});
  const state=await until(service.state,s=>s.colors[1]==='#0c1440','Micro brightness was not applied once per level');
- assert.equal(state.colors[0],'#000000','Codex turns unrelated lighting off');
+ assert.equal(state.colors[0],'#800000','Codex overlays its bound keys while the ordinary artwork keeps its brightness');
  assert.equal(state.colors[2],'#401c00');
  assert.equal((await service.command({op:'verifyColors'})).result.matches,true);
  await service.command({op:'settings',settings:{codexEnabled:false}});
- assert.equal((await service.state()).device.armed,false,'disabling Codex restores the board');
+ assert.equal((await service.state()).device.armed,true,'disabling Codex keeps the ordinary artwork active');
  await service.command({op:'preview',colors:frame});
  assert.equal((await service.state()).colors[1],'#008000','the saved drawing can still be played');
  await service.command({op:'stop'});
  assert.equal((await service.command({op:'verifyColors'})).ok,false);
 });
-test('enabling Codex cancels a paused animation and clears non-task keys',async t=>{
+test('enabling Codex overlays a paused animation without changing its position or other pixels',async t=>{
  const service=await fakeService(t,{tasks:[tasks[0]]});
+ await service.command({op:'settings',settings:{brightness:100}});
  await service.command({op:'play',colors:Array(84).fill('#112233'),animation:{effect:'pulse',speed:4,loop:true}});
  await service.command({op:'pause'});
+ const before=await service.state();
  await service.command({op:'settings',settings:{brightness:100,codexEnabled:true,codexSelectedPulse:false}});
  const active=await service.state();
- assert.equal(active.playback.mode,'agent');assert.equal(active.playback.playing,false);assert.equal(active.colors[20],'#000000');
+ assert.equal(active.playback.mode,'paused');assert.equal(active.playback.playing,false);assert.equal(active.playback.elapsed,before.playback.elapsed);assert.equal(active.colors[20],before.colors[20]);
  await service.configure({tasks:[{...tasks[0],status:'completed'}]});
  await until(service.state,s=>s.colors[1]==='#00ff4c','task state stayed blue');
  await service.command({op:'settings',settings:{codexEnabled:false}});
- assert.equal((await service.state()).device.armed,false);
+ assert.equal((await service.state()).device.armed,true);assert.equal((await service.state()).playback.elapsed,before.playback.elapsed);
 });
 
 test('direct task keys and commands remap atomically, move lights, and pause for games',async t=>{

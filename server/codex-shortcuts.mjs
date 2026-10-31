@@ -6,6 +6,9 @@ import keys from '../shared/trigger-keys.json' with {type:'json'};
 const commandIds={dictation:'composer.startDictation',voice:'composer.startVoiceMode',modelPicker:'composer.openModelPicker'};
 const modifiers={cmd:'command',command:'command',cmdorctrl:'command',commandorcontrol:'command',super:'command',ctrl:'control',control:'control',alt:'option',option:'option',shift:'shift',fn:'fn'};
 const modifierCodes={control:59,shift:56,option:58,command:55,fn:63};
+// Public HIToolbox Events.h virtual codes for forwarding only. The recorder's
+// ordinary-key catalogue remains separate; the SDK defines no F21-F24 here.
+const extendedFunctionCodes=new Map([['F13',0x69],['F14',0x6B],['F15',0x71],['F16',0x6A],['F17',0x40],['F18',0x4F],['F19',0x50],['F20',0x5A]]);
 export function parseMacShortcut(value,{allowBareModifiers=false}={}) {
   if(typeof value!=='string'||value.length>100) return null;
   const parts=value.split('+').map(x=>x.trim());
@@ -20,8 +23,9 @@ export function parseMacShortcut(value,{allowBareModifiers=false}={}) {
   const aliases={enter:'Enter',return:'Enter',escape:'Escape',esc:'Escape',space:'Space',backspace:'Backspace',delete:'Delete',up:'ArrowUp',down:'ArrowDown',left:'ArrowLeft',right:'ArrowRight'};
   const code=/^[a-z]$/i.test(key)?'Key'+key.toUpperCase():/^[0-9]$/.test(key)?'Digit'+key:aliases[key.toLowerCase()];
   const punctuation={'`':'Backquote',',':'Comma','.':'Period','/':'Slash',';':'Semicolon',"'":'Quote','[':'BracketLeft',']':'BracketRight','\\':'Backslash','-':'Minus','=':'Equal'};
-  const entry=keys.find(x=>x.code===(code??punctuation[key]??key));
-  return entry?{keyCode:entry.keyCode,modifiers:flags,code:entry.code}:null;
+  const parsedCode=code??punctuation[key]??key;
+  const keyCode=keys.find(x=>x.code===parsedCode)?.keyCode??extendedFunctionCodes.get(parsedCode);
+  return keyCode===undefined?null:{keyCode,modifiers:flags,code:parsedCode};
 }
 
 // Read only the documented, user-editable keymap. Never change Codex settings.
@@ -52,12 +56,13 @@ export async function resolveCodexShortcut(action,{codexHome=process.env.CODEX_H
 }
 
 export class CodexKeyGestures {
-  constructor({send,resolve,now=Date.now}) {this.send=send;this.resolve=resolve;this.now=now;this.held=null;this.dictation={mode:'hold'};}
+  constructor({send,resolve,now=Date.now}) {this.send=send;this.resolve=resolve;this.now=now;this.held=null;this.dictation={mode:'hold'};this.dictationRevision=0;}
   async inspectDictation(action) {
+    const revision=++this.dictationRevision;
     try {
       const shortcut=await this.resolve(action);
-      this.dictation={mode:shortcut.delivery==='globalTap'?'toggle':'hold',accelerator:shortcut.accelerator};
-    } catch(error) {this.dictation={...this.dictation,error:error.message};}
+      if(revision===this.dictationRevision)this.dictation={mode:shortcut.delivery==='globalTap'?'toggle':'hold',accelerator:shortcut.accelerator};
+    } catch(error) {if(revision===this.dictationRevision)this.dictation={mode:this.dictation.mode,error:error.message};}
     return this.dictation;
   }
   async release(source=null) {
@@ -71,9 +76,15 @@ export class CodexKeyGestures {
     if(phase==='up') return this.release(source);
     if(this.held?.source===source&&action.id==='dictation') return {held:true};
     await this.release();
-    const shortcut=await this.resolve(action);
+    const revision=action.id==='dictation'?++this.dictationRevision:null;
+    let shortcut;
+    try {shortcut=await this.resolve(action);}
+    catch(error) {
+      if(revision===this.dictationRevision)this.dictation={mode:this.dictation.mode,error:error.message};
+      throw error;
+    }
     const hold=action.id==='dictation'&&shortcut.delivery!=='globalTap';
-    if(action.id==='dictation')this.dictation={mode:hold?'hold':'toggle',accelerator:shortcut.accelerator};
+    if(revision===this.dictationRevision)this.dictation={mode:hold?'hold':'toggle',accelerator:shortcut.accelerator};
     if(hold&&phase!=='down') throw new Error('听写需要按住命令键，松开后结束。');
     const result=await this.send({...shortcut,phase:hold?'down':'tap',target:'com.openai.codex',activateTarget:true});
     if(hold) {
@@ -88,14 +99,32 @@ export class CodexKeyGestures {
 // Carbon and a local window listener can report the same gesture across focus
 // transitions. Gate it at the shared boundary before a toggle reaches Codex.
 export class PhysicalPressGate {
-  constructor(now=Date.now){this.now=now;this.held=new Set();this.last=new Map();}
-  down(code){
+  constructor(now=Date.now){this.now=now;this.held=new Set();this.last=new Map();this.gestures=new Map();this.activeGestures=new Map();}
+  down(code,gestureId){
+    if(gestureId!==undefined){
+      if(typeof gestureId!=='string'||!gestureId.length||gestureId.length>160||!/^[A-Za-z0-9:._-]+$/.test(gestureId))throw new Error('按键手势无效');
+      const identity=`${code}:${gestureId}`;
+      if(this.gestures.has(identity))return false;
+      this.gestures.set(identity,true);
+      if(this.gestures.size>2048)this.gestures.delete(this.gestures.keys().next().value);
+      if(this.held.has(code))return false;
+      this.held.add(code);this.activeGestures.set(code,gestureId);return true;
+    }
     if(this.held.has(code))return false;
     this.held.add(code);
     const now=this.now();
     if(now-(this.last.get(code)??-Infinity)<250)return false;
     this.last.set(code,now);return true;
   }
-  up(code){this.held.delete(code);}
-  reset(){this.held.clear();this.last.clear();}
+  up(code,gestureId){
+    if(gestureId!==undefined){
+      if(this.activeGestures.get(code)!==gestureId)return false;
+      this.activeGestures.delete(code);this.held.delete(code);return true;
+    }
+    if(this.activeGestures.has(code))return false;
+    this.held.delete(code);return true;
+  }
+  // Preserve structured identities across binding/focus resets: a delayed
+  // delivery of the same gesture must not become a new action after reset.
+  reset(){this.held.clear();this.last.clear();this.activeGestures.clear();}
 }

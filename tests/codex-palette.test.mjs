@@ -38,6 +38,8 @@ test('live service applies palette changes without restarting task mode or reset
  const colors=Object.fromEntries(CUSTOM_STATUS_IDS.map((id,i)=>[id,['#FF0000','#00FF00','#0000FF','#FFFF00','#FF00FF','#00FFFF'][i]]));
  await s.command({op:'settings',settings:{codexStatusColors:colors}});
  const after=await until(s.state,v=>v.colors[1]==='#ff0000'&&v.colors[2]==='#00ff00','palette was not sent');
- assert.deepEqual(after.colors.slice(1,7),Object.values(colors).map(c=>c.toLowerCase()));assert.equal(after.playback.mode,'agent');assert.equal(after.playback.playing,false);assert.equal(after.colors[20],'#000000');
+ assert.deepEqual(after.colors.slice(1,7),Object.values(colors).map(c=>c.toLowerCase()));
+ assert.equal(after.playback.mode,'animation');assert.equal(after.playback.playing,true);assert.equal(after.colors[20],'#123456');
+ assert.equal(after.codex.lighting.ownsOutput,true);
  assert.ok(after.lightPower.remainingMs<=before.lightPower.remainingMs);
 });

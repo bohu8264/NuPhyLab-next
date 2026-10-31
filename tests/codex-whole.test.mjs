@@ -59,18 +59,19 @@ test('service follows a task outside six slots, reacts to status changes, preser
  await s.command({op:'gameStart',gameType:'snake'});state=await s.state();assert.ok(state.colors.filter(c=>c!=='#000000').length<10);
  await s.command({op:'gameStop'});assert.equal((await s.state()).colors[0],'#ff0000');
  assert.equal((await s.state()).device.state[10],0,'returning to Codex keeps side lights off');
- await s.command({op:'settings',settings:{codexLightMode:'keys'}});state=await s.state();assert.equal(state.colors[20],'#000000');assert.equal(state.colors[1],'#ff0000');
- await s.command({op:'settings',settings:{codexEnabled:false}});assert.equal((await s.state()).device.armed,false);
+ await s.command({op:'settings',settings:{codexLightMode:'keys'}});state=await s.state();assert.equal(state.colors[20],'#112233');assert.equal(state.colors[1],'#ff0000');
+ await s.command({op:'settings',settings:{codexEnabled:false}});assert.equal((await s.state()).device.armed,true);assert.equal((await s.state()).colors[1],'#112233');
  await s.command({op:'preview',colors:Array(84).fill('#112233')});assert.deepEqual((await s.state()).colors,Array(84).fill('#112233'));
 });
 
-test('whole mode shares idle timing and wakes only for the followed task, including one outside the task slots',async t=>{
+test('whole mode remains visible while the ordinary background is idle, including a task outside the slots',async t=>{
  const tasks=Array.from({length:7},(_,i)=>task('task-'+i));const s=await fakeService(t,{tasks,systemIdleMs:100000});
  await s.command({op:'settings',settings:{...settings,codexEnabled:true,codexWholeTaskId:'task-6',brightness:100,lightIdleMs:1000}});
  await until(s.state,v=>v.lightPower.sleeping,'whole lighting did not idle');
  await s.configure({tasks:tasks.map(t=>t.id==='task-0'?{...t,status:'completed'}:t)});
  await new Promise(r=>setTimeout(r,150));assert.equal((await s.state()).lightPower.sleeping,true);
  await s.configure({tasks:tasks.map(t=>t.id==='task-6'?{...t,status:'completed'}:t)});
- const awake=await until(s.state,v=>!v.lightPower.sleeping&&v.colors[0]==='#00ff4c','followed task did not wake keyboard');
- assert.equal(new Set(awake.colors.slice(0,83)).size,1);
+ const updated=await until(s.state,v=>v.colors[0]==='#00ff4c','followed task did not update while background slept');
+ assert.equal(updated.lightPower.sleeping,true);assert.equal(updated.codex.lighting.sleeping,false);assert.equal(updated.codex.lighting.ownsOutput,true);
+ assert.equal(new Set(updated.colors.slice(0,83)).size,1);
 });

@@ -1,12 +1,18 @@
+import { rangeStyle } from "./rangeStyle";
 import {lightingUnavailableMessage} from '../../shared/device-status.mjs';
+import type {ConnectionDisplay} from '../../shared/connection-display.mjs';
+import {canvasCaption,connectionCopy,keyboardActionHint} from './connection-copy-v7';
 import { t as tr } from "./i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Eye,
+  Folder,
+  RotateCcw,
+  MousePointer2,
   ArrowDown,
   ArrowLeft,
   ArrowRight,
   ArrowUp,
-  Brush,
   Check,
   CircleAlert,
   Copy,
@@ -18,19 +24,24 @@ import {
   Play,
   Plus,
   Redo2,
-  Scan,
   Square,
   Trash2,
   Undo2,
 } from "lucide-react";
+import "./studio-v5.css";
+import './creation-experience-v7.css';
+import './studio-play-edit-v8.css';
+import './studio-workspace-layout.css';
+import {useWorkspaceLayout} from './useWorkspaceLayout';
+import { renderAnimation, animationDuration, applyArtworkAppearance, scaleColor } from "../../shared/render-animation.mjs";
 import { Keyboard, lightingPeak } from "./Keyboard";
 import { ColorWheel } from "./ColorWheel";
-import { GamePanel, GAME_NAMES, canPressGameKey } from "./GamePanel";
+import { GamePanel } from "./GamePanel";
 import { TriggerPanel } from "./TriggerPanel";
 import type { HSV } from "../../shared/color.mjs";
 import { Button, run, Switch } from "./primitives";
 import { heartColors, DEFAULT_COLOR } from "./presets";
-import { blankColors, STUDIO_MODES } from "./types";
+import { blankColors } from "./types";
 import type {
   Animation,
   AppState,
@@ -46,12 +57,18 @@ type Props = {
   mode: StudioMode;
   layout: Key[];
   state: AppState | null;
+  connectionDisplay?: ConnectionDisplay;
   command: Command;
   draft: Scene;
   setDraft: (scene: Scene) => void;
   onSave: () => void;
   onBrowsePresets: () => void;
+  onNavigateDevice?: () => void;
   onEditCodexColors: () => void;
+  playRequestId?: string | null;
+  playRequestKind?: "animation" | "trigger";
+  onPlayRequestHandled?: () => void;
+  onPlayRequestFinished?: () => void;
   notify: Notify;
 };
 const directions: [Direction, string, typeof ArrowUp][] = [
@@ -60,6 +77,17 @@ const directions: [Direction, string, typeof ArrowUp][] = [
   ["up", "向上", ArrowUp],
   ["down", "向下", ArrowDown],
 ];
+const sceneContent = (scene: Scene) => JSON.stringify([
+  scene.name, scene.colors, scene.animation.effect, scene.animation.direction,
+  scene.animation.speed, scene.animation.loop, scene.animation.hueShift ?? 0, scene.animation.colorOverride?.toLowerCase() ?? null, scene.animation.brightness ?? 100,
+  (scene.animation.frames || []).map(frame => [frame.colors, frame.duration]),
+  scene.trigger?.code, scene.trigger?.count, scene.trigger?.intervalMs,
+]);
+const animationContent = (scene: Pick<Scene, "colors" | "animation">) => JSON.stringify([
+  scene.colors.map(color => color.toLowerCase()), scene.animation.effect,
+  scene.animation.direction, scene.animation.speed, scene.animation.loop, scene.animation.hueShift ?? 0, scene.animation.colorOverride?.toLowerCase() ?? null, scene.animation.brightness ?? 100,
+  (scene.animation.frames || []).map(frame => [frame.colors.map(color => color.toLowerCase()), frame.duration]),
+]);
 const labels: Record<string, string> = {
   static: "静态",
   move: "移动",
@@ -71,39 +99,79 @@ export function Studio({
   mode: tab,
   layout,
   state,
+  connectionDisplay,
   command,
   draft,
   setDraft,
   onSave,
   onBrowsePresets,
+  onNavigateDevice,
   onEditCodexColors,
+  playRequestId,
+  playRequestKind = "animation",
+  onPlayRequestHandled,
+  onPlayRequestFinished,
   notify,
 }: Props) {
+  const workspace=useWorkspaceLayout({aspectRatio:layout.length===80?1009/440:959/384,enabled:tab!=='game'});
   const perKeySupported = state?.device.capabilities?.perKey !== false;
-  const previewPeak = useMemo(() => lightingPeak([draft.colors, ...(draft.animation.frames || []).map(frame => frame.colors)]), [draft.colors, draft.animation.frames]);
+  const previewPeak = useMemo(() => lightingPeak([draft.colors, ...(draft.animation.frames || []).map(frame => frame.colors)]
+    .map(colors => applyArtworkAppearance(colors, {...draft.animation, brightness: 100}))), [draft.colors, draft.animation]);
   const [tool, setTool] = useState<"paint" | "select" | "erase">("paint");
   const [color, setColor] = useState(DEFAULT_COLOR);
   const colorMemory = useRef<HSV | null>(null);
-  const [colorScope,setColorScope] = useState("pattern");
+  const [colorScope,setColorScope] = useState("brush");
   const colorGesture = useRef({active:false,recorded:false});
   const colorTargets = useRef<{signature:string;scope:string;selection:string;indices:number[]}|null>(null);
   const [hex, setHex] = useState(color);
   const [selected, setSelected] = useState<number[]>([]);
-  const [live, setLive] = useState(true);
+  const [live, setLive] = useState(false);
+  const [editingPattern, setEditingPattern] = useState(false);
+  const [frameEditor, setFrameEditor] = useState<{index:number}|null>(null);
+  const [frameColors, setFrameColors] = useState<string[]>([]);
+  const [pagePreview, setPagePreview] = useState(false);
+  const [previewColors, setPreviewColors] = useState<string[]|null>(null);
+  const [reducedMotion,setReducedMotion] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  useEffect(() => {
+    const media=window.matchMedia('(prefers-reduced-motion: reduce)');
+    const update=() => setReducedMotion(media.matches);
+    media.addEventListener('change',update);update();
+    return () => media.removeEventListener('change',update);
+  }, []);
   const [undoStack, setUndo] = useState<string[][]>([]);
   const [redoStack, setRedo] = useState<string[][]>([]);
+  useEffect(() => {
+    setEditingPattern(false); setFrameEditor(null); setPagePreview(false);
+    setSelected([]); setUndo([]); setRedo([]);
+  }, [tab]);
   const [frameIndex, setFrameIndex] = useState(() => Math.max(0,
     (draft.animation.frames || []).findIndex(frame =>
       frame.colors.every((value, index) => value.toLowerCase() === draft.colors[index]?.toLowerCase()),
     ),
   ));
   const [playBusy, setPlayBusy] = useState(false);
+  const playLock = useRef(false);
+  const appliedAnimation = useRef<{signature: string; context: string} | null>(null);
+  const playbackGeneration = useRef(0);
+  const playbackContext = `${state?.device.modelId ?? ""}:${state?.device.connectionSessionId ?? ""}`;
+  const animationSignature = animationContent(draft);
+  useEffect(() => {
+    playbackGeneration.current++;
+    appliedAnimation.current = null;
+  }, [playbackContext, state?.device.connected]);
+  useEffect(() => {
+    if (!state || !["animation", "paused"].includes(state.playback.mode) || state.playback.lastError || connectionDisplay?.stateId === "serviceUnknown") {
+      playbackGeneration.current++;
+      appliedAnimation.current = null;
+    }
+  }, [state?.playback.mode, state?.playback.lastError, connectionDisplay?.stateId]);
   const [brightness, setBrightness] = useState(70);
   const stroke = useRef(new Set<number>());
   const draftRef = useRef(draft);
-  draftRef.current = draft;
+  draftRef.current = frameEditor ? { ...draft, colors: frameColors } : draft;
   const draftColorSignature = draft.colors.join("").toLowerCase();
-  const lastPreview = useRef(draftColorSignature);
+  const liveColorSignature = `${draftColorSignature}:${draft.animation.hueShift ?? 0}:${draft.animation.colorOverride?.toLowerCase() ?? ""}:${draft.animation.brightness ?? 100}`;
+  const lastPreview = useRef(liveColorSignature);
   const mounted = useRef(false);
   useEffect(() => {
     if (state) setBrightness(state.settings.brightness);
@@ -118,26 +186,27 @@ export function Studio({
     }
     if (
       !live ||
+      tab !== "paint" ||
       !perKeySupported ||
       !state?.device.connected ||
       state?.firmware?.compatible === false ||
-      tab === "game" ||
-      tab === "trigger" ||
       state.playback.mode === "game" ||
       state.playback.mode === "agent" ||
       state.playback.mode === "trigger"
     )
       return;
-    const signature = draftColorSignature;
+    const signature = liveColorSignature;
     if (signature === lastPreview.current) return;
     const timer = setTimeout(() => {
+      // A manual paint submission may have applied this same canvas meanwhile.
+      if (signature === lastPreview.current) return;
       lastPreview.current = signature;
-      void command({ op: "preview", colors: draft.colors }).catch(() => {
+      void command({ op: "preview", colors: applyArtworkAppearance(draft.colors, draft.animation) }).catch(() => {
         if (lastPreview.current === signature) lastPreview.current = "";
       });
     }, 100);
     return () => clearTimeout(timer);
-  }, [draftColorSignature, live, state?.device.connected, state?.firmware?.compatible, state?.playback.mode, state?.playback.playing, perKeySupported, tab, command]);
+  }, [liveColorSignature, live, state?.device.connected, state?.firmware?.compatible, state?.playback.mode, state?.playback.playing, perKeySupported, tab, command]);
   const commit = (colors: string[], history = true) => {
     if (history) {
       const previous = draftRef.current.colors.slice();
@@ -149,7 +218,8 @@ export function Studio({
     }
     const updated={ ...draftRef.current, colors };
     draftRef.current=updated;
-    setDraft(updated);
+    if (frameEditor) setFrameColors(colors);
+    else setDraft(updated);
   };
   const changeColor = (nextColor:string) => {
     setColor(nextColor);
@@ -193,23 +263,24 @@ export function Studio({
       next[index] = tool === "erase" ? "#000000" : color;
       const updated = { ...draftRef.current, colors: next };
       draftRef.current = updated;
-      setDraft(updated);
+      if (frameEditor) setFrameColors(next);
+      else setDraft(updated);
     }
   };
   const undo = () => {
     const previous = undoStack.at(-1);
     if (previous) {
-      setRedo((stack) => [...stack, draft.colors]);
+      setRedo((stack) => [...stack, draftRef.current.colors.slice()]);
       setUndo((stack) => stack.slice(0, -1));
-      setDraft({ ...draft, colors: previous });
+      commit(previous, false);
     }
   };
   const redo = () => {
     const next = redoStack.at(-1);
     if (next) {
-      setUndo((stack) => [...stack, draft.colors]);
+      setUndo((stack) => [...stack, draftRef.current.colors.slice()]);
       setRedo((stack) => stack.slice(0, -1));
-      setDraft({ ...draft, colors: next });
+      commit(next, false);
     }
   };
   const setAnimation = (patch: Partial<Animation>) =>
@@ -223,19 +294,45 @@ export function Studio({
     }
   };
   const play = async () => {
+    if (playLock.current) return;
+    if (!state?.device.connected || !perKeySupported || state.firmware?.compatible === false || connectionDisplay?.stateId === "serviceUnknown") {
+      notify("当前无法播放到键盘，请检查连接状态。");
+      return;
+    }
+    playLock.current = true;
     setPlayBusy(true);
+    const submitted = structuredClone({colors: draft.colors, animation: draft.animation});
+    const signature = animationContent(submitted), context = playbackContext, generation = playbackGeneration.current;
+    // The paint page applies its canvas, even when the saved artwork also has
+    // animation parameters. Only the animation page starts/resumes an effect.
+    const staticSubmission = tab === "paint" || submitted.animation.effect === "static";
+    const paintSignature = liveColorSignature;
+    if (tab === "paint") lastPreview.current = paintSignature;
+    appliedAnimation.current = null;
     try {
       await command({
-        op: draft.animation.effect === "static" ? "preview" : "play",
-        colors: draft.colors,
-        animation: draft.animation,
+        op: staticSubmission ? "preview" : "play",
+        ...submitted,
+        colors: staticSubmission ? applyArtworkAppearance(submitted.colors, submitted.animation) : submitted.colors,
       });
+      if (!staticSubmission && generation === playbackGeneration.current)
+        appliedAnimation.current = {signature, context};
+    } catch (error) {
+      if (tab === "paint" && lastPreview.current === paintSignature) lastPreview.current = "";
+      throw error;
     } finally {
+      playLock.current = false;
       setPlayBusy(false);
     }
   };
   const hardwarePlaying = Boolean(state?.playback.playing && state.playback.mode !== "trigger"),
     paused = state?.playback.mode === "paused";
+  const currentAnimationApplied = appliedAnimation.current?.signature === animationSignature
+    && appliedAnimation.current.context === playbackContext
+    && ["animation", "paused"].includes(state?.playback.mode ?? "")
+    && !state?.playback.lastError && connectionDisplay?.stateId !== "serviceUnknown";
+  const animationNeedsApply = tab === "animation" && (hardwarePlaying || paused) && !currentAnimationApplied;
+  const togglePlayback = tab === "animation" && !animationNeedsApply && (hardwarePlaying || paused);
   const pausedDraft = useRef<{ paused: boolean; signature: string }>({
     paused: false,
     signature: draftColorSignature,
@@ -245,622 +342,271 @@ export function Studio({
   } else if (!paused) {
     pausedDraft.current.paused = false;
   }
-  const currentColors =
+  const outputColors =
     tab === "game" ||
     (tab === "paint" && live && state?.device.armed && state.playback.mode === "static") ||
     (tab === "trigger" && state?.playback.mode === "trigger" && state.trigger?.armed) ||
-    hardwarePlaying ||
+    (hardwarePlaying && !animationNeedsApply) ||
     (paused &&
+      !animationNeedsApply &&
       state?.device.armed &&
       pausedDraft.current.signature === draftColorSignature)
       ? state?.colors || draft.colors
       : draft.colors;
-  return (
-    <section className="studio-page" data-mode={tab}>
-      {!perKeySupported && <div className="wireless-notice" role="status">{tr(lightingUnavailableMessage(state))}</div>}
-      <header className="page-heading">
-        <div>
-          <h1>{tr(STUDIO_MODES.find((mode) => mode.id === tab)?.label)}</h1>
-          {tr(tab !== "game" ? (
-            <div className="work-identity">
-              <label className="work-name">
-              <input
-                className="title-input"
-                aria-label={tr("当前作品名称")}
-                title={tr("点击修改作品名称")}
-                value={draft.name}
-                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                maxLength={80}
-              />
-              <Pencil size={12} aria-hidden="true" />
-              </label>
-              <span>
-                {tr(draft.id ? draft.trigger ? "按键触发" : labels[draft.animation.effect] : "尚未保存")}
-              </span>
-            </div>
-          ) : (
-            <p>{tr("把键盘变成游乐场，选一个游戏开始。")}</p>
-          ))}
-        </div>
-        <div className="header-actions">
-          {tr(tab !== "game" && (
-            <>
-              <Button onClick={onSave}>{tr("保存作品")}</Button>
-              {tr(tab !== "trigger" && (
-              <Button
-                kind="primary"
-                icon={
-                  hardwarePlaying ? (
-                    <Pause size={16} />
-                  ) : (
-                    <Play size={16} fill="currentColor" />
-                  )
-                }
-                busy={playBusy}
-                disabled={!perKeySupported || !state?.device.connected || state?.firmware?.compatible === false}
-                onClick={() =>
-                  run(
-                    hardwarePlaying || paused
-                      ? command({ op: "pause" })
-                      : play(),
-                  )
-                }
-              >
-                {tr(hardwarePlaying
-                  ? "暂停播放"
-                  : paused
-                    ? "继续播放"
-                    : "播放到键盘")}
-              </Button>
-              ))}
-            </>
-          ))}
-        </div>
-      </header>
-      <div className="studio-workspace">
-        {tr(state?.playback.lastError && (
-          <div className="inline-error" role="alert">
-            <CircleAlert size={17} />
-            <span>{tr(state.playback.lastError)}</span>
-          </div>
-        ))}
-        <div className="studio-grid">
-          <section className="canvas-panel">
-            <div className="canvas-toolbar">
-              {tr(tab === "trigger" ? (
-                <div className="game-title trigger-canvas-title">
-                  <Heart size={15} />
-                  {tr(state?.trigger?.armed ? "键盘实时灯光" : "待触发的图案")}
-                </div>
-              ) : tab !== "game" ? (
-                <>
-                  <div className="tool-group">
-                    {tr((
-                      [
-                        ["paint", "画笔", Paintbrush],
-                        ["select", "选择", Scan],
-                        ["erase", "橡皮擦", Eraser],
-                      ] as const
-                    ).map(([value, label, Icon]) => (
-                      <button
-                        key={value}
-                        className={tool === value ? "active" : ""}
-                        onClick={() => setTool(value)}
-                        aria-pressed={tool === value}
-                      >
-                        <Icon size={17} />
-                        <span>{tr(label)}</span>
-                      </button>
-                    )))}
-                  </div>
-                  <div className="history-actions">
-                    <Button
-                      className="icon-button"
-                      aria-label={tr("撤销")}
-                      title={tr("撤销")}
-                      disabled={!undoStack.length}
-                      icon={<Undo2 size={17} />}
-                      onClick={undo}
-                    />
-                    <Button
-                      className="icon-button"
-                      aria-label={tr("重做")}
-                      title={tr("重做")}
-                      disabled={!redoStack.length}
-                      icon={<Redo2 size={17} />}
-                      onClick={redo}
-                    />
-                  </div>
-                </>
-              ) : (
-                <div className="game-title">
-                  <span className="score-dot" />
-                  {tr(GAME_NAMES[state?.game.type || "snake"])}
-                </div>
-              ))}
-              <span className="canvas-count">
-                {tr(layout.length || "—")} {tr("颗按键灯")}</span>
-            </div>
-            <div className="keyboard-area" tabIndex={tab === "trigger" ? -1 : undefined}
-              onPointerDown={tab === "trigger" ? (event) => {
-                event.preventDefault();
-                event.currentTarget.focus({ preventScroll: true });
-              } : undefined}>
-              {tr(layout.length ? (
-                <Keyboard
-                  layout={layout}
-                  colors={currentColors}
-                  lightPreview={tab === "animation" && draft.animation.effect !== "static"}
-                  lightPreviewPeak={previewPeak}
-                  selected={tab === "game" || tab === "trigger" ? [] : selected}
-                  onKey={tab === "game" || tab === "trigger" ? undefined : touchKey}
-                  onGameKey={
-                    tab === "game" &&
-                    state?.game.status === "running" &&
-                    (state.game.type === "whack" ||
-                      state.game.type === "memory")
-                      ? (index) => {
-                          const code = layout.find(
-                            (key) => key.index === index,
-                          )?.code;
-                          if (code && canPressGameKey(state.game, code))
-                            run(
-                              command({ op: "gameInput", code, pressed: true }),
-                            );
-                        }
-                      : undefined
-                  }
-                  onStrokeStart={tab === "game" || tab === "trigger" ? undefined : startStroke}
-                  sideColor={
-                    state?.device.connected &&
-                    typeof state.device.sideColor === "string"
-                      ? state.device.sideColor
-                      : undefined
-                  }
-                />
-              ) : (
-                <div className="layout-loading">{tr("正在读取键盘布局…")}</div>
-              ))}
-            </div>
-            <div
-              className={`playback-status ${state?.device.connected ? "" : "disconnected"}`}
-            >
-              <span
-                className={`status-dot ${state?.device.connected ? "green" : ""}`}
-              />
-              <span className="playback-message">
-                {tr(state?.lightPower?.sleeping ? state.lightPower.reason === "duration" ? "亮灯时间已到 · 请在设备页唤醒" : "灯光已休眠 · 操作后自动唤醒" : !state?.device.connected
-                  ? tab === "game"
-                    ? "连接键盘后开始游戏"
-                    : tab === "trigger"
-                      ? "连接键盘后启用按键触发"
-                    : "连接键盘后可预览；画布可离线编辑"
-                  : !perKeySupported
-                    ? lightingUnavailableMessage(state)
-                  : state.firmware?.compatible === false
-                    ? "请先在设备页检查固件；画布可离线编辑"
-                  : state.trigger?.armed && state.playback.mode === "trigger"
-                    ? state.trigger.flashing
-                      ? `正在闪烁 · ${state.trigger.completed} / ${state.trigger.config.count}`
-                      : "等待按键 · 键盘保持熄灭"
-                    : tab === "trigger"
-                      ? "图案预览 · 启用后平时保持熄灭"
-                  : tab === "game" && state.game.status !== "idle"
-                    ? state.game.status === "paused"
-                      ? "游戏已暂停"
-                      : state.game.status === "won"
-                        ? "游戏通关"
-                        : state.game.status === "over"
-                          ? "游戏结束"
-                          : "游戏进行中"
-                    : paused
-                      ? "播放已暂停"
-                      : hardwarePlaying
-                        ? state.playback.mode === "game"
-                          ? state.game.status === "paused"
-                            ? "游戏已暂停"
-                            : state.game.status === "won"
-                              ? "游戏通关"
-                              : state.game.status === "over"
-                                ? "游戏结束"
-                                : "游戏进行中"
-                          : `正在播放${labels[state.playback.mode] ? " · " + tr(labels[state.playback.mode]) : ""}`
-                        : state.device.armed
-                          ? state.settings.codexEnabled ? state.settings.codexLightMode === "whole" ? "已发送颜色 · 单任务全键盘" : "已发送颜色 · Codex 灯光跟随绑定键位" : "已发送颜色 · 含键盘亮度"
-                          : "键盘已连接，尚未播放")}
-              </span>
-              {tr(tab !== "game" && tab !== "trigger" && (
-                <Switch label={tr("实时预览")} disabled={!perKeySupported} checked={live && perKeySupported} onChange={value=>{if(value)lastPreview.current="";setLive(value);}} />
-              ))}
-              {tr(state?.device.armed && tab !== "game" && tab !== "trigger" && (
-                <button
-                  className="text-button"
-                  onClick={() => run(command({ op: "stop" }))}
-                >
-                  <Square size={12} />{tr("停止")}</button>
-              ))}
-            </div>
-          </section>
-          {tr(tab === "game" ? (
-            <GamePanel state={state} command={command} />
-          ) : tab === "trigger" ? (
-            <TriggerPanel state={state} command={command} draft={draft} setDraft={setDraft}
-              layout={layout} notify={notify} onColors={commit} />
-          ) : (
-            <aside className="inspector paint-inspector">
-              <section className="paint-color">
-                <div className="section-heading compact color-heading">
-                  <h3>{tr("颜色")}</h3>
-                  <span>{tr("拖动微调")}</span>
-                </div>
-                <label className="color-scope">{tr("颜色应用到")}
-                  <select aria-label={tr("颜色应用到")} value={colorScope} onChange={e=>setColorScope(e.target.value)}>
-                    <option value="pattern">{tr(selected.length ? "选中按键" : "当前图案")}</option>
-                    <option value="all">{tr("整把键盘")}</option><option value="brush">{tr("仅画笔")}</option>
-                  </select>
-                </label>
-                {state?.settings.codexEnabled && !(state.bluetooth?.connected&&!state.device.connected) && <div className="color-ownership">
-                  <span>{tr(state.settings.codexLightMode === "whole" ? "整把键盘正在显示 Codex 状态" : "Codex 按键使用独立状态颜色")}</span>
-                  <button type="button" onClick={onEditCodexColors}>{tr("设置状态颜色")}</button>
-                </div>}
-                <ColorWheel
-                  color={color}
-                  onChange={changeColor}
-                  onChangeStart={()=>{colorGesture.current={active:true,recorded:false};}}
-                  onChangeEnd={()=>{colorGesture.current.active=false;}}
-                  memory={colorMemory}
-                  entry={<div className="color-entry">
-                  <span
-                    className="color-preview"
-                    style={{ background: color }}
-                    role="img"
-                    aria-label={tr(`当前颜色 ${color}`)}
-                  />
-                  <input
-                    aria-label={tr("十六进制颜色")}
-                    value={hex}
-                    onChange={(e) => setHex(e.target.value)}
-                    onBlur={applyHex}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") applyHex();
-                    }}
-                    maxLength={7}
-                  />
-                  <Button
-                    kind="ghost"
-                    className="icon-button"
-                    title={tr("复制颜色")}
-                    aria-label={tr("复制颜色")}
-                    icon={<Copy size={16} />}
-                    onClick={() =>
-                      run(
-                        navigator.clipboard
-                          .writeText(color)
-                          .then(() => notify("颜色已复制", "success"))
-                          .catch(() => notify("无法复制，请选中颜色值复制")),
-                      )
-                    }
-                  />
-                </div>}
-                />
-              </section>
-              {tr(tab === "paint" ? <>
-              <section className="paint-brightness">
-                <div className="section-heading compact">
-                  <h3>{tr("键盘亮度")}</h3>
-                  <span>{tr(brightness)}%</span>
-                </div>
-                <input
-                  className="range"
-                  aria-label={tr("键盘亮度")}
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={brightness}
-                  onChange={(e) => setBrightness(Number(e.target.value))}
-                  onPointerUp={() =>
-                    run(command({ op: "settings", settings: { brightness } }))
-                  }
-                  onKeyUp={() =>
-                    run(command({ op: "settings", settings: { brightness } }))
-                  }
-                />
-                <p className="dock-hint">{tr("调整整体灯光亮度，不改变画笔颜色。")}</p>
-              </section>
-              <section className="paint-patterns">
-                <h3>{tr("快速图案")}</h3>
-                <div className="preset-buttons">
-                  <Button
-                    icon={<Heart size={16} />}
-                    onClick={() => commit(heartColors(layout, color))}
-                  >{tr("爱心")}</Button>
-                  <Button
-                    icon={<Brush size={16} />}
-                    onClick={() => commit(blankColors())}
-                  >{tr("清空")}</Button>
-                </div>
-                <button className="text-button preset-library-link" onClick={onBrowsePresets}>{tr("更多图案与灯效")}<ArrowRight size={12} /></button>
-              </section>
-              </> : <AnimationPanel
-                draft={draft}
-                setAnimation={setAnimation}
-                layout={layout}
-                frameIndex={frameIndex}
-                setFrameIndex={setFrameIndex}
-                onLoadFrame={(colors) => commit(colors)}
-              />)}
-              {tr((tool === "select" || selected.length > 0) && (
-                <section className="selection-panel">
-                  <div className="section-heading compact">
-                    <h3>{tr("选中按键")}</h3>
-                    <span>
-                      {tr(selected.length ? `${selected.length} 个` : "")}
-                    </span>
-                  </div>
-                  {tr(selected.length ? (
-                    <>
-                      <p className="selected-labels">
-                        {tr(layout
-                          .filter((k) => selected.includes(k.index))
-                          .map((k) => k.label)
-                          .join(" · "))}
-                      </p>
-                      <Button
-                        className="full-width"
-                        icon={<Check size={15} />}
-                        onClick={() => {
-                          const next = draft.colors.slice();
-                          selected.forEach((i) => (next[i] = color));
-                          commit(next);
-                        }}
-                      >{tr("应用当前颜色")}</Button>
-                      <div className="selection-actions">
-                        <button
-                          onClick={() =>
-                            setSelected(layout.map((k) => k.index))
-                          }
-                        >{tr("全选")}</button>
-                        <button onClick={() => setSelected([])}>{tr("取消选择")}</button>
-                        <button
-                          onClick={() => {
-                            const next = draft.colors.slice();
-                            selected.forEach((i) => (next[i] = "#000000"));
-                            commit(next);
-                          }}
-                        >{tr("熄灭")}</button>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <p className="muted">{tr("使用「选择」工具，在键盘上选择一个或多个按键。")}</p>
-                      <button
-                        className="text-button"
-                        onClick={() => {
-                          setTool("select");
-                          setSelected(layout.map((k) => k.index));
-                        }}
-                      >{tr("选择全部")}</button>
-                    </>
-                  ))}
-                </section>
-              ))}
-            </aside>
-          ))}
-        </div>
+  const frames = draft.animation.frames || [];
+  const savedScene = draft.id ? state?.scenes.find(scene => scene.id === draft.id) : undefined;
+  const draftSaved = savedScene ? sceneContent(savedScene) === sceneContent(draft) : false;
+  const selectedFrame = frames[Math.min(frameIndex, Math.max(0, frames.length - 1))];
+  const paintTools = tab === "paint" || Boolean(frameEditor) || editingPattern;
+  const showingDraft = tab === "animation" && (!hardwarePlaying || animationNeedsApply) && (!paused || animationNeedsApply);
+  const currentColors = frameEditor ? frameColors : paintTools ? draft.animation.colorOverride !== undefined && !editingPattern ? applyArtworkAppearance(draft.colors, draft.animation) : draft.colors : pagePreview && previewColors ? previewColors
+    : showingDraft ? applyArtworkAppearance(draft.animation.effect === "frames" ? selectedFrame?.colors || draft.colors : draft.colors, draft.animation)
+      : tab === "trigger" && !(state?.playback.mode === "trigger" && state.trigger?.armed) ? applyArtworkAppearance(draft.colors, draft.animation) : outputColors;
+  useEffect(() => {
+    if (!pagePreview || tab !== "animation" || frameEditor) { setPreviewColors(null); return; }
+    const start = performance.now();
+    const update = () => {
+      const elapsed = performance.now() - start;
+      setPreviewColors(renderPageAnimation(draft.colors, draft.animation, elapsed, layout));
+      if (elapsed >= animationDuration(draft.animation)) setPagePreview(false);
+    };
+    update();
+    if (reducedMotion) return;
+    const timer = window.setInterval(update, 50);
+    return () => window.clearInterval(timer);
+  }, [pagePreview, tab, frameEditor, draft.colors, draft.animation, layout, reducedMotion]);
+  const beginFrame = (index: number) => {
+    const frame = frames[index];
+    if (!frame) return;
+    setPagePreview(false);
+    setFrameEditor({ index });
+    setFrameColors(frame.colors.slice());
+    setUndo([]); setRedo([]); setSelected([]);
+  };
+  const finishFrame = (apply: boolean) => {
+    if (!frameEditor) return;
+    const replacesPoster = frames[frameEditor.index]?.colors.every((color, index) => color.toLowerCase() === draft.colors[index]?.toLowerCase());
+    if (apply) setDraft({ ...draft, colors: replacesPoster ? frameColors.slice() : draft.colors, animation: {
+      ...draft.animation,
+      frames: frames.map((frame, index) => index === frameEditor.index ? { ...frame, colors: frameColors.slice() } : frame),
+    } });
+    setFrameEditor(null); setUndo([]); setRedo([]); setSelected([]);
+  };
+  const clearSource = frameEditor ? frameColors : tab === "animation" && draft.animation.effect === "frames" ? selectedFrame?.colors || draft.colors : draft.colors;
+  const clearCanvas = () => {
+    setPagePreview(false);setSelected([]);
+    if (!frameEditor && tab === "animation" && draft.animation.effect === "frames" && selectedFrame) {
+      beginFrame(Math.min(frameIndex, frames.length - 1));
+      setFrameColors(blankColors());setUndo([selectedFrame.colors.slice()]);
+    } else {
+      if (!paintTools) setEditingPattern(true);
+      commit(blankColors());
+    }
+  };
+  const triggerArmed = Boolean(state?.trigger?.armed && state.playback.mode === "trigger");
+  // Explain the existing live effect above; this display never changes eligibility.
+  const syncHoldReason = !live || tab !== 'paint' ? ''
+    : connectionDisplay?.stateId === 'serviceUnknown' ? '同步状态未确认：本地服务未响应。'
+    : connectionDisplay?.reasonId && (!perKeySupported || !state?.device.connected || state?.firmware?.compatible === false) ? `同步暂缓：${connectionCopy(connectionDisplay.workTitle)}`
+    : !perKeySupported ? `同步暂缓：${tr(lightingUnavailableMessage(state))}`
+    : !state?.device.connected ? '同步暂缓：连接 USB 后可同步画布。'
+    : state.firmware?.compatible === false ? '同步暂缓：当前固件暂不支持逐键输出。'
+    : state.playback.mode === 'agent' ? '同步暂缓：AI 状态灯正在控制输出。'
+    : state.playback.mode === 'game' ? '同步暂缓：灯光游戏正在控制输出。'
+    : state.playback.mode === 'trigger' ? '同步暂缓：按键触发正在控制输出。' : '';
+  const scopeHelp = colorScope === 'brush' ? '只改变之后绘制的颜色。'
+    : colorScope === 'all' ? '改色会立即应用到全部可上色按键。'
+    : selected.length ? `已选 ${selected.length} 个键；改色会立即生效。`
+    : '未选键时改已亮键；全黑时改全部键。';
+  // Service colors already include global output brightness, but not the
+  // device-only correction. Compare in that same logical color space.
+  const paintOutput = tab === "paint" && state?.device.connected && state.device.armed && perKeySupported
+    && state.firmware?.compatible !== false && state.playback.mode === "static" && !state.playback.lastError
+    ? applyArtworkAppearance(draft.colors, draft.animation).map(color => scaleColor(color, state.settings.brightness / 100)) : null;
+  const currentPaintShown = Boolean(paintOutput && state?.colors.length === paintOutput.length
+    && state.colors.every((color, index) => color.toLowerCase() === paintOutput[index].toLowerCase()));
+  const paintStatus = connectionDisplay?.stateId === "serviceUnknown" ? "同步状态未确认：本地服务未响应。"
+    : state?.lightPower?.sleeping ? "灯光已休眠"
+    : syncHoldReason || (currentPaintShown ? "当前画布已同步到键盘"
+      : state?.device.connected && state.device.armed && state.playback.mode !== "idle" ? "正在显示其他输出；当前画布待应用"
+      : "当前画布待应用到键盘");
+  const status = tab === "paint" ? paintStatus : state?.lightPower?.sleeping ? "灯光已休眠" : !state?.device.connected ? "连接 USB 后即可播放到键盘"
+    : tab === "trigger" ? triggerArmed ? state?.trigger?.flashing ? "正在闪烁" : "等待按键 · 键盘保持熄灭" : "未启用按键触发"
+    : animationNeedsApply ? "点击「更新播放」应用当前动画。"
+    : paused ? "播放已暂停" : hardwarePlaying ? "正在显示当前画布" : "尚未播放到键盘";
+  const triggerAction = async (newPattern = false) => {
+    if (!state?.device.connected || !perKeySupported || state.firmware?.compatible === false || connectionDisplay?.stateId === "serviceUnknown") {
+      notify("当前无法播放到键盘，请检查连接状态。");
+      return;
+    }
+    if ((!triggerArmed || newPattern) && !applyArtworkAppearance(draft.colors, draft.animation).some(value => value.toLowerCase() !== "#000000")) {
+      notify((draft.animation.brightness ?? 100) === 0 ? "作品亮度为 0%，调高亮度后可启用按键触发。" : "当前没有亮起的按键，先选一个图案。");
+      return;
+    }
+    setPlayBusy(true);
+    try {
+      if (triggerArmed && !newPattern) await command({ op: "triggerStop" });
+      else await command({ op: "triggerArm", colors: applyArtworkAppearance(draft.colors, draft.animation), trigger: draft.trigger || { code: "Space", count: 3, intervalMs: 600 } });
+    } finally { setPlayBusy(false); }
+  };
+  const handledPlayRequest = useRef<string | null>(null);
+  useEffect(() => {
+    if (!playRequestId || handledPlayRequest.current === playRequestId) return;
+    handledPlayRequest.current = playRequestId;
+    onPlayRequestHandled?.();
+    run((async () => {
+      try { await (playRequestKind === "trigger" ? triggerAction(true) : play()); }
+      finally { onPlayRequestFinished?.(); }
+    })());
+  }, [playRequestId]);
+  const paintPanel = (
+    <aside className="v5-properties v5-paint-properties">
+      <h3>{tr("画笔颜色")}</h3>
+      {(Boolean(draft.animation.hueShift) || draft.animation.colorOverride !== undefined || (draft.animation.brightness ?? 100) !== 100) && <p className="v8-palette-help">{tr("这里编辑原始颜色；整体配色与亮度在预览和播放时统一应用。")}</p>}
+      <div className="v7-color-scope-field">
+      <label htmlFor="studio-color-scope">{tr("颜色应用范围")}</label>
+      <select id="studio-color-scope" className="v5-color-scope" aria-label={tr("颜色应用范围")} aria-describedby="studio-color-scope-help" value={colorScope} onChange={event => setColorScope(event.target.value)}>
+        <option value="brush">{tr("仅画笔")}</option>
+        <option value="pattern">{tr(selected.length ? `选中按键（${selected.length}）` : "当前图案")}</option>
+        <option value="all">{tr("整把键盘")}</option>
+      </select>
+      <p id="studio-color-scope-help" className="v7-scope-help">{tr(scopeHelp)}</p>
       </div>
-    </section>
+      {state?.settings.codexEnabled && !(state.bluetooth?.connected && !state.device.connected) && <div className="v5-color-ownership"><span>{tr("AI 状态灯使用独立配色")}</span><button type="button" onClick={onEditCodexColors}>{tr("设置状态颜色")}</button></div>}
+      <ColorWheel color={color} onChange={changeColor} memory={colorMemory}
+        onChangeStart={() => { colorGesture.current = { active: true, recorded: false }; }}
+        onChangeEnd={() => { colorGesture.current.active = false; }}
+        entry={<div className="color-entry">
+          <span className="color-preview" style={{ background: color }} aria-label={tr(`当前颜色 ${color}`)} />
+          <input aria-label={tr("十六进制颜色")} value={hex} onChange={event => setHex(event.target.value)} onBlur={applyHex} onKeyDown={event => { if (event.key === "Enter") applyHex(); }} maxLength={7} />
+          <button className="v5-copy-color" type="button" aria-label={tr("复制颜色")} title={tr("复制颜色")} onClick={() => run(navigator.clipboard.writeText(color).then(() => notify("颜色已复制", "success")).catch(() => notify("无法复制，请选中颜色值复制")))}><Copy size={14} /></button>
+        </div>} />
+      {selected.length > 0 && <div className="v5-selected">
+        <div><span>{tr(`已选择 ${selected.length} 个按键`)}</span><button onClick={() => setSelected([])}>{tr("取消")}</button></div>
+        <Button onClick={() => { const next = draftRef.current.colors.slice(); selected.forEach(index => next[index] = color); commit(next); }}>{tr("应用当前颜色")}</Button>
+        <button onClick={() => { const next = draftRef.current.colors.slice(); selected.forEach(index => next[index] = "#000000"); commit(next); }}>{tr("熄灭选中按键")}</button>
+      </div>}
+      <section className="v5-quick-patterns"><h4>{tr("快速图案")}</h4>
+        <div><Button icon={<Heart size={16} />} onClick={() => commit(heartColors(layout, color))}>{tr("爱心")}</Button></div>
+        <button className="text-button" onClick={onBrowsePresets}><Folder size={16} />{tr("从作品库选择")}</button>
+      </section>
+      {tab === "paint" && <AnimationPalette draft={draft} setAnimation={setAnimation}/>}
+    </aside>
   );
+  if (tab === "game") return <section className="studio-page studio-v5" data-mode="game"><GamePanel state={state} command={command} layout={layout} display={connectionDisplay} onNavigateDevice={onNavigateDevice} /></section>;
+  return <section className="studio-page studio-v5" data-mode={tab} data-workspace-layout={workspace.mode} style={workspace.style}>
+    {!perKeySupported && (!connectionDisplay || connectionDisplay.stateId === 'usbReady') && <div className="wireless-notice" role="status">{tr(lightingUnavailableMessage(state))}</div>}
+    <header ref={workspace.headerRef} className={`v5-work-row ${frameEditor ? "v5-frame-edit-heading" : ""}`}>
+      <div className="v5-work-identity">
+        {frameEditor ? <><button className="text-button" onClick={() => finishFrame(false)}><ArrowLeft size={16} />{tr("返回动画")}</button><h2>{tr(`正在编辑第 ${frameEditor.index + 1} 帧`)}</h2></> : <>
+          <label className="v5-work-name"><input aria-label={tr("当前作品名称")} title={tr("点击修改作品名称")} value={draft.name} onChange={event => setDraft({ ...draft, name: event.target.value })} maxLength={80} /><Pencil size={12} /></label>
+          <span>{tr(draftSaved ? "已保存到本机" : draft.id ? "有未保存修改" : "新作品 · 未保存")}</span>
+        </>}
+      </div>
+      <div className="v5-work-actions">
+        {workspace.previewAway&&<Button kind="ghost" className="v5-workspace-return" data-workspace-navigation onClick={workspace.returnToKeyboard}><ArrowUp size={14}/>{tr('回到键盘')}</Button>}
+        {frameEditor ? <><Button kind="ghost" onClick={() => finishFrame(false)}>{tr("取消")}</Button><Button kind="primary" icon={<Check size={16} />} onClick={() => finishFrame(true)}>{tr(`应用到第 ${frameEditor.index + 1} 帧`)}</Button></> : <>
+          <Button onClick={onSave}>{tr("保存作品")}</Button>
+          <div className="v7-keyboard-action">{tab === "trigger" ? <Button kind="primary" icon={triggerArmed ? <Square size={16} /> : <Play size={16} />} busy={playBusy} disabled={!perKeySupported || !state?.device.connected || state?.firmware?.compatible === false || (!triggerArmed && !applyArtworkAppearance(draft.colors, draft.animation).some(value => value.toLowerCase() !== "#000000"))} onClick={() => run(triggerAction())}>{tr(triggerArmed ? "关闭按键触发" : "启用按键触发")}</Button> : <Button kind="primary" icon={togglePlayback && hardwarePlaying ? <Pause size={16} /> : <Play size={16} />} busy={playBusy} disabled={!perKeySupported || !state?.device.connected || state?.firmware?.compatible === false} onClick={() => run(togglePlayback ? command({ op: "pause" }) : play())}>{tr(tab === "paint" ? "播放到键盘" : animationNeedsApply ? paused ? "更新并播放" : "更新播放" : hardwarePlaying ? "暂停播放" : paused ? "继续播放" : "播放到键盘")}</Button>}{connectionDisplay && keyboardActionHint(connectionDisplay) && <span className="v7-keyboard-action-hint">{keyboardActionHint(connectionDisplay)}</span>}</div>
+        </>}
+      </div>
+    </header>
+    {state?.playback.lastError && <div className="inline-error" role="alert"><CircleAlert size={16} /><span>{tr(state.playback.lastError)}</span></div>}
+    <div ref={workspace.gridRef} className="v5-studio-grid">
+      <section className="v5-canvas">
+        <div ref={workspace.stageRef} className="v5-workspace-core" tabIndex={-1}>
+        <div className="v5-output-status" role="status">{connectionDisplay && (connectionDisplay.stateId !== 'usbReady' || tab === 'paint') ? <span className="v7-canvas-identity">{tab === "paint" ? tr(status) : canvasCaption(connectionDisplay)}</span> : <><i className={`status-dot ${hardwarePlaying || triggerArmed ? "green" : ""}`} /><span>{tr(status)}</span></>}</div>
+        {syncHoldReason && <div className="v7-sync-hold" role="status"><p>{tr(syncHoldReason)}</p><p>{tr('同步设置已保留。')}</p></div>}
+        <div className="v5-canvas-tools">
+          {paintTools ? <>
+            <div className="v5-tool-group">{([
+              ["paint", "画笔", Paintbrush], ["select", "选择", MousePointer2], ["erase", "橡皮擦", Eraser],
+            ] as const).map(([value, label, Icon]) => <button key={value} className={tool === value ? "active" : ""} onClick={() => setTool(value)} aria-pressed={tool === value}><Icon size={16} /><span>{tr(label)}</span></button>)}</div>
+            <div className="v5-history"><Button kind="ghost" className="icon-button" aria-label={tr("撤销")} title={tr("撤销")} disabled={!undoStack.length} icon={<Undo2 size={16} />} onClick={undo} /><Button kind="ghost" className="icon-button" aria-label={tr("重做")} title={tr("重做")} disabled={!redoStack.length} icon={<Redo2 size={16} />} onClick={redo} /></div>
+            {tab === "paint" && <Switch label={tr("绘制时同步到键盘")} checked={live && perKeySupported && Boolean(state?.device.connected)} disabled={!perKeySupported || !state?.device.connected} onChange={value => { if (value) lastPreview.current = ""; setLive(value); }} />}
+            {editingPattern && <Button onClick={() => setEditingPattern(false)} icon={<Check size={16} />}>{tr("完成编辑")}</Button>}
+          </> : tab === "animation" ? <><Button icon={<Eye size={16} />} onClick={() => setPagePreview(value => !value)}>{tr(pagePreview ? "停止预览" : "预览动画")}</Button><span className="v5-helper">{tr("仅在页面播放")}</span>{draft.animation.effect !== "frames" && <Button kind="ghost" icon={<Paintbrush size={16} />} onClick={() => {setPagePreview(false);setEditingPattern(true);}}>{tr("编辑图案")}</Button>}</> : tab === "trigger" ? <Button icon={<Paintbrush size={16} />} onClick={() => setEditingPattern(true)}>{tr("编辑图案")}</Button> : null}
+          <Button kind="ghost" icon={<Trash2 size={16}/>} disabled={!clearSource.some(value => !/^#0{6}$/i.test(value))} onClick={clearCanvas}>{tr(frameEditor || tab === "animation" && draft.animation.effect === "frames" ? "清空当前帧" : "清空画板")}</Button>
+        </div>
+        <div ref={workspace.keyboardRef} className="v5-keyboard" tabIndex={tab === "trigger" && !editingPattern ? -1 : undefined} onPointerDown={tab === "trigger" && !editingPattern ? event => { event.preventDefault(); event.currentTarget.focus({ preventScroll: true }); } : undefined}>
+          {layout.length ? <Keyboard layout={layout} colors={currentColors} lightPreview={tab === "animation" && draft.animation.effect !== "static"} lightPreviewPeak={previewPeak} selected={paintTools ? selected : []} onKey={paintTools ? touchKey : undefined} onStrokeStart={paintTools ? startStroke : undefined} sideColor={state?.device.connected && typeof state.device.sideColor === "string" ? state.device.sideColor : undefined} /> : <div className="layout-loading">{tr("正在读取键盘布局…")}</div>}
+        </div>
+        </div>
+        <div ref={workspace.auxiliaryRef} className="v5-workspace-aux">
+        {frameEditor ? <div className="v5-canvas-note">{tr(`本次修改只应用到第 ${frameEditor.index + 1} 帧`)}</div>
+          : tab === "trigger" ? <div className="v5-canvas-note">{tr(`平时熄灭；按下 ${(draft.trigger?.code || "Space").replace(/^(Key|Digit)/, "")} 时显示此图案。`)}</div>
+          : tab === "animation" ? <>
+            <div className="v5-animation-kind"><h3>{tr(draft.animation.effect === "frames" ? "逐帧动画" : "效果动画")}</h3><button onClick={() => { setPagePreview(false); setAnimation({ effect: draft.animation.effect === "frames" ? "move" : "frames" }); }}>{tr(draft.animation.effect === "frames" ? "切换到效果动画" : "切换到逐帧动画")}</button></div>
+            {draft.animation.effect === "frames" && <div className="v5-frame-strip">{frames.map((frame, index) => <button key={index} className={`v5-frame-chip ${frameIndex === index ? "active" : ""}`} aria-label={tr(`选择第 ${index + 1} 帧`)} onClick={() => { setFrameIndex(index); setPagePreview(false); }}><Keyboard layout={layout} colors={draft.animation.colorOverride !== undefined ? applyArtworkAppearance(frame.colors, draft.animation) : frame.colors} mini /><span><b>{index + 1}</b><span>{frame.duration} ms</span></span></button>)}<button className="v5-add-frame" disabled={frames.length >= 120} onClick={() => { setAnimation({ frames: [...frames, { colors: selectedFrame?.colors.slice() || draft.colors.slice(), duration: 300 }] }); setFrameIndex(frames.length); }}><Plus size={16} />{tr("新建帧")}</button></div>}
+          </> : <div className="v5-canvas-controls v7-output-controls"><span>{tr("逐键输出亮度")}</span><input aria-label={tr("逐键输出亮度")} aria-describedby="studio-output-brightness-help" type="range" min="0" max="100" value={brightness} style={rangeStyle(brightness)} onChange={event => setBrightness(Number(event.target.value))} onPointerUp={() => run(command({ op: "settings", settings: { brightness } }))} onKeyUp={() => run(command({ op: "settings", settings: { brightness } }))} /><span>{brightness}%</span><button className="text-button" onClick={() => run(command({ op: "restore" }))} disabled={!state?.device.connected}><RotateCcw size={16} />{tr("恢复原灯效")}</button><div id="studio-output-brightness-help" className="v7-output-help"><p>{tr('影响所有逐键输出；不改 HEX，不随作品保存。')}</p><p>{tr('AI 状态灯还会叠加此全局亮度。')}</p></div></div>}
+        </div>
+      </section>
+      {paintTools ? paintPanel : tab === "trigger" ? <TriggerPanel state={state} command={command} draft={draft} setDraft={setDraft} layout={layout} notify={notify} onColors={commit} /> : tab === "animation" ? <AnimationProperties draft={draft} setAnimation={setAnimation} frameIndex={frameIndex} setFrameIndex={setFrameIndex} onEditFrame={beginFrame} /> : <GamePanel state={state} command={command} />}
+    </div>
+  </section>;
 }
 
-function AnimationPanel({
-  draft,
-  setAnimation,
-  layout,
-  frameIndex,
-  setFrameIndex,
-  onLoadFrame,
-}: {
-  draft: Scene;
-  setAnimation: (patch: Partial<Animation>) => void;
-  layout: Key[];
-  frameIndex: number;
-  setFrameIndex: (n: number) => void;
-  onLoadFrame: (colors: string[]) => void;
+function AnimationProperties({ draft, setAnimation, frameIndex, setFrameIndex, onEditFrame }: {
+  draft: Scene; setAnimation: (patch: Partial<Animation>) => void; frameIndex: number;
+  setFrameIndex: (value: number) => void; onEditFrame: (index: number) => void;
 }) {
-  const animation = draft.animation,
-    frames = animation.frames || [];
-  const framePeak = useMemo(() => lightingPeak(frames.map(frame => frame.colors)), [frames]);
-  return (
-    <section className="animation-panel">
-      <div className="animation-settings">
-        <label>{tr("效果")}<select
-            aria-label={tr("动画效果")}
-            value={animation.effect}
-            onChange={(e) =>
-              setAnimation({ effect: e.target.value as Animation["effect"] })
-            }
-          >
-            {tr(Object.entries(labels).map(([value, label]) => (
-              <option value={value} key={value}>
-                {tr(label)}
-              </option>
-            )))}
-          </select>
-        </label>
-        {tr(animation.effect === "move" && (
-        <div className="direction-field">
-          <span>{tr("方向")}</span>
-          <div className="direction-group">
-            {tr(directions.map(([value, label, Icon]) => (
-              <button
-                aria-label={tr(label)}
-                title={tr(label)}
-                key={value}
-                className={animation.direction === value ? "active" : ""}
-                onClick={() => setAnimation({ direction: value })}
-              >
-                <Icon size={17} />
-              </button>
-            )))}
-          </div>
-        </div>
-        ))}
-        <label className="speed-field">{tr("速度")}<span>{tr(animation.speed)}</span>
-          <input
-            aria-label={tr("动画速度")}
-            disabled={animation.effect === "static"}
-            type="range"
-            min="1"
-            max="10"
-            value={animation.speed}
-            onChange={(e) => setAnimation({ speed: Number(e.target.value) })}
-          />
-        </label>
-        <Switch
-          label={tr("循环播放")}
-          checked={animation.loop}
-          onChange={(loop) => setAnimation({ loop })}
-        />
-      </div>
-      {tr(animation.effect === "frames" && (
-        <div className="frames-editor">
-          <div className="section-heading">
-            <h3>{tr("逐帧动画")}<span className="muted">{tr(frames.length)} {tr("帧")}</span>
-            </h3>
-            <Button
-              icon={<Plus size={15} />}
-              disabled={frames.length >= 120}
-              title={tr(frames.length >= 120 ? "最多 120 帧" : undefined)}
-              onClick={() => {
-                setAnimation({
-                  frames: [
-                    ...frames,
-                    { colors: draft.colors.slice(), duration: 500 },
-                  ],
-                });
-                setFrameIndex(frames.length);
-              }}
-            >{tr("从画布添加一帧")}</Button>
-          </div>
-          <div className="frame-list">
-            {tr(frames.map((frame, index) => (
-              <div
-                className={`frame-item ${frameIndex === index ? "active" : ""}`}
-                key={index}
-              >
-                <button
-                  className="frame-preview"
-                  onClick={() => {
-                    setFrameIndex(index);
-                    onLoadFrame(frame.colors.slice());
-                  }}
-                  aria-label={tr(`编辑第 ${index + 1} 帧`)}
-                >
-                  <Keyboard layout={layout} colors={frame.colors} lightPreview lightPreviewPeak={framePeak} mini />
-                  <span>{tr(`第 ${index + 1} 帧`)}</span>
-                </button>
-                <label>{tr("时长")}<FrameDuration
-                    value={frame.duration}
-                    index={index}
-                    onChange={(duration) =>
-                      setAnimation({
-                        frames: frames.map((f, i) =>
-                          i === index ? { ...f, duration } : f,
-                        ),
-                      })
-                    }
-                  />
-                  <span>ms</span>
-                </label>
-                <div className="frame-actions">
-                  <button
-                    onClick={() =>
-                      setAnimation({
-                        frames: frames.map((f, i) =>
-                          i === index
-                            ? { ...f, colors: draft.colors.slice() }
-                            : f,
-                        ),
-                      })
-                    }
-                  >{tr("更新画面")}</button>
-                  <button
-                    aria-label={tr(`复制第 ${index + 1} 帧`)}
-                    title={tr("复制帧")}
-                    disabled={frames.length >= 120}
-                    onClick={() =>
-                      setAnimation({
-                        frames: [
-                          ...frames.slice(0, index + 1),
-                          {
-                            colors: frame.colors.slice(),
-                            duration: frame.duration,
-                          },
-                          ...frames.slice(index + 1),
-                        ],
-                      })
-                    }
-                  >
-                    <Copy size={13} />
-                  </button>
-                  <button
-                    aria-label={tr(`删除第 ${index + 1} 帧`)}
-                    title={tr("删除帧")}
-                    onClick={() => {
-                      setAnimation({
-                        frames: frames.filter((_, i) => i !== index),
-                      });
-                      setFrameIndex(Math.max(0, index - 1));
-                    }}
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              </div>
-            )))}
-            {tr(!frames.length && (
-              <p className="muted">{tr("先在画布绘制，再添加为第一帧。点击帧可编辑，绘制后用「更新画面」保存这一帧。")}</p>
-            ))}
-          </div>
-        </div>
-      ))}
-    </section>
-  );
+  const animation = draft.animation, frames = animation.frames || [];
+  const index = Math.min(frameIndex, Math.max(0, frames.length - 1));
+  const frame = frames[index];
+  return <aside className="v5-properties v5-animation-properties">
+    <AnimationPalette draft={draft} setAnimation={setAnimation}/>
+    <h3>{tr(animation.effect === "frames" ? `第 ${index + 1} 帧` : "动画参数")}</h3>
+    {animation.effect === "frames" ? <>
+      <label className="v5-property-field"><span>{tr("单帧时长")}</span>{frame ? <FrameDuration value={frame.duration} index={index} onChange={duration => setAnimation({ frames: frames.map((value, i) => i === index ? { ...value, duration } : value) })} /> : <span className="v5-helper">{tr("先新建一帧")}</span>}</label>
+      <Button className="v5-edit-frame" icon={<Paintbrush size={16} />} disabled={!frame} onClick={() => onEditFrame(index)}>{tr("编辑这一帧")}</Button>
+      <div className="v5-frame-actions"><Button kind="ghost" icon={<Copy size={16} />} disabled={!frame || frames.length >= 120} onClick={() => { if (!frame) return; setAnimation({ frames: [...frames.slice(0, index + 1), { colors: frame.colors.slice(), duration: frame.duration }, ...frames.slice(index + 1)] }); setFrameIndex(index + 1); }}>{tr("复制")}</Button><Button kind="ghost" className="v5-danger" icon={<Trash2 size={16} />} disabled={!frame} onClick={() => { setAnimation({ frames: frames.filter((_, i) => i !== index) }); setFrameIndex(Math.max(0, index - 1)); }}>{tr("删除")}</Button></div>
+      <p className="v5-property-help">{tr("编辑只影响所选帧；整体配色影响全部帧。")}</p>
+    </> : <>
+      <label className="v5-property-field"><span>{tr("灯光效果")}</span><select aria-label={tr("动画效果")} value={animation.effect} onChange={event => setAnimation({ effect: event.target.value as Animation["effect"] })}>{Object.entries(labels).filter(([key]) => key !== "frames").map(([value, label]) => <option key={value} value={value}>{tr(label)}</option>)}</select></label>
+      {animation.effect === "move" && <label className="v5-property-field"><span>{tr("方向")}</span><select aria-label={tr("动画方向")} value={animation.direction} onChange={event => setAnimation({ direction: event.target.value as Direction })}>{directions.map(([value, label]) => <option key={value} value={value}>{tr(label)}</option>)}</select></label>}
+    </>}
+    <label className="v5-property-field v5-speed"><span>{tr("速度")}<span>{animation.speed} / 10</span></span><input aria-label={tr("动画速度")} type="range" min="1" max="10" value={animation.speed} style={rangeStyle(animation.speed,1,10)} disabled={animation.effect === "static"} onChange={event => setAnimation({ speed: Number(event.target.value) })} /></label>
+    <Switch label={tr("循环播放")} checked={animation.loop} onChange={loop => setAnimation({ loop })} />
+    <p className="v8-palette-help">{tr("播放中可继续调整颜色与参数；修改后点击「更新播放」。")}</p>
+    <button type="button" className="text-button v8-back-to-play" onClick={() => {
+      const action = document.querySelector<HTMLButtonElement>(".v7-keyboard-action button");
+      action?.scrollIntoView({block: "center"});
+      action?.focus({preventScroll: true});
+    }}>{tr("回到更新播放")}</button>
+  </aside>;
 }
 
-function FrameDuration({
-  value,
-  index,
-  onChange,
-}: {
-  value: number;
-  index: number;
-  onChange: (value: number) => void;
-}) {
+function AnimationPalette({draft, setAnimation}: {draft: Scene; setAnimation: (patch: Partial<Animation>) => void}) {
+  const animation = draft.animation, artworkBrightness = animation.brightness ?? 100;
+  const memory = useRef<HSV | null>(null);
+  const original = draft.colors.find(color => color.toLowerCase() !== "#000000")
+    ?? animation.frames?.flatMap(frame => frame.colors).find(color => color.toLowerCase() !== "#000000")
+    ?? DEFAULT_COLOR;
+  // Display the selected colour before artwork brightness, so a dimmed or
+  // black result does not move the wheel's selection to another colour.
+  const selectedColor = applyArtworkAppearance([original], {...animation, brightness: 100})[0];
+  return <section className="v8-animation-palette" aria-label={tr("整体配色")}>
+    <h3>{tr("整体颜色")}</h3>
+    <ColorWheel color={selectedColor} memory={memory} onChange={color => setAnimation({colorOverride: color.toLowerCase()})}
+      entry={<div className="v8-palette-selection"><span style={{background: selectedColor}} aria-hidden="true"/><output aria-label={tr("当前整体颜色")}>{selectedColor.toUpperCase()}</output></div>}/>
+    <Button kind="ghost" icon={<RotateCcw size={14}/>} disabled={animation.colorOverride === undefined} onClick={() => setAnimation({colorOverride: undefined})}>{tr("还原配色")}</Button>
+    <label className="v5-property-field v8-artwork-brightness"><span>{tr("作品亮度")}<output>{artworkBrightness}%</output></span>
+      <input aria-label={tr("作品亮度")} aria-valuetext={`${artworkBrightness}%`} type="range" min="0" max="100" step="1" value={artworkBrightness} style={rangeStyle(artworkBrightness)} onChange={event => setAnimation({brightness: Number(event.target.value)})}/>
+    </label>
+    <Button kind="ghost" icon={<RotateCcw size={14}/>} disabled={artworkBrightness === 100} onClick={() => setAnimation({brightness: 100})}>{tr("还原亮度")}</Button>
+    {artworkBrightness === 0 && <p className="v8-palette-help" role="status">{tr("作品亮度为 0%；应用后该作品熄灭，原始颜色仍保留。")}</p>}
+    <p className="v8-palette-help">{tr("选色应用到图案和全部帧；熄灭的按键保持不亮。")}</p>
+    <p className="v8-palette-help">{tr("还原配色可恢复原来的颜色；作品亮度单独调整。")}</p>
+  </section>;
+}
+
+function FrameDuration({ value, index, onChange }: { value: number; index: number; onChange: (value: number) => void }) {
   const [input, setInput] = useState(String(value));
   useEffect(() => setInput(String(value)), [value]);
-  const commit = () => {
-    const duration = Math.round(
-      Math.max(80, Math.min(10000, Number(input) || 80)),
-    );
-    setInput(String(duration));
-    onChange(duration);
-  };
-  return (
-    <input
-      aria-label={tr(`第 ${index + 1} 帧时长`)}
-      type="number"
-      min="80"
-      max="10000"
-      value={input}
-      onChange={(event) => setInput(event.target.value)}
-      onBlur={commit}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") {
-          commit();
-          event.currentTarget.blur();
-        }
-      }}
-    />
-  );
+  const commit = () => { const duration = Math.round(Math.max(80, Math.min(10000, Number(input) || 80))); setInput(String(duration)); onChange(duration); };
+  return <input aria-label={tr(`第 ${index + 1} 帧时长`)} type="number" min="80" max="10000" value={input} onChange={event => setInput(event.target.value)} onBlur={commit} onKeyDown={event => { if (event.key === "Enter") { commit(); event.currentTarget.blur(); } }} />;
+}
+
+function renderPageAnimation(colors: string[], animation: Animation, elapsed: number, layout: Key[]) {
+  return renderAnimation(colors, animation, elapsed, layout);
 }

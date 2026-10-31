@@ -25,6 +25,7 @@ async function request(path: string, body?: Record<string, unknown>) {
     throw new Error(friendlyConnectionError(value.error || `请求失败 (${res.status})`));
   return value;
 }
+export async function readAppState():Promise<AppState> { return request("/api/state"); }
 export function useAirApi(notify: Notify) {
   const [state, setState] = useState<AppState | null>(null);
   const [layout, setLayout] = useState<Key[]>([]);
@@ -111,19 +112,19 @@ export function useAirApi(notify: Notify) {
     };
   }, [applyLayout]);
   const command = useCallback(
-    async (body: Record<string, unknown>) => {
+    async (body: Record<string, unknown>, options?: {silent?:boolean}) => {
       try {
         const value = await request("/api/command", body);
         await refresh();
         return value.result;
       } catch (error) {
-        if (!window.__AIR_EXITING__) notify(error instanceof Error ? error.message : "操作失败");
+        if (!window.__AIR_EXITING__ && !options?.silent) notify(error instanceof Error ? error.message : "操作失败");
         throw error;
       }
     },
     [notify, refresh],
   );
-  return { state, layout, serviceError, command, refresh, exiting };
+  return { state, layout, serviceError, command, refresh, readState:readAppState, exiting };
 }
 export function exportScenes(scenes: unknown, name: string) {
   const blob = new Blob(

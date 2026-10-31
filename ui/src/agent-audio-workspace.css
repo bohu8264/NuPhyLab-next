@@ -1,0 +1,19 @@
+/* Only preview workspaces opt in; AI tasks/setup keep their document flow. */
+.lab-v5 :is(.agent-light-page,.audio-v5)[data-workspace-layout] :is(.agent-light-canvas,.audio-v5-canvas,.agent-workspace-core,.audio-workspace-core,.agent-workspace-aux,.audio-workspace-aux,.audio-workspace-keyboard,.agent-workspace-keyboard){min-width:0;min-height:0}
+.lab-v5 :is(.agent-light-page,.audio-v5)[data-workspace-layout] :is(.agent-workspace-core,.audio-workspace-core,.agent-workspace-aux,.audio-workspace-aux){display:flow-root}
+.lab-v5 .agent-light-page[data-workspace-layout] .agent-light-canvas{padding-top:0}.lab-v5 .agent-light-page[data-workspace-layout] .agent-workspace-core{padding-top:5px}
+.lab-v5 :is(.agent-light-page,.audio-v5)[data-workspace-layout] :is(.agent-workspace-core,.audio-workspace-core){scroll-margin-top:calc(var(--workspace-header-height,54px) + 12px)}
+.lab-v5 .agent-light-page[data-workspace-layout] .agent-workspace-core>.agent-live-status{display:flex;min-height:20px;height:auto;margin-bottom:24px}
+.lab-v5 .agent-light-page[data-workspace-layout]>.agent-light-heading,.lab-v5 .audio-v5[data-workspace-layout]>.audio-work-row{gap:12px}
+.lab-v5 :is(.agent-light-page,.audio-v5)[data-workspace-layout] :is(.agent-workspace-return,.audio-workspace-return){min-width:0;margin-left:auto}
+.lab-v5 .agent-light-page[data-workspace-layout="split"] .agent-light-grid,.lab-v5 .audio-v5[data-workspace-layout="split"] .audio-v5-grid{grid-template-columns:minmax(0,1fr) 224px;gap:24px;align-items:start}
+.lab-v5 .agent-light-page[data-workspace-layout="split"] .agent-light-inspector,.lab-v5 .audio-v5[data-workspace-layout="split"] .audio-v5-properties{height:auto;min-height:0;max-height:var(--workspace-available-height);overflow-y:auto;overscroll-behavior-y:contain;scrollbar-gutter:stable;scroll-padding:20px}
+.lab-v5 :is(.agent-light-page,.audio-v5)[data-workspace-layout="split"] :is(.agent-workspace-keyboard,.audio-workspace-keyboard){width:var(--workspace-keyboard-width);max-width:100%}
+.lab-v5 .agent-light-page[data-workspace-layout="flow"] .agent-light-grid,.lab-v5 .audio-v5[data-workspace-layout="flow"] .audio-v5-grid{grid-template-columns:minmax(0,1fr);align-items:start}
+.lab-v5 .agent-light-page[data-workspace-layout="flow"] .agent-light-inspector,.lab-v5 .audio-v5[data-workspace-layout="flow"] .audio-v5-properties{height:auto;min-height:0;max-height:none;overflow:visible}
+.lab-v5 .agent-light-page[data-workspace-layout="flow"]>.agent-light-heading,.lab-v5 .audio-v5[data-workspace-layout="flow"]>.audio-work-row{position:sticky;top:0;z-index:4;height:auto;min-height:54px;flex-wrap:wrap;padding-block:8px 12px;background:#fff}
+.lab-v5 :is(.agent-light-page,.audio-v5)[data-workspace-layout="flow"] :is(.agent-workspace-keyboard,.audio-workspace-keyboard){width:100%}
+
+/* Approved long-label repair: preserve text and grow the existing row. */
+.lab-v5 .agent-light-inspector .status-color-button{gap:8px;min-height:32px;height:auto;padding-block:6px}
+.lab-v5 .agent-light-inspector .status-color-button>span:not(.status-color-swatch){flex:1;min-width:0;line-height:18px;white-space:normal}

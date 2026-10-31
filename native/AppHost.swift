@@ -91,6 +91,101 @@ struct PendingAppUpdate: Codable {
     }
 }
 
+struct NativeFunctionKeyObservations {
+    static let limit = 128
+    private(set) var rows = [[String:Any]]()
+    // Only these function-key candidates are observed, never characters or
+    // general typing. Reaching the runtime limit stops both memory and log writes.
+    mutating func record(source:NativeKeyEventSource,keyCode:UInt32,phase:String,
+                         uptimeSeconds:Double?,timestampNS:UInt64?,flags:CGEventFlags,
+                         repeated:Bool,consumed:Bool)->[String:Any]? {
+        guard source == .eventTap || source == .local,[120,107,113].contains(keyCode),
+              ["down","up"].contains(phase),rows.count < Self.limit else{return nil}
+        let modifiers:[String] = [(CGEventFlags.maskCommand,"command"),(.maskControl,"control"),
+            (.maskAlternate,"option"),(.maskShift,"shift"),(.maskSecondaryFn,"function"),(.maskAlphaShift,"capsLock")]
+            .compactMap { flags.contains($0.0) ? $0.1 : nil }
+        let seconds:Any = uptimeSeconds.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }.map { $0 as Any } ?? NSNull()
+        let nanoseconds:Any = timestampNS.flatMap { $0 > 0 ? String($0) : nil }.map { $0 as Any } ?? NSNull()
+        let row:[String:Any] = ["seq":rows.count+1,"source":source.rawValue,"vk":keyCode,"phase":phase,
+            "uptimeSeconds":seconds,"uptimeNS":nanoseconds,"modifiers":modifiers,"repeat":repeated,"consumed":consumed]
+        rows.append(row)
+        return row
+    }
+    static func logLine(_ row:[String:Any])->Data? {
+        guard let bytes=try? JSONSerialization.data(withJSONObject:row,options:.sortedKeys) else{return nil}
+        var line=Data("[FunctionKeyObservation] ".utf8)
+        line.append(bytes);line.append(Data("\n".utf8))
+        return line
+    }
+}
+
+enum NativeWindowDragRegion {
+    // Window coordinates, in points. Full-size content can report no titlebar
+    // layout gap; the actual frame converted from screen is the drag boundary.
+    static func allowsDrag(point:NSPoint,eventType:NSEvent.EventType,isSameWindow:Bool,
+                           isMovable:Bool,isFullScreen:Bool,hasTitlebar:Bool,hasAttachedSheet:Bool,
+                           contentRect:NSRect,contentLayoutRect:NSRect,excludedRects:[NSRect],frameRect:NSRect?=nil) -> Bool {
+        let bounds=frameRect ?? contentRect
+        guard eventType == .leftMouseDown,isSameWindow,isMovable,!isFullScreen,hasTitlebar,!hasAttachedSheet,
+              point.x.isFinite,point.y.isFinite,valid(bounds),
+              excludedRects.allSatisfy({valid($0)}) else{return false}
+        // contentLayoutRect is diagnostic metadata, not a required gap. It can
+        // equal contentRect or use a different height in a full-size WK window.
+        let topBand=NSRect(x:bounds.minX,y:max(bounds.minY,bounds.maxY-22),
+                          width:bounds.width,height:min(22,bounds.height))
+        // Preserve the outer resize border/corners rather than starting a move.
+        guard bounds.width > 10,bounds.height > 10 else{return false}
+        let resizeInterior=bounds.insetBy(dx:5,dy:5)
+        let dragRect=NSIntersectionRect(topBand,resizeInterior)
+        guard !dragRect.isEmpty,NSPointInRect(point,dragRect),
+              !excludedRects.contains(where:{NSPointInRect(point,$0.insetBy(dx:-4,dy:-4))}) else{return false}
+        return true
+    }
+    static func observesTopPoint(_ point:NSPoint,frameRect:NSRect)->Bool {
+        guard point.x.isFinite,point.y.isFinite,valid(frameRect) else{return false}
+        return NSRect(x:frameRect.minX,y:max(frameRect.minY,frameRect.maxY-44),
+            width:frameRect.width,height:min(44,frameRect.height)).contains(point)
+    }
+    private static func valid(_ rect:NSRect) -> Bool {
+        [rect.origin.x,rect.origin.y,rect.width,rect.height].allSatisfy{$0.isFinite} && rect.width > 0 && rect.height > 0
+    }
+}
+
+final class NativeTitlebarWindow: NSWindow {
+    var dragGeometryObserver: (([String:Any])->Void)?
+    private var dragGeometryCount=0
+    override func sendEvent(_ event:NSEvent) {
+        if event.type == .leftMouseDown,event.window === self {
+            let frameRect=convertFromScreen(frame)
+            let contentRect=contentView.map{$0.convert($0.bounds,to:nil)} ?? frameRect
+            let excluded:[NSRect]=[NSWindow.ButtonType.closeButton,.miniaturizeButton,.zoomButton].compactMap { type in
+                guard let button=standardWindowButton(type) else{return nil}
+                return button.convert(button.bounds,to:nil)
+            }
+            let allowed=NativeWindowDragRegion.allowsDrag(point:event.locationInWindow,eventType:event.type,
+                isSameWindow:event.window === self,isMovable:isMovable,isFullScreen:styleMask.contains(.fullScreen),
+                hasTitlebar:styleMask.contains(.titled) && styleMask.contains(.fullSizeContentView),hasAttachedSheet:attachedSheet != nil,
+                contentRect:contentRect,contentLayoutRect:contentLayoutRect,excludedRects:excluded,frameRect:frameRect)
+            if dragGeometryCount < 8,let observer=dragGeometryObserver,
+               NativeWindowDragRegion.observesTopPoint(event.locationInWindow,frameRect:frameRect) {
+                dragGeometryCount+=1
+                func values(_ rect:NSRect)->[Double] {[rect.minX,rect.minY,rect.width,rect.height].map(Double.init)}
+                observer(["seq":dragGeometryCount,"point":[Double(event.locationInWindow.x),Double(event.locationInWindow.y)],
+                    "frameRect":values(frameRect),"contentRect":values(contentRect),"contentLayoutRect":values(contentLayoutRect),
+                    "excludedRects":excluded.map(values),"allowed":allowed,"isMovable":isMovable,
+                    "isFullScreen":styleMask.contains(.fullScreen),"hasAttachedSheet":attachedSheet != nil])
+            }
+            if allowed {
+                // Use the original mouseDown, once. WindowServer owns both axes,
+                // resize/Space behavior and drag lifetime; no JS/currentEvent bridge.
+                performDrag(with:event)
+                return
+            }
+        }
+        super.sendEvent(event)
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandlerWithReply {
     let audioCapture = AudioCapture()
     var pendingAudio: [String:Any]?
@@ -114,6 +209,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     var capturedFunctionKeys = Set<String>()
     var editingField = false
     var heldHotkeys = Set<UInt32>()
+    var keyGestureGate = NativeKeyGestureGate()
+    private var functionKeyObservations = NativeFunctionKeyObservations()
+    var eventTapOwnershipOverride: (() -> Bool)? // Pure host tests only; never configured by IPC.
+    var lastTapCaptureState: Bool?
     var keyEventQueue = [[String:Any]]()
     var keyEventSending = false
     var registeredCodes: [String] = []
@@ -167,7 +266,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         #if canImport(Sparkle)
         updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: self, userDriverDelegate: nil)
         #endif
-        window=NSWindow(contentRect:NSRect(origin:.zero,size:defaultWindowSize()),styleMask:[.titled,.closable,.miniaturizable,.resizable],backing:.buffered,defer:false)
+        window=NativeTitlebarWindow(contentRect:NSRect(origin:.zero,size:defaultWindowSize()),styleMask:[.titled,.closable,.miniaturizable,.resizable,.fullSizeContentView],backing:.buffered,defer:false)
+        (window as? NativeTitlebarWindow)?.dragGeometryObserver={ [weak self] geometry in
+            guard let self=self,self.worker?.isRunning == true,
+                  let bytes=try? JSONSerialization.data(withJSONObject:geometry,options:.sortedKeys) else{return}
+            var line=Data("[WindowDragGeometry] ".utf8);line.append(bytes);line.append(Data("\n".utf8))
+            self.appendWorkerLog(line)
+        }
+        window.isMovable=true
+        window.titlebarAppearsTransparent=true;window.titleVisibility = .hidden
         window.title="NuPhy Lab";window.contentMinSize=NSSize(width:720,height:520);window.delegate=self;window.isReleasedWhenClosed=false
         if !window.setFrameUsingName(windowFrameName) {window.center()}
         window.setFrameAutosaveName(windowFrameName)
@@ -180,17 +287,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         // global-hotkey events. Share the same held-key gate and action path.
         localKeyMonitor=NSEvent.addLocalMonitorForEvents(matching:[.keyDown,.keyUp]){[weak self] event in
             guard let self=self else{return event}
-            if self.handleFunctionKey(UInt32(event.keyCode),down:event.type == .keyDown,repeated:event.isARepeat,
-                modified:!event.modifierFlags.intersection([.command,.control,.option,.shift]).isEmpty) {return nil}
-            guard self.hotkeysEnabled,
-                  event.modifierFlags.intersection([.command,.control,.option,.shift]).isEmpty,
-                  let index=self.keyConfiguration.firstIndex(where:{$0.keyCode==UInt32(event.keyCode)}) else{return event}
-            let id=UInt32(index+1)
-            if event.type == .keyUp {
-                if self.heldHotkeys.remove(id) != nil {self.activateSlot(index,phase:"up")}
-            }
-            else if !event.isARepeat && self.heldHotkeys.insert(id).inserted {self.activateSlot(index)}
-            return nil
+            return self.handleLocalKey(event)
         }
         NSWorkspace.shared.notificationCenter.addObserver(self,selector:#selector(willSleep),name:NSWorkspace.willSleepNotification,object:nil)
         NSWorkspace.shared.notificationCenter.addObserver(self,selector:#selector(didWake),name:NSWorkspace.didWakeNotification,object:nil)
@@ -241,7 +338,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         "没有找到可打开官网的浏览器。": "No browser was found to open the official website.",
         "未能确认浏览器已打开，请使用下方官网地址手动打开。": "Could not confirm that the browser opened. Open the official address below manually.",
         "软件正在退出，暂未打开官网。": "NuPhy Lab is quitting; the official website was not opened.",
-        "无法确认键盘已释放，请先在设备页检查恢复记录。": "Could not confirm that the keyboard was released. Check recovery records on the Device page first.",
+        "无法确认键盘已释放，请返回设备页，重新连接键盘后重试。": "Could not confirm that the keyboard was released. Return to Device, reconnect the keyboard and try again.",
         "键盘释放请求超时，请先在设备页检查恢复状态。": "The keyboard release request timed out. Check recovery status on the Device page first.",
         "官网已打开，但键盘尚未确认释放。": "The website is open, but keyboard release is not confirmed.",
         "请在 NuPhyIO 完成更新，关闭官网页面后返回 NuPhy Lab。": "Finish updating in NuPhyIO, close its page, and return to NuPhy Lab.",
@@ -274,6 +371,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         if let data=try? Data(contentsOf:dataDirectory.appendingPathComponent("runtime.json")),
            let runtime=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any],
            let previous=runtime["port"] as? Int, previous>0 && previous<=65535 { env["AIR_STUDIO_PREFERRED_PORT"]=String(previous) }
+        env["AIR_STUDIO_PARENT_PID"]=String(getpid())
         child.environment=env
         let output=Pipe();child.standardOutput=output
         let errors=Pipe();child.standardError=errors
@@ -375,7 +473,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     @objc func show(){window?.makeKeyAndOrderFront(nil);NSApp.activate(ignoringOtherApps:true)}
     func defaultWindowSize() -> NSSize {
         let visible=(window?.screen ?? NSScreen.main)?.visibleFrame.size ?? NSSize(width:1440,height:900)
-        return NSSize(width:max(720,min(1100,visible.width * 0.85)),height:max(520,min(700,visible.height * 0.82 - 28)))
+        return NSSize(width:max(720,min(1080,visible.width * 0.85)),height:max(520,min(720,visible.height * 0.82 - 28)))
     }
     @objc func resetWindowSize(){
         window.setContentSize(defaultWindowSize());window.center()
@@ -428,9 +526,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     @objc func willSleep(){ audioCapture.stop();pendingAudio=nil }
     @objc func didWake(){ if !terminating && !preparingUpdate {post(["op":"resumeConnection"])} }
     func post(_ data:[String:Any]){guard let base=baseURL else{return};var request=URLRequest(url:base.appendingPathComponent("api/command"));request.httpMethod="POST";request.setValue(apiToken,forHTTPHeaderField:"X-Air-Token");request.setValue("application/json",forHTTPHeaderField:"Content-Type");request.httpBody=try? JSONSerialization.data(withJSONObject:data);URLSession.shared.dataTask(with:request).resume()}
-    func activateSlot(_ index:Int,phase:String="down"){
+    func activateSlot(_ index:Int,phase:String="down",gesture:NativeKeyGesture?=nil,
+                      source:NativeKeyEventSource?=nil,eventTime:Double?=nil){
         guard hotkeysEnabled,!terminating,keyConfiguration.indices.contains(index) else{return}
-        enqueueKey(["op":"codexKey","code":keyConfiguration[index].code,"phase":phase])
+        enqueueKey(gesture?.packet(phase:phase,source:source,eventTime:eventTime) ??
+            ["op":"codexKey","code":keyConfiguration[index].code,"phase":phase])
+    }
+    func dispatchBoundKey(_ index:Int,down:Bool,repeated:Bool,source:NativeKeyEventSource,
+                          eventTime:Double?,timestampNS:UInt64?=nil,owner:NativeKeyEventSource?=nil){
+        guard hotkeysEnabled,!terminating,keyConfiguration.indices.contains(index) else{return}
+        let binding=keyConfiguration[index],id=UInt32(index+1)
+        if down {
+            if let gesture=keyGestureGate.press(keyCode:binding.keyCode,code:binding.code,source:source,
+                eventTime:eventTime,timestampNS:timestampNS,repeated:repeated,owner:owner) {
+                heldHotkeys.insert(id);activateSlot(index,gesture:gesture,source:source,eventTime:eventTime)
+            }
+        } else if let gesture=keyGestureGate.release(keyCode:binding.keyCode,eventTime:eventTime,timestampNS:timestampNS) {
+            heldHotkeys.remove(id);activateSlot(index,phase:"up",gesture:gesture,source:source,eventTime:eventTime)
+        }
     }
     func enqueueKey(_ data:[String:Any]) {
         keyEventQueue.append(data);sendNextKey()
@@ -476,6 +589,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             replyHandler(true,nil);return
         }
         switch body["kind"] as? String {
+        case "captureDiagnostics":
+            replyHandler(functionKeyCaptureDiagnostics(),nil);return
         case "checkForUpdates":
             checkForUpdates();replyHandler(["opened":true],nil);return
         case "openOfficialDriver":
@@ -633,7 +748,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }
         if let override=driverKeyboardReleaseOverride {override(finish);return}
         guard let base=baseURL,!apiToken.isEmpty else {
-            finish(false,T("无法确认键盘已释放，请先在设备页检查恢复记录。"));return
+            finish(false,T("无法确认键盘已释放，请返回设备页，重新连接键盘后重试。"));return
         }
         var request=URLRequest(url:base.appendingPathComponent("api/command"),timeoutInterval:45)
         request.httpMethod="POST";request.setValue(apiToken,forHTTPHeaderField:"X-Air-Token")
@@ -646,7 +761,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                value?["ok"] as? Bool == true,result?["url"] as? String == self.officialDriverURL.absoluteString {
                 finish(true,nil)
             } else {
-                finish(false,(value?["error"] as? String) ?? error?.localizedDescription ?? self.T("无法确认键盘已释放，请先在设备页检查恢复记录。"))
+                finish(false,(value?["error"] as? String) ?? error?.localizedDescription ?? self.T("无法确认键盘已释放，请返回设备页，重新连接键盘后重试。"))
             }
         }.resume()
     }
@@ -775,6 +890,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
     func reportHotkeys(){
         guard baseURL != nil,!terminating else{return}
+        _ = reconcileFunctionKeyTap()
         let suspended=capturingKey || (editingField && NSApp.isActive)
         let signature="\(registeredCodes)|\(failedCodes)|\(suspended)"
         guard signature != lastKeyReportSignature || Date().timeIntervalSince(lastKeyReport)>5 else{return}
@@ -824,10 +940,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             hotkeysEnabled=true;installHotkeys()
         } else {
             if !capturingKey {stopReservedKeyCapture()}
-            for id in heldHotkeys {
-                let index=Int(id)-1
-                if keyConfiguration.indices.contains(index) {enqueueKey(["op":"codexKey","code":keyConfiguration[index].code,"phase":"up"])}
-            }
+            for gesture in keyGestureGate.releaseAll() {enqueueKey(gesture.packet(phase:"up"))}
             hotkeysEnabled=false
             for key in hotKeys {if let key=key {UnregisterEventHotKey(key)}}
             hotKeys.removeAll();heldHotkeys.removeAll();registeredCodes.removeAll();failedCodes.removeAll();carbonRegisteredCodes.removeAll();nextCaptureRetry = .distantPast
@@ -841,11 +954,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             guard let event=event,let user=user else{return noErr};var ident=EventHotKeyID();GetEventParameter(event,EventParamName(kEventParamDirectObject),EventParamType(typeEventHotKeyID),nil,MemoryLayout<EventHotKeyID>.size,nil,&ident)
             let host=Unmanaged<AppDelegate>.fromOpaque(user).takeUnretainedValue()
             guard host.hotkeysEnabled,!host.terminating else{return OSStatus(eventNotHandledErr)}
-            if GetEventKind(event)==UInt32(kEventHotKeyReleased) {
-                if host.heldHotkeys.remove(ident.id) != nil {host.activateSlot(Int(ident.id)-1,phase:"up")}
-            }
-            else if host.heldHotkeys.insert(ident.id).inserted {host.activateSlot(Int(ident.id)-1)}
-            return noErr
+            return host.handleCarbonHotKey(ident.id,down:GetEventKind(event) != UInt32(kEventHotKeyReleased),eventTime:GetEventTime(event)) ? noErr : OSStatus(eventNotHandledErr)
         },2,&eventTypes,Unmanaged.passUnretained(self).toOpaque(),&hotkeyHandler)
         guard status==noErr else {hotkeysEnabled=false;failedCodes=keyConfiguration.map{$0.code};return}
         for (i,binding) in keyConfiguration.enumerated(){
@@ -875,12 +984,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     func stopReservedKeyCapture(){
         if let tap=reservedKeyTap {CGEvent.tapEnable(tap:tap,enable:false);CFMachPortInvalidate(tap)}
         if let source=reservedKeySource {CFRunLoopRemoveSource(CFRunLoopGetMain(),source,.commonModes)}
-        reservedKeyTap=nil;reservedKeySource=nil
+        reservedKeyTap=nil;reservedKeySource=nil;lastTapCaptureState=nil
     }
     func startReservedKeyCapture()->Bool {
         if let attempt=captureAttemptOverride {return attempt()}
+        _ = reconcileFunctionKeyTap()
         if let tap=reservedKeyTap {
             if !CGEvent.tapIsEnabled(tap:tap) {CGEvent.tapEnable(tap:tap,enable:true)}
+            _ = reconcileFunctionKeyTap()
             return CGEvent.tapIsEnabled(tap:tap)
         }
         let mask=(CGEventMask(1)<<CGEventType.keyDown.rawValue)|(CGEventMask(1)<<CGEventType.keyUp.rawValue)
@@ -888,6 +999,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             guard let context=context else{return Unmanaged.passUnretained(event)}
             let host=Unmanaged<AppDelegate>.fromOpaque(context).takeUnretainedValue()
             if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+                host.interruptFunctionKeyTap()
                 if host.hotkeysEnabled || host.capturingKey,let tap=host.reservedKeyTap {CGEvent.tapEnable(tap:tap,enable:true)}
                 return Unmanaged.passUnretained(event)
             }
@@ -895,15 +1007,99 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         },userInfo:Unmanaged.passUnretained(self).toOpaque()),let source=CFMachPortCreateRunLoopSource(kCFAllocatorDefault,tap,0) else{return false}
         reservedKeyTap=tap;reservedKeySource=source
         CFRunLoopAddSource(CFRunLoopGetMain(),source,.commonModes);CGEvent.tapEnable(tap:tap,enable:true)
+        _ = reconcileFunctionKeyTap()
         return true
     }
     func handleReservedKey(_ type:CGEventType,_ event:CGEvent)->Bool {
         guard [CGEventType.keyDown,.keyUp].contains(type) else{return false}
-        return handleFunctionKey(UInt32(event.getIntegerValueField(.keyboardEventKeycode)),down:type == .keyDown,
+        let keyCode=UInt32(event.getIntegerValueField(.keyboardEventKeycode))
+        let consumed=handleFunctionKey(keyCode,down:type == .keyDown,
             repeated:event.getIntegerValueField(.keyboardEventAutorepeat) != 0,
-            modified:!event.flags.intersection([.maskCommand,.maskControl,.maskAlternate,.maskShift]).isEmpty)
+            modified:!event.flags.intersection([.maskCommand,.maskControl,.maskAlternate,.maskShift]).isEmpty,
+            source:.eventTap,eventTime:Double(event.timestamp)/1_000_000_000,timestampNS:event.timestamp)
+        observeFunctionKey(source:.eventTap,keyCode:keyCode,phase:type == .keyDown ? "down":"up",
+            uptimeSeconds:Double(event.timestamp)/1_000_000_000,timestampNS:event.timestamp,flags:event.flags,
+            repeated:event.getIntegerValueField(.keyboardEventAutorepeat) != 0,consumed:consumed)
+        return consumed
     }
-    func handleFunctionKey(_ keyCode:UInt32,down:Bool,repeated:Bool,modified:Bool)->Bool {
+    func handleLocalKey(_ event:NSEvent)->NSEvent? {
+        let rawTimestamp = event.cgEvent?.timestamp
+        let eventTime = rawTimestamp.flatMap { $0 > 0 ? Double($0)/1_000_000_000 : nil } ?? event.timestamp
+        var consumed=false
+        defer {
+            if event.type == .keyDown || event.type == .keyUp {
+                observeFunctionKey(source:.local,keyCode:UInt32(event.keyCode),phase:event.type == .keyDown ? "down":"up",
+                    uptimeSeconds:eventTime,timestampNS:rawTimestamp,flags:CGEventFlags(rawValue:UInt64(event.modifierFlags.rawValue)),
+                    repeated:event.isARepeat,consumed:consumed)
+            }
+        }
+        if self.handleFunctionKey(UInt32(event.keyCode),down:event.type == .keyDown,repeated:event.isARepeat,
+            modified:!event.modifierFlags.intersection([.command,.control,.option,.shift]).isEmpty,
+            source:.local,eventTime:eventTime,timestampNS:rawTimestamp) {consumed=true;return nil}
+        guard self.hotkeysEnabled,
+              event.modifierFlags.intersection([.command,.control,.option,.shift]).isEmpty,
+              let index=self.keyConfiguration.firstIndex(where:{$0.keyCode==UInt32(event.keyCode)}) else{return event}
+        self.dispatchBoundKey(index,down:event.type == .keyDown,repeated:event.isARepeat,
+            source:.local,eventTime:eventTime,timestampNS:rawTimestamp)
+        consumed=true
+        return nil
+    }
+    private func observeFunctionKey(source:NativeKeyEventSource,keyCode:UInt32,phase:String,
+                                    uptimeSeconds:Double?,timestampNS:UInt64?,flags:CGEventFlags,
+                                    repeated:Bool,consumed:Bool) {
+        guard !terminating,hotkeysEnabled || capturingKey,
+              let row=functionKeyObservations.record(source:source,keyCode:keyCode,phase:phase,
+                uptimeSeconds:uptimeSeconds,timestampNS:timestampNS,flags:flags,repeated:repeated,consumed:consumed) else{return}
+        // Existing log transport only. Offline host fixtures have no running
+        // worker and never write into the user's application data directory.
+        if worker?.isRunning == true,let line=NativeFunctionKeyObservations.logLine(row) {appendWorkerLog(line)}
+    }
+    func handleCarbonHotKey(_ id:UInt32,down:Bool,eventTime:Double)->Bool {
+        let index=Int(id)-1
+        guard hotkeysEnabled,!terminating,keyConfiguration.indices.contains(index) else{return false}
+        if functionKeyCodes[keyConfiguration[index].keyCode] != nil {
+            routeFunctionKey(index,down:down,repeated:false,source:.carbon,eventTime:eventTime,tapActive:reconcileFunctionKeyTap())
+        } else {dispatchBoundKey(index,down:down,repeated:false,source:.carbon,eventTime:eventTime)}
+        return true
+    }
+    func functionKeyTapIsActive()->Bool {
+        eventTapOwnershipOverride?() ?? reservedKeyTap.map { CGEvent.tapIsEnabled(tap:$0) } ?? false
+    }
+    @discardableResult func reconcileFunctionKeyTap(observedTapEvent:Bool=false)->Bool {
+        let available=observedTapEvent || functionKeyTapIsActive()
+        if lastTapCaptureState == true && !available {interruptFunctionKeyTap()}
+        lastTapCaptureState=available
+        return available
+    }
+    func interruptFunctionKeyTap(){
+        for gesture in keyGestureGate.interrupt(owner:.eventTap) {
+            if let index=keyConfiguration.firstIndex(where:{$0.keyCode==gesture.keyCode}) {heldHotkeys.remove(UInt32(index+1))}
+            enqueueKey(gesture.packet(phase:"up"))
+        }
+        lastTapCaptureState=false
+    }
+    func routeFunctionKey(_ index:Int,down:Bool,repeated:Bool,source:NativeKeyEventSource,eventTime:Double?,timestampNS:UInt64?=nil,tapActive:Bool){
+        let binding=keyConfiguration[index]
+        let owner=NativeFunctionKeyOwnership.owner(tapActive:tapActive,carbonRegistered:carbonRegisteredCodes.contains(binding.code))
+        let heldOwner=keyGestureGate.heldGesture(keyCode:binding.keyCode)?.owner
+        let permitted=NativeFunctionKeyOwnership.accepts(source,owner:owner) ||
+            (!down && heldOwner.map{NativeFunctionKeyOwnership.accepts(source,owner:$0)} == true)
+        guard permitted else{return}
+        dispatchBoundKey(index,down:down,repeated:repeated,source:source,eventTime:eventTime,timestampNS:timestampNS,owner:owner)
+    }
+    func functionKeyCaptureDiagnostics()->[String:Any] {
+        let active=functionKeyTapIsActive()
+        let bindings=keyConfiguration.filter{functionKeyCodes[$0.keyCode] != nil}
+        let owners=Dictionary(uniqueKeysWithValues:bindings.map { binding in
+            (binding.code,NativeFunctionKeyOwnership.owner(tapActive:active,carbonRegistered:carbonRegisteredCodes.contains(binding.code)).rawValue)
+        })
+        return ["tapActive":active,"owners":owners,"localOnly":bindings.map{$0.code}.filter{owners[$0]=="local"},
+            "awaitingKeyUp":keyGestureGate.awaitingReleaseCodes,"activeGestures":keyGestureGate.activeCount,
+            "functionKeyObservations":functionKeyObservations.rows,"observationLimit":NativeFunctionKeyObservations.limit,
+            "observationLimitReached":functionKeyObservations.rows.count == NativeFunctionKeyObservations.limit]
+    }
+    func handleFunctionKey(_ keyCode:UInt32,down:Bool,repeated:Bool,modified:Bool,
+                           source:NativeKeyEventSource = .local,eventTime:Double?=nil,timestampNS:UInt64?=nil)->Bool {
         guard !terminating,let code=functionKeyCodes[keyCode] else{return false}
         if capturingKey && NSApp.isActive {
             if !down,capturedFunctionKeys.remove(code) != nil {sendCapturedFunctionKey(code,phase:"up");return true}
@@ -913,13 +1109,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }
         guard hotkeysEnabled,let index=keyConfiguration.firstIndex(where:{$0.keyCode==keyCode}) else{return false}
         let id=UInt32(index+1)
-        if !down,heldHotkeys.remove(id) != nil {
-            activateSlot(index,phase:"up");return true
+        let tapActive=reconcileFunctionKeyTap(observedTapEvent:source == .eventTap)
+        if !down {
+            let wasHeld=heldHotkeys.contains(id)
+            routeFunctionKey(index,down:false,repeated:repeated,source:source,eventTime:eventTime,timestampNS:timestampNS,tapActive:tapActive)
+            return !modified || wasHeld
         }
         guard !modified else{return false}
-        if down && !repeated && heldHotkeys.insert(id).inserted {
-            activateSlot(index)
-        }
+        routeFunctionKey(index,down:true,repeated:repeated,source:source,eventTime:eventTime,timestampNS:timestampNS,tapActive:tapActive)
         return true
     }
     func sendCapturedFunctionKey(_ code:String,phase:String) {

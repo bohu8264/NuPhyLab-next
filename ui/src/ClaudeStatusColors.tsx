@@ -1,6 +1,7 @@
 import {useEffect,useRef,useState} from "react";
-import {RotateCcw} from "lucide-react";
+import {RotateCcw,ChevronRight} from "lucide-react";
 import {CLAUDE_STATUS_IDS,CLAUDE_STATUS_COLORS,CLAUDE_STATUS_NAMES,claudeStatusColor} from "../../shared/claude-lighting.mjs";
+import {readAppState} from "./api";
 import {ColorWheel} from "./ColorWheel";
 import type {HSV} from "../../shared/color.mjs";
 import {Button,Modal,run} from "./primitives";
@@ -9,35 +10,50 @@ import type {Command} from "./types";
 
 export function ClaudeStatusColors({settings,command,focusOnMount}:{settings:Record<string,unknown>;command:Command;focusOnMount?:boolean}) {
   const section=useRef<HTMLElement>(null);
-  useEffect(()=>{if(focusOnMount){section.current?.scrollIntoView({block:"center"});section.current?.focus({preventScroll:true});}},[focusOnMount]);
+  useEffect(()=>{if(focusOnMount){section.current?.scrollIntoView({block:"nearest"});section.current?.focus({preventScroll:true});}},[focusOnMount]);
   const [editing,setEditing]=useState<string|null>(null);
   const [color,setColor]=useState("#FFFFFF"),[hex,setHex]=useState("#FFFFFF");
-  const [busy,setBusy]=useState(false),[error,setError]=useState("");
+  const [busy,setBusy]=useState(false),[error,setError]=useState(""),[pending,setPending]=useState(false),[resetNote,setResetNote]=useState("");
+  const lock=useRef(false);
   const memory=useRef<HSV|null>(null);
-  const change=(value:string)=>{setColor(value);setHex(value);setError("");};
-  const parse=()=>{const value=hex.startsWith("#")?hex:`#${hex}`;if(!/^#[0-9a-f]{6}$/i.test(value)){setError(tr("请输入有效颜色"));return null;}change(value.toUpperCase());return value.toUpperCase();};
+  useEffect(()=>{if(error&&!pending)requestAnimationFrame(()=>document.querySelector<HTMLInputElement>('.agent-color-v6 input:not([disabled])')?.focus());},[error,pending]);
+  const validHex=/^#?[0-9a-f]{6}$/i.test(hex);
+  const change=(value:string)=>{if(lock.current)return;setColor(value);setHex(value);setError("");};
+  const parse=()=>{const value=hex.startsWith("#")?hex:`#${hex}`;if(!/^#[0-9a-f]{6}$/i.test(value)){setError(tr("请输入 6 位十六进制颜色，如 #98C7AC。"));return null;}change(value.toUpperCase());return value.toUpperCase();};
+  const notify=(message:string)=>window.dispatchEvent(new CustomEvent('nuphylab:notify',{detail:{message,kind:'success'}}));
   const apply=async()=>{
-    const value=parse();if(!value||!editing)return;
-    setBusy(true);
-    try{await command({op:"settings",settings:{claudeStatusColors:{[editing]:value}}});setEditing(null);}
-    finally{setBusy(false);}
+    if(lock.current||!editing)return;
+    const value=parse();if(!value)return;
+    lock.current=true;setBusy(true);setError('');
+    try{
+      await command(pending?{op:'codexAdaptCheck',source:'claude'}:{op:'settings',settings:{claudeStatusColors:{[editing]:value}}},{silent:true});
+      setEditing(null);notify('颜色已应用');
+    }catch(failure){
+      let stored=false;try{const current=(await readAppState()).settings['claudeStatusColors'] as Record<string,string>|undefined;stored=current?.[editing]?.toUpperCase()===value;}catch{/* unknown result */}
+      setPending(stored);setError(tr(stored?'颜色已保存，键盘同步尚未完成。请重新检查；关闭不会撤销已保存的颜色。':'未能确认应用结果。已保留颜色，请重新检查后重试。'));
+    }finally{lock.current=false;setBusy(false);}
   };
-  const reset=async()=>{setBusy(true);try{await command({op:"settings",settings:{claudeStatusColors:Object.fromEntries(CLAUDE_STATUS_IDS.map(id=>[id,CLAUDE_STATUS_COLORS[id]]))}});}finally{setBusy(false);}};
+  const reset=async()=>{
+    if(lock.current)return;lock.current=true;setBusy(true);setResetNote('');
+    const defaults=Object.fromEntries(CLAUDE_STATUS_IDS.map(id=>[id,CLAUDE_STATUS_COLORS[id]]));
+    try{await command({op:'settings',settings:{claudeStatusColors:defaults}},{silent:true});notify('已恢复默认颜色');}
+    catch(failure){let stored=false;try{const current=(await readAppState()).settings['claudeStatusColors'] as Record<string,string>|undefined;stored=Object.entries(defaults).every(([id,value])=>current?.[id]?.toUpperCase()===value.toUpperCase());}catch{/* unknown */}setResetNote(stored?'默认颜色已保存，键盘同步尚未完成。请重新检查。':'未能确认恢复结果，请重新检查后重试。');}
+    finally{lock.current=false;setBusy(false);}
+  };
   return <section className="codex-palette" ref={section} tabIndex={-1} aria-label={tr("状态颜色")}>
     <div className="section-heading compact"><h3>{tr("状态颜色")}</h3><Button kind="ghost" icon={<RotateCcw size={14}/>} disabled={busy} onClick={()=>run(reset())}>{tr("恢复默认颜色")}</Button></div>
-    <div className="codex-palette-grid">{CLAUDE_STATUS_IDS.map(id=><button className="status-color-button" key={id}
-      aria-label={tr(`修改${CLAUDE_STATUS_NAMES[id]}颜色`)} onClick={()=>{memory.current=null;change(claudeStatusColor({status:id},settings));setEditing(id);}}>
+    <div className="codex-palette-grid">{[...CLAUDE_STATUS_IDS].sort((a,b)=>['running','awaitingApproval','awaitingInput','ended','error','unknown'].indexOf(a)-['running','awaitingApproval','awaitingInput','ended','error','unknown'].indexOf(b)).map(id=><button className="status-color-button" key={id} disabled={busy}
+      aria-label={tr(`修改${CLAUDE_STATUS_NAMES[id]}颜色`)} onClick={()=>{memory.current=null;setPending(false);setError("");change(claudeStatusColor({status:id},settings));setEditing(id);}}>
       <span className="status-color-swatch" style={{backgroundColor:claudeStatusColor({status:id},settings)}} aria-hidden="true"/>
-      <span>{tr(CLAUDE_STATUS_NAMES[id])}</span>
+      <span>{tr(CLAUDE_STATUS_NAMES[id])}</span><ChevronRight className="status-color-caret" size={14} strokeWidth={1.5} aria-hidden="true"/>
     </button>)}</div>
-    {editing && <Modal title={tr(`修改${CLAUDE_STATUS_NAMES[editing]}颜色`)} onClose={()=>{if(!busy)setEditing(null);}}>
-      <div className="status-color-editor">
-        <ColorWheel key={editing} color={color} onChange={change} memory={memory} entry={<div className="color-entry">
-          <span className="color-preview" style={{background:color}} aria-hidden="true"/>
-          <input aria-label={tr("状态颜色值")} value={hex} maxLength={7} onChange={e=>setHex(e.target.value)} onBlur={parse} onKeyDown={e=>{if(e.key==="Enter")run(apply());}}/>
-        </div>}/>
-        {error && <p className="field-error" role="alert">{error}</p>}
-        <div className="dialog-actions"><Button disabled={busy} onClick={()=>setEditing(null)}>{tr("取消")}</Button><Button kind="primary" busy={busy} onClick={()=>run(apply())}>{tr("应用颜色")}</Button></div>
+    {resetNote&&<p className="agent-inline-error" role="alert">{tr(resetNote)}</p>}
+    {editing && <Modal title={tr(`修改${CLAUDE_STATUS_NAMES[editing]}颜色`)} width={424} className="agent-overlay-v6 agent-color-v6" busy={busy} initialFocus="input" onClose={()=>{if(!lock.current)setEditing(null);}} footer={<><Button kind="ghost" disabled={busy} onClick={()=>setEditing(null)}>{tr(pending?'完成':'取消')}</Button><Button kind="primary" busy={busy} disabled={!validHex} onClick={()=>{void apply();}}>{tr(pending?'重新检查':'应用颜色')}</Button></>}>
+      <div className="agent-color-editor-v6" aria-busy={busy}>
+        <fieldset disabled={busy||pending} inert={busy||pending}>
+          <ColorWheel key={editing} color={color} onChange={value=>{if(!pending)change(value);}} memory={memory} entry={<label className="agent-color-entry-v6"><span>{tr('HEX 颜色')}</span><div><span className="color-preview" style={{background:color}} aria-hidden="true"/><input aria-label={tr('状态颜色值')} aria-invalid={!validHex} disabled={busy||pending} value={hex} maxLength={7} onChange={e=>setHex(e.target.value)} onBlur={parse} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();void apply();}}}/></div></label>}/>
+        </fieldset>
+        {error?<p className="agent-inline-error" role="alert">{error}</p>:<p className="agent-overlay-hint">{tr('颜色应用到所选状态。不会改变另一套 AI 的配色。')}</p>}
       </div>
     </Modal>}
   </section>;
