@@ -23,3 +23,12 @@ test('updated firmware clears the old reminder even offline; an old or different
  state.device.modelId='air75-v3';assert.equal(firmwareUpdateSatisfied(state,previous),false);
  state.device.modelId='kick75';state.firmware.compatible=false;assert.equal(firmwareUpdateSatisfied(state,previous),false);
 });
+test('old Kick prompts from current USB firmware before online flags exist, but never inherits another model',()=>{
+ const state={device:{connected:true,modelId:'kick75',firmware:'4.0.12.6',readOnly:true}};
+ assert.equal(firmwarePrompt(state).required,true);
+ assert.equal(firmwarePrompt(state).target,'4.0.18.6');
+ state.firmware={modelId:'air75-v3',current:'1.0.14.6'};assert.equal(firmwarePrompt(state),null);
+ state.firmware={modelId:'kick75',current:'4.0.12.6',latest:'4.0.99.6',latestConfirmed:true,latestSupported:false};
+ assert.equal(firmwarePrompt(state).target,'4.0.18.6');assert.equal(firmwarePrompt(state).latestUnverified,true);
+ state.device.connected=false;state.device.identified=false;assert.equal(firmwarePrompt(state),null);
+});

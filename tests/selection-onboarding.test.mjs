@@ -33,9 +33,16 @@ test('voice-denied setup offers a text-only route without requesting audio acces
  assert(!f.commands.some(x=>x.op==='permission'||x.op==='capture'));f.close();
 });
 test('permission page distinguishes denied audio and stale live grants, and reopens only on explicit click',async()=>{
- const f=await fixture({needsRelaunch:true,microphoneState:'denied',speechRecognitionState:'restricted'},'SelectionPermissionSettings');
- assert.match(textOf(f.instance.tree),/已拒绝/);assert.match(textOf(f.instance.tree),/受系统限制/);assert.match(textOf(f.instance.tree),/需要重新打开后生效/);
+ const f=await fixture({needsRelaunch:true,accessibility:true,inputMonitoring:true,screenRecording:true,microphoneState:'denied',speechRecognitionState:'restricted'},'SelectionPermissionSettings');
+ assert.match(textOf(f.instance.tree),/已拒绝/);assert.match(textOf(f.instance.tree),/受系统限制/);assert.match(textOf(f.instance.tree),/已允许/);assert.match(textOf(f.instance.tree),/需要重新打开后生效/);
+ assert.doesNotMatch(textOf(f.instance.tree),/已就绪/);
  assert(!f.commands.some(x=>x.op==='relaunch'));await f.click('完成授权并重新打开');assert.equal(f.commands.filter(x=>x.op==='relaunch').length,1);f.close();
+});
+test('fresh permission setup does not offer a restart before authorization',async()=>{
+ const f=await fixture({},'SelectionPermissionSettings');
+ assert.match(textOf(f.instance.tree),/前往授权/);
+ assert.doesNotMatch(textOf(f.instance.tree),/完成授权并重新打开/);
+ f.close();
 });
 test('returning from System Settings refreshes the permission snapshot and read failure becomes unknown',async()=>{
  const f=await fixture({},'SelectionPermissionSettings');f.setState({accessibility:true,inputMonitoring:true,screenRecording:true});await f.focus();assert.match(textOf(f.instance.tree),/已允许/);

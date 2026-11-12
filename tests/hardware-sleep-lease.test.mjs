@@ -90,6 +90,16 @@ test('an already armed device still checks sleep without repeating native arm',a
   assert.equal(f.hardware.state.armed,true);assert.equal(f.hardware.state.boardSleepLease.active,true);
 });
 
+test('qualified Kick playback acquires its advertised sleep lease and restores it on stop',async t=>{
+  const f=await fixture(t,{kick:true,capability:true});await f.hardware.connect();await f.hardware.arm();
+  assert.equal(f.hardware.state.modelId,'kick75');
+  assert.deepEqual(await f.operations(),['connect','status','acquireBoardSleepLease','arm']);
+  assert.equal(f.hardware.state.boardSleepLease.active,true);
+  await f.hardware.restore();
+  assert.equal(f.hardware.state.boardSleepLease.pending,false);
+  assert.equal(f.hardware.state.armed,false);
+});
+
 test('an already disabled board can pass verified acquisition without claiming a mutation',async t=>{
   const f=await fixture(t,{alreadyDisabled:true});await f.hardware.connect();await f.hardware.arm();
   assert.equal(f.hardware.state.armed,true);assert.deepEqual(f.hardware.state.boardSleepLease,{supported:true,active:false,pending:false,ownsChanges:false});

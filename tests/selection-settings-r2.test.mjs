@@ -6,12 +6,13 @@ const providers=(await import('../ui/src/selection-providers.ts')).providers;
 const configuration={provider:'deepSeek',endpoint:'https://api.deepseek.com/chat/completions',model:'deepseek-flash',apiProtocol:'chatCompletions',imageInputConfirmed:false,maximumOutputTokens:4096};
 async function fixture(patch={},component='SelectionLab'){
  let state={supported:true,ready:true,setupState:'ready',hasKey:true,screenRecording:true,accessibility:true,inputMonitoring:true,microphone:false,speechRecognition:false,shortcutRegistered:true,shortcutNotice:'',issue:'',phase:'idle',configurationIssue:'',preferences:{enabled:true,voiceEnabled:false,defaultAction:'translate',shortcut:{keyCode:0,modifiers:256,label:'⌃',modifierOnly:true},configuration:{...configuration}},...patch};
- const calls=[],events=[];let failure='',onStatus=null;
+ const calls=[],events=[];let failure='',onStatus=null,onRecord=null;
  const ui=createVMEnvironment({'lucide-react':new Proxy({},{get:()=>()=>null}),'./primitives':{Button:()=>null},'./selection-providers':{providers}});
  ui.window.webkit={messageHandlers:{selectionLab:{postMessage:body=>{
   calls.push(plain(body));
   const result=(async()=>{
    if(body.op==='status'&&onStatus){onStatus(state);onStatus=null;}
+   if(body.op==='recordShortcut'&&onRecord)onRecord(state);
    if(body.op===failure)throw Error('合成失败');
    if(body.op==='save'){state.preferences=plain(body.preferences);if(body.apiKey)state.hasKey=true;}
    if(body.op==='deleteKey')state.hasKey=false;
@@ -26,7 +27,7 @@ async function fixture(patch={},component='SelectionLab'){
  ui.window.addEventListener('nuphylab:navigate',event=>events.push(event.detail));
  const module=await ui.load(file),instance=ui.mount(module.exports[component]);await ui.settle(instance);
  const find=predicate=>{const nodes=walkAll(instance.tree,predicate);assert.equal(nodes.length,1,'expected one matching control');return nodes[0];};
- return {ui,instance,calls,events,get state(){return state;},find,nextStatus(fn){onStatus=fn;},fail(op){failure=op;},async focus(){ui.window.dispatchEvent({type:'focus'});await ui.settle(instance);},async click(label){const node=find(n=>n.props?.onClick&&textOf(n)===label);assert(!node.props.disabled);await node.props.onClick();await ui.settle(instance);},async change(id,value){find(n=>n.props?.id===id).props.onChange({target:{value}});await ui.settle(instance);},async toggle(label,value){const node=find(n=>n.props?.label===label);assert(!node.props.disabled);node.props.onChange(value);await ui.settle(instance);},close(){instance.unmount();}};
+ return {ui,instance,calls,events,get state(){return state;},find,nextStatus(fn){onStatus=fn;},recordWith(fn){onRecord=fn;},fail(op){failure=op;},async focus(){ui.window.dispatchEvent({type:'focus'});await ui.settle(instance);},async click(label){const node=find(n=>n.props?.onClick&&textOf(n)===label);assert(!node.props.disabled);await node.props.onClick();await ui.settle(instance);},async change(id,value){find(n=>n.props?.id===id).props.onChange({target:{value}});await ui.settle(instance);},async toggle(label,value){const node=find(n=>n.props?.label===label);assert(!node.props.disabled);node.props.onChange(value);await ui.settle(instance);},close(){instance.unmount();}};
 }
 const content=f=>textOf(f.instance.tree);
 
@@ -105,4 +106,33 @@ test('save success and account request failure remain distinguishable',async()=>
 });
 test('old key deletion is refused when saved credential scope changed externally',async()=>{
  const f=await fixture({},'SelectionAPISettings');f.nextStatus(s=>{s.preferences.configuration.endpoint='https://external.example.invalid/v1/chat/completions';});await f.click('移除密钥');assert(!f.calls.some(x=>x.op==='deleteKey'));assert.match(content(f),/服务配置已更新/);f.close();
+});
+
+// Recording is native, so WebKit focus or browser mouse navigation cannot turn
+// a button number into a keyboard key. The UI preserves the resulting binding.
+test('side-button recorder result stays selected and survives unrelated preference changes',async()=>{
+ const f=await fixture();const before=structuredClone(f.state.preferences.configuration);
+ f.recordWith(s=>{s.preferences.shortcut={keyCode:0,modifiers:0,buttonIndex:3,label:'鼠标侧键 1'};});
+ const button=f.find(n=>n.props?.['aria-label']==='录制框选快捷键');let focused=false;
+ await button.props.onClick({currentTarget:{focus(){focused=true;}}});await f.ui.settle(f.instance);
+ assert(focused);assert.equal(f.calls.filter(x=>x.op==='recordShortcut').length,1);
+ assert.match(content(f),/鼠标侧键 1/);assert.match(content(f),/键盘快捷键或鼠标侧键/);
+ await f.toggle('开启按住说话',true);
+ assert.equal(f.state.preferences.shortcut.buttonIndex,3);assert.deepEqual(f.state.preferences.configuration,before);
+ assert(!f.calls.some(x=>['capture','permission','test'].includes(x.op)));f.close();
+});
+test('cancelled native recording leaves the old shortcut and re-enables the control',async()=>{
+ const f=await fixture(),before=structuredClone(f.state.preferences.shortcut);f.fail('recordShortcut');
+ await f.find(n=>n.props?.['aria-label']==='录制框选快捷键').props.onClick({currentTarget:{focus(){}}});await f.ui.settle(f.instance);
+ assert.deepEqual(f.state.preferences.shortcut,before);
+ assert(!f.find(n=>n.props?.['aria-label']==='录制框选快捷键').props.disabled);f.close();
+});
+
+test('Reply is a fourth persisted action and preserves the latest side-button and voice settings',async()=>{
+ const f=await fixture();const group=f.find(n=>n.props?.['aria-label']==='默认框选动作');
+ assert.deepEqual(walkAll(group,n=>n.type==='button').map(textOf),['翻译','总结','解释','回复']);
+ f.nextStatus(s=>{s.preferences.shortcut={keyCode:0,modifiers:0,buttonIndex:4,label:'鼠标侧键 2'};s.preferences.configuration.model='latest-model';s.preferences.voiceEnabled=true;});
+ await f.click('回复');assert.equal(f.state.preferences.defaultAction,'reply');assert.equal(f.state.preferences.shortcut.buttonIndex,4);assert.equal(f.state.preferences.configuration.model,'latest-model');assert(f.state.preferences.voiceEnabled);
+ assert(f.find(n=>n.type==='button'&&textOf(n)==='回复').props['aria-pressed']);assert.match(content(f),/结合选中内容和口述要求生成回复/);
+ assert(!f.calls.some(x=>['capture','permission','test'].includes(x.op)));f.close();
 });

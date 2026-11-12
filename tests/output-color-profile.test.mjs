@@ -1,3 +1,4 @@
+import {AmbientLighting,DEFAULT_AMBIENT_LIGHTING} from '../shared/ambient-lighting.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp, readFile, rm} from 'node:fs/promises';
@@ -344,7 +345,7 @@ async function outputSourceFixture() {
   hardware.setOutputColorProfile(profile());
   const paints = [];
   hardware.request = async (op, args) => {if (op === 'paint') paints.push(args.colors); return {};};
-  const context = vm.createContext({hardware, store: {data: {settings: {brightness: 27}}}, scaleColor, blank:()=>Array(84).fill('#000000'),
+  const context = vm.createContext({hardware, ambientLighting:new AmbientLighting(), ambientSettings:()=>DEFAULT_AMBIENT_LIGHTING, store: {data: {settings: {brightness: 27}}}, scaleColor, blank:()=>Array(84).fill('#000000'),
     agentEnabled: () => false, agentLightingSource: () => null, playback: {mode: 'static', framesSent: 0}, lightPower: {sleeping: false},
     colors: [], previewColors:[], lastFrame: '', lastCommittedWire: null, agentOutputReceipt:null, frameTimes: [],
     connectionWake:{frame:()=>null},wakeReleasePending:null,getLayoutModel: () => 'kick75',

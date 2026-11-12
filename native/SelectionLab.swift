@@ -30,12 +30,27 @@ enum LabKeychain {
  private var keyboardReservedKeys=Set<UInt32>()
  private var shortcutConflict:Bool{preferences.shortcut.conflictsWithKeyboard(keyboardReservedKeys)}
  func updateReservedKeys(_ codes:Set<UInt32>){guard !stopping,codes != keyboardReservedKeys else{return};keyboardReservedKeys=codes;if shortcutConflict{cancel()};do{try register(preferences)}catch{registrationIssue=Self.friendly(error,language:language)}}
- var dragReservedTrigger:String? { preferences.enabled ? DragTrigger.selectionReservation(keyCode:preferences.shortcut.keyCode,modifiers:preferences.shortcut.modifiers,modifierOnly:preferences.shortcut.modifierOnly == true) : nil }
+ var dragReservedTrigger:String? { preferences.enabled ? preferences.shortcut.dragReservation : nil }
  var isBusy:Bool{recordingReply != nil || !overlays.isEmpty || task != nil || utilityTask != nil || voicePending}
  private var freshPermissions:LabPermissionSnapshot?;private var freshAt:TimeInterval=0;private var nextProbe:TimeInterval=0;private var permissionProbe:Process?
+ private var observedLocalPermissions:LabPermissionSnapshot?
  private var permissionRecheckUntil:TimeInterval=0
  private var monitorRecovery=LabMonitorRecovery()
- private var needsRelaunch:Bool{guard let freshPermissions,ProcessInfo.processInfo.systemUptime-freshAt<5 else{return false};return LabPermissionSnapshot.current().requiresRelaunch(fresh:freshPermissions,voice:preferences.voiceEnabled)}
+ private var recentPermissionProbe:LabPermissionSnapshot?{
+  ProcessInfo.processInfo.systemUptime-freshAt<5 ? freshPermissions : nil
+ }
+ private func observeLocalPermissions()->LabPermissionSnapshot{
+  let local=LabPermissionSnapshot.current()
+  if observedLocalPermissions != local{
+   observedLocalPermissions=local
+   // A probe taken before this local edge must not mask a revocation.
+   freshPermissions=nil
+   if let permissionProbe,permissionProbe.isRunning{permissionProbe.terminate()}
+   permissionProbe=nil
+   nextProbe=0
+  }
+  return local
+ }
  private func configurationIssue(_ value:LabPreferences)->String {
   guard !value.configuration.model.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty else{return "请先在“模型与 API”中选择模型并保存 API Key。"}
   do{let account=try value.configuration.credentialAccount();return LabKeychain.has(account) ? "":"请先在“模型与 API”中保存此服务的 API Key。"}catch{return Self.friendly(error,language:language)}
@@ -46,6 +61,8 @@ enum LabKeychain {
  private let viewState=SelectionPanelState();private var registrationIssue="";private var hold=LabHoldState();private var selectionRect:NSRect?
  private var captureReady=false;private var voicePending=false;private var speechFailed=false;private var speechStarted=false;private var voiceToken:UUID? { didSet { if (oldValue != nil) != (voiceToken != nil) { voiceActivityChanged?(voiceToken != nil) } } };private var voiceDelay:Task<Void,Never>?
  private var pendingAction:LabAction = .translate;private var permissionSignature="";private var recordingReply:((Any?,String?)->Void)?;private var recordingTimer:Timer?;private var modifierRecorder=LabModifierRecorder();private var recordedShortcut:LabShortcut?
+ private var sideRecorder=LabSideButtonRecorder();private var sideMonitor:Any?
+ private var sideSelection=IntentSideSelectionState();private var sidePrimaryTop:CGFloat=0
  private var panelAnchor=NSPoint.zero;private var resultWheel=LabWheelState();private var wheelMonitor:Any?;private var modeTask:Task<Void,Never>?
  private var panelScreenNumber:NSNumber?;private var panelMeasurement:LabAnswerMeasurement?
  private var surface:SelectionNotchSurface?;private var closingPanel=false
@@ -56,7 +73,7 @@ enum LabKeychain {
  init(directory:URL){
   self.directory=directory;super.init()
   if let data=try? Data(contentsOf:preferencesURL),let value=try? JSONDecoder().decode(LabPreferences.self,from:data){preferences=value}
-  input.onEvent={[weak self] event in guard let self else{return};switch event.edge{case .began:self.shortcutBegan();case .released:self.shortcutReleased();case .cancelled:self.cancel();case .moved:break}}
+  input.onEvent={[weak self] event in self?.receiveInput(event)}
   input.onCancel={[weak self] in self?.cancel()};input.onFailure={[weak self] _ in self?.registrationIssue="快捷键监听暂未就绪，正在重新连接；也可点击重新检查。";self?.monitorRecovery.failed(at:ProcessInfo.processInfo.systemUptime);self?.cancel()}
   voice.language = language
   voice.onTranscript={[weak self] text in guard let self,self.voiceToken != nil else{return};self.viewState.question=text;self.overlayFeedback(speech:text)}
@@ -70,6 +87,14 @@ enum LabKeychain {
   viewState.chooseTranslationLanguage={[weak self] in self?.changeTranslationLanguage($0)}
   viewState.beginTyping={[weak self] in self?.panel?.makeKey()}
   viewState.expansion={[weak self] in self?.layoutPanel(animated:true)}
+  sideMonitor=NSEvent.addLocalMonitorForEvents(matching:[.otherMouseDown,.otherMouseUp,.otherMouseDragged,.systemDefined]){[weak self] event in
+   guard let self,!self.stopping else{return event}
+   let capture=self.recordingReply != nil && self.recordedShortcut==nil && !IsSecureEventInputEnabled()
+   let result=self.sideRecorder.receive(event,capturing:capture)
+   if let shortcut=result.shortcut{self.finishShortcutRecording(shortcut)}
+   return result.event
+  }
+  observers.append(NotificationCenter.default.addObserver(forName:NSApplication.didResignActiveNotification,object:nil,queue:.main){[weak self] _ in MainActor.assumeIsolated{self?.cancelShortcutRecording()}})
   wheelMonitor=NSEvent.addLocalMonitorForEvents(matching:.scrollWheel){[weak self] event in
    guard let self,let panel=self.panel,event.window===panel else{return event}
    guard let content=panel.contentView else{return event};let point=content.convert(event.locationInWindow,from:nil)
@@ -103,7 +128,7 @@ enum LabKeychain {
   guard !value.shortcut.conflictsWithKeyboard(keyboardReservedKeys) else{throw LabIssue("此按键正用于 AI 键盘控制，框选快捷键已暂停。请选择其他按键或带修饰键的组合，或关闭 AI 模式。")}
   let configurationError=configurationIssue(value)
   guard configurationError.isEmpty else{registrationIssue=configurationError;return}
-  guard LabPermissionSnapshot.current().missing(voice:value.voiceEnabled).isEmpty else{registrationIssue="请完成框选所需授权；不使用语音时可关闭“按住说话”。";return}
+  guard LabPermissionSnapshot.current().missing(voice:value.voiceEnabled).isEmpty else{return}
   input.setEnabled(true)
   do{try input.start(binding:value.shortcut.binding);monitorRecovery.reset()}
   catch{monitorRecovery.failed(at:ProcessInfo.processInfo.systemUptime);throw error}
@@ -111,7 +136,7 @@ enum LabKeychain {
  func refreshAuthorization(){guard !stopping else{return};pollPermissions(forceRegistration:true);probePermissions(force:true)}
  private func probePermissions(force:Bool=false){
   let now=ProcessInfo.processInfo.systemUptime
-  guard (preferences.enabled || now<permissionRecheckUntil || force),permissionProbe==nil,now>=nextProbe,
+  guard !stopping,(preferences.enabled || now<permissionRecheckUntil || force),permissionProbe==nil,now>=nextProbe,
         force || !missing.isEmpty,let executable=Bundle.main.executableURL else{return}
   nextProbe=now+2
   let process=Process(),pipe=Pipe();permissionProbe=process
@@ -120,17 +145,25 @@ enum LabKeychain {
   process.terminationHandler={ [weak self] child in
    let data=pipe.fileHandleForReading.readDataToEndOfFile()
    let result=child.terminationReason == .exit && child.terminationStatus==0 ? SelectionPermissionProbe.decode(data):nil
-   DispatchQueue.main.async{guard let self,self.permissionProbe===child else{return};self.permissionProbe=nil;self.freshPermissions=result;self.freshAt=ProcessInfo.processInfo.systemUptime;self.pollPermissions()}
+   DispatchQueue.main.async{
+    guard let self,self.permissionProbe===child else{return}
+    _ = self.observeLocalPermissions()
+    guard self.permissionProbe===child else{self.pollPermissions();return}
+    self.permissionProbe=nil
+    if let result{self.freshPermissions=result;self.freshAt=ProcessInfo.processInfo.systemUptime}
+    self.pollPermissions()
+   }
   }
-  do{try process.run()}catch{permissionProbe=nil;freshPermissions=nil}
+  do{try process.run()}catch{permissionProbe=nil}
   DispatchQueue.main.asyncAfter(deadline:.now()+2){[weak self,weak process] in guard let process,self?.permissionProbe===process,process.isRunning else{return};process.terminate()}
  }
- func shutdown(){stopping=true;input.stop();cancelShortcutRecording();input.stop();monitor?.invalidate();monitor=nil;utilityTask?.cancel();utilityTask=nil;if permissionProbe?.isRunning==true{permissionProbe?.terminate()};permissionProbe=nil;cancel()}
+ func shutdown(){stopping=true;if let sideMonitor{NSEvent.removeMonitor(sideMonitor);self.sideMonitor=nil};input.stop();cancelShortcutRecording();input.stop();monitor?.invalidate();monitor=nil;utilityTask?.cancel();utilityTask=nil;if permissionProbe?.isRunning==true{permissionProbe?.terminate()};permissionProbe=nil;cancel()}
  private func disableVoice(){var next=preferences;next.voiceEnabled=false;do{try persist(next);preferences=next;cancel();try register(next);if next.enabled && !missing.isEmpty{showPermissionPanel()}}catch{registrationIssue=Self.friendly(error,language:language)}}
  private func pollPermissions(forceRegistration:Bool=false){
   guard !stopping else{return}
+  let local=observeLocalPermissions()
   probePermissions()
-  let signature=String(describing:LabPermissionSnapshot.current()) + "/" + configurationIssue(preferences) + "/" + String(describing:keyboardReservedKeys.sorted())
+  let signature=String(describing:local) + "/" + configurationIssue(preferences) + "/" + String(describing:keyboardReservedKeys.sorted())
   let changed=signature != permissionSignature
   if changed || forceRegistration{monitorRecovery.reset()}
   let canRetry=preferences.enabled && !input.isMonitoring && recordingReply==nil && !isBusy &&
@@ -140,19 +173,27 @@ enum LabKeychain {
    if recordingReply==nil{do{try register(preferences)}catch{registrationIssue=Self.friendly(error,language:language)}}
   }
   if (!overlays.isEmpty || task != nil || voicePending) && (IsSecureEventInputEnabled() || !selectionPermissions || (preferences.voiceEnabled && !voicePermissions)){cancel()}
-  if !viewState.missingPermissions.isEmpty {viewState.missingPermissions=missing;if viewState.missingPermissions.isEmpty{viewState.issue="权限已就绪，按快捷键重新框选。"}}
+  if viewState.phase == "需要权限"{updatePermissionPanel()}
  }
- func status()->[String:Any]{let object=(try? JSONSerialization.jsonObject(with:JSONEncoder().encode(preferences))) as? [String:Any] ?? [:],account=try? preferences.configuration.credentialAccount()
-  var value=LabPermissionSnapshot.current().dictionary
+ func status()->[String:Any]{var object=(try? JSONSerialization.jsonObject(with:JSONEncoder().encode(preferences))) as? [String:Any] ?? [:]
+  if var shortcut=object["shortcut"] as? [String:Any]{shortcut["label"]=preferences.shortcut.displayLabel(language:language);object["shortcut"]=shortcut}
+  let account=try? preferences.configuration.credentialAccount()
+  let local=observeLocalPermissions()
+  let fresh=recentPermissionProbe
+  let authorized=local.confirmingGrants(from:fresh)
+  let missingGrants=authorized.missing(voice:preferences.voiceEnabled)
+  let localPermissions=local.missing(voice:preferences.voiceEnabled).isEmpty
+  let needsRelaunch=fresh.map{local.requiresRelaunch(fresh:$0,voice:preferences.voiceEnabled)} ?? false
+  var value=authorized.dictionary
   let setup=LabSetupState.resolve(enabled:preferences.enabled,recording:recordingReply != nil,configured:configurationIssue(preferences).isEmpty,
-   permissions:missing.isEmpty,relaunch:needsRelaunch,conflict:shortcutConflict,secureInput:IsSecureEventInputEnabled(),monitorReady:input.isReady)
+   permissions:localPermissions,relaunch:needsRelaunch,conflict:shortcutConflict,secureInput:IsSecureEventInputEnabled(),monitorReady:input.isReady)
   value["ready"]=setup == .ready;value["setupState"]=setup.rawValue
-  value.merge(["supported":true,"preferences":object,"hasKey":account.map(LabKeychain.has) ?? false,"shortcutRegistered":input.isMonitoring,"issue":LabText.text(registrationIssue,language:language),"phase":viewState.t(viewState.phase),"shortcutNotice":preferences.shortcut.binding.activationNotice(language:language),"configurationIssue":LabText.text(configurationIssue(preferences),language:language),"needsRelaunch":needsRelaunch,"missingPermissions":missing,"shortcutConflict":shortcutConflict],uniquingKeysWith:{_,new in new})
+  value.merge(["supported":true,"preferences":object,"hasKey":account.map(LabKeychain.has) ?? false,"shortcutRegistered":input.isMonitoring,"issue":LabText.text(registrationIssue,language:language),"phase":viewState.t(viewState.phase),"shortcutNotice":preferences.shortcut.binding.activationNotice(language:language),"configurationIssue":LabText.text(configurationIssue(preferences),language:language),"needsRelaunch":needsRelaunch,"missingPermissions":missingGrants,"shortcutConflict":shortcutConflict],uniquingKeysWith:{_,new in new})
   return value
  }
  func handle(_ body:[String:Any],reply:@escaping(Any?,String?)->Void){do{switch body["op"] as? String{
   case "language":guard let value=body["language"] as? String,["en","zh-CN"].contains(value) else{throw LabIssue("设置格式无效。")};updateLanguage(value == "en" ? .en:.zh);reply(status(),nil)
-  case "status":pollPermissions();reply(status(),nil)
+  case "status":pollPermissions();if !missing.isEmpty{probePermissions(force:true)};reply(status(),nil)
   case "refresh":refreshAuthorization();reply(status(),nil)
   case "relaunch":cancel();guard requestRelaunch?()==true else{throw LabIssue("请等待当前操作完成后，再重新打开。")};reply(["relaunching":true],nil)
   case "disableVoice":disableVoice();reply(status(),nil)
@@ -188,10 +229,20 @@ enum LabKeychain {
    default:break
   }
  }
- private func showPermissionPanel(){cancel();viewState.missingPermissions=missing;viewState.phase="需要权限";panelAnchor=NSEvent.mouseLocation;showPanel()}
- private func beginShortcutRecording(reply:@escaping(Any?,String?)->Void){cancelShortcutRecording();cancel();recordingReply=reply;recordingChanged?(true);input.setEnabled(false);modifierRecorder=LabModifierRecorder();recordedShortcut=nil;recordingTimer=Timer.scheduledTimer(withTimeInterval:15,repeats:false){[weak self] _ in MainActor.assumeIsolated{self?.cancelShortcutRecording()}}}
- func cancelShortcutRecording(){guard let reply=recordingReply else{return};recordingReply=nil;recordingTimer?.invalidate();recordingTimer=nil;recordedShortcut=nil;recordingChanged?(false);try? register(preferences);reply(nil,LabText.text("已取消快捷键录制。",language:language))}
- private func finishShortcutRecording(_ shortcut:LabShortcut){guard let reply=recordingReply else{return};recordingReply=nil;recordingTimer?.invalidate();recordingTimer=nil
+ private func updatePermissionPanel(){
+  let local=observeLocalPermissions()
+  let missingGrants=local.confirmingGrants(from:recentPermissionProbe).missing(voice:preferences.voiceEnabled)
+  let issue:String
+  if !missingGrants.isEmpty{issue=""}
+  else if local.missing(voice:preferences.voiceEnabled).isEmpty{issue="权限已就绪，按快捷键重新框选。"}
+  else{issue="系统授权已更新，请重新打开以完成检查。"}
+  if viewState.missingPermissions != missingGrants{viewState.missingPermissions=missingGrants}
+  if viewState.issue != issue{viewState.issue=issue}
+ }
+ private func showPermissionPanel(){cancel();viewState.phase="需要权限";updatePermissionPanel();panelAnchor=NSEvent.mouseLocation;showPanel()}
+ private func beginShortcutRecording(reply:@escaping(Any?,String?)->Void){cancelShortcutRecording();cancel();recordingReply=reply;recordingChanged?(true);input.setEnabled(false);modifierRecorder=LabModifierRecorder();recordedShortcut=nil;sideRecorder.cancel();recordingTimer=Timer.scheduledTimer(withTimeInterval:15,repeats:false){[weak self] _ in MainActor.assumeIsolated{self?.cancelShortcutRecording()}}}
+ func cancelShortcutRecording(){guard let reply=recordingReply else{return};recordingReply=nil;recordingTimer?.invalidate();recordingTimer=nil;recordedShortcut=nil;sideRecorder.cancel();recordingChanged?(false);try? register(preferences);reply(nil,LabText.text("已取消快捷键录制。",language:language))}
+ private func finishShortcutRecording(_ shortcut:LabShortcut){guard let reply=recordingReply else{return};recordingReply=nil;recordingTimer?.invalidate();recordingTimer=nil;recordedShortcut=nil;sideRecorder.cancel()
   defer{recordingChanged?(false)}
   do{try shortcut.validate();guard !shortcut.conflictsWithKeyboard(keyboardReservedKeys) else{throw LabIssue("此按键正在用于 AI 键盘控制，请选择其他按键或带修饰键的组合。")};var next=preferences;next.shortcut=shortcut;try register(next);try persist(next);preferences=next;reply(status(),nil)}catch{try? register(preferences);reply(nil,Self.friendly(error,language:language))}
  }
@@ -200,14 +251,44 @@ enum LabKeychain {
   if event.type == .keyDown,event.keyCode==53,panel?.isVisible==true{cancel(animatePanel:true);return true}
   if recordingReply != nil{
    if event.type == .keyDown && event.keyCode==53{cancelShortcutRecording();return true}
+   if sideRecorder.isHolding{return event.type == .keyDown || event.type == .keyUp || event.type == .flagsChanged}
    if event.type == .flagsChanged{if let chord=modifierRecorder.observe(LabShortcut.modifiers(event.modifierFlags)),recordedShortcut==nil{finishShortcutRecording(LabShortcut(keyCode:0,modifiers:chord,label:LabShortcut.label(code:0,modifiers:chord,only:true),modifierOnly:true))};return true}
    if event.type == .keyDown,!event.isARepeat{var flags=LabShortcut.modifiers(event.modifierFlags);if InputBinding.functionKeyCodes.contains(event.keyCode){flags &= ~(1<<23)};recordedShortcut=LabShortcut(keyCode:UInt32(event.keyCode),modifiers:flags,label:LabShortcut.label(code:event.keyCode,modifiers:flags))}
    if event.type == .keyUp,let shortcut=recordedShortcut,shortcut.keyCode==event.keyCode{finishShortcutRecording(shortcut)};return true
   }
-  guard preferences.enabled,!shortcutConflict,preferences.shortcut.modifierOnly != true,UInt32(event.keyCode)==preferences.shortcut.keyCode else{return false}
+  guard preferences.enabled,!shortcutConflict,preferences.shortcut.buttonIndex==nil,preferences.shortcut.modifierOnly != true,UInt32(event.keyCode)==preferences.shortcut.keyCode else{return false}
   if event.type == .keyUp,hold.keyboard{shortcutReleased();return true}
   var flags=LabShortcut.modifiers(event.modifierFlags);if InputBinding.functionKeyCodes.contains(event.keyCode){flags &= ~(1<<23)}
   guard event.type == .keyDown,flags==preferences.shortcut.modifiers else{return false};if !event.isARepeat{shortcutBegan()};return true
+ }
+ private func receiveInput(_ event:IntentPressEvent){
+  guard event.source == .mouse else{
+   switch event.edge{case .began:shortcutBegan();case .released:shortcutReleased();case .cancelled:cancel();case .moved:break};return
+  }
+  switch event.edge{
+  case .began:
+   guard let point=event.point,point.isFinite else{return}
+   startFromShortcut(held:true)
+   guard hold.keyboard,!overlays.isEmpty else{return}
+   sidePrimaryTop=NSScreen.screens.first?.frame.maxY ?? 0
+   let location=NSPoint(x:point.x,y:sidePrimaryTop-point.y)
+   guard let window=overlays.first(where:{$0.frame.contains(location)}) else{cancel();return}
+   let frame=window.frame
+   sideSelection.begin(event.token,at:point,screen:IntentBounds(x:frame.minX,y:sidePrimaryTop-frame.maxY,width:frame.width,height:frame.height))
+   for overlay in overlays{(overlay.contentView as? SelectionOverlayView)?.sideButtonSelection=true}
+   selectionStarted()
+  case .moved:
+   guard sideSelection.token==event.token,let point=event.point else{return}
+   sideSelection.move(point,token:event.token)
+   let rectangle=sideSelection.bounds.map{LabSideGeometry.appKit($0,primaryTop:sidePrimaryTop)}
+   for overlay in overlays{(overlay.contentView as? SelectionOverlayView)?.showSideRegion(rectangle)}
+  case .released:
+   guard sideSelection.token==event.token else{return}
+   guard case .region(let bounds)=sideSelection.finish(event.token,at:event.point),bounds.isCapturableRegion else{cancel();return}
+   selectionFinished(LabSideGeometry.appKit(bounds,primaryTop:sidePrimaryTop));shortcutReleased()
+  case .cancelled:
+   if sideSelection.token==event.token{cancel()}
+  }
  }
  private func shortcutBegan(){guard !hold.keyboard else{return};startFromShortcut(held:true)}
  private func shortcutReleased(){if hold.releaseKeyboard(){commitSelection()};overlayFeedback()}
@@ -256,20 +337,20 @@ enum LabKeychain {
   }catch{guard generation==token,!Task.isCancelled else{return};task=nil;voice.cancel();voiceToken=nil;voicePending=false;viewState.busy=false;viewState.issue=Self.friendly(error,language:language);viewState.phase="框选未完成"}}
  }
  private func settleSelection(){guard hold.committed,captureReady else{return};if voicePending{viewState.phase="正在完成语音转写";return};viewState.busy=false
-  if speechFailed{return};send(viewState.question.isEmpty ? pendingAction.rawValue:"ask")
+  if speechFailed{return};send(pendingAction.submissionID(instruction:viewState.question))
  }
  private func switchAction(_ action:LabAction){guard captureReady else{return};voice.cancel();voiceToken=nil;voicePending=false;viewState.action=action;viewState.question="";viewState.showQuestion=false;speechFailed=false;cancelRequest();viewState.issue="";modeTask?.cancel();let token=generation;modeTask=Task{try? await Task.sleep(for:.milliseconds(280));guard !Task.isCancelled,self.generation==token else{return};self.send(action.rawValue)}}
  private func send(_ action:String){
   guard !viewState.busy,preferences.enabled,captureReady else{return}
   if action=="extract"{viewState.answer=viewState.text;viewState.issue="";return}
   let chosen:SelectionAction
-  switch action{case "translate":chosen = preferences.translationAction;case "summarize":chosen = .summarize;case "explain":chosen = .explain
-  default:guard !viewState.question.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty else{return};chosen = .ask(instruction:viewState.question)}
+  if let mode=LabAction(rawValue:action){chosen=mode.selectionAction(translationTarget:preferences.translationLanguage.englishName,instruction:mode == .reply ? viewState.question:"")}
+  else{guard !viewState.question.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty else{return};chosen = viewState.action == .reply ? .reply(instruction:viewState.question):.ask(instruction:viewState.question)}
   guard !viewState.text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty || (viewState.includeImage && imagePNG != nil) else{viewState.issue="没有识别到文字。图片提问需要在 API 设置中选择支持图片的模型。";return}
   let requestPreferences=preferences,requestLanguage=language
   let token=generation,configuration=preferences.configuration,content=SelectedContent(text:viewState.text,imagePNG:viewState.includeImage ? imagePNG:nil)
   let work=SelectionWork(sessionID:token,requestID:UUID(),content:content,action:chosen)
-  viewState.busy=true;viewState.answer="";viewState.issue="";viewState.phase=action=="ask" ? "正在回答":"正在\(viewState.action.title)"
+  viewState.busy=true;viewState.answer="";viewState.issue="";viewState.phase=viewState.action == .reply ? "正在回复":action=="ask" ? "正在回答":"正在\(viewState.action.title)"
   task=Task{do{
    guard !IsSecureEventInputEnabled(),selectionPermissions else{throw IntentServiceError.inactiveSession}
    let key=try LabKeychain.read(configuration.credentialAccount());let images:[AIImageAttachment]
@@ -319,7 +400,7 @@ enum LabKeychain {
  func cancel(animatePanel:Bool=false){
   closingPanel=true
   if animatePanel,let screen=answerScreen{let metrics=LabNotchLayout.place(on:screen,width:185,height:24);let layout=LabNotchLayout.place(on:screen,width:metrics.hasCameraHousing ? metrics.cameraWidth:156,height:24);surface?.dismiss(to:layout)}else{surface?.hide()}
-  generation=UUID();task?.cancel();task=nil;modeTask?.cancel();modeTask=nil;voiceDelay?.cancel();voiceDelay=nil;voice.cancel();voiceToken=nil;voicePending=false;speechFailed=false;speechStarted=false;hold=LabHoldState();selectionRect=nil;captureReady=false;overlays.forEach{$0.orderOut(nil)};overlays=[];imagePNG=nil
+  generation=UUID();task?.cancel();task=nil;modeTask?.cancel();modeTask=nil;voiceDelay?.cancel();voiceDelay=nil;voice.cancel();voiceToken=nil;voicePending=false;speechFailed=false;speechStarted=false;hold=LabHoldState();sideSelection.cancel();selectionRect=nil;captureReady=false;overlays.forEach{$0.orderOut(nil)};overlays=[];imagePNG=nil
   panelScreenNumber=nil;panelMeasurement=nil;viewState.text="";viewState.image=nil;viewState.question="";viewState.answer="";viewState.issue="";viewState.busy=false;viewState.showQuestion=false;viewState.expanded=false;viewState.contentOverflow=false;viewState.missingPermissions=[];viewState.phase="等待框选"}
  func windowWillClose(_ notification:Notification){cancel()}
  static func friendly(_ error:Error,language:AppLanguage = .zh)->String{LabText.text(untranslated(error,language:language),language:language)}

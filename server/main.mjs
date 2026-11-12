@@ -1,3 +1,4 @@
+import {AmbientLighting,DEFAULT_AMBIENT_LIGHTING,validateAmbientLighting} from '../shared/ambient-lighting.mjs';
 import {MusicRoutes} from './music-routes.mjs';
 import {getKeyboardProfile,getCanvasCount} from '../shared/keyboard-models.mjs';
 import {CodexAccessibilityBridge} from './codex-accessibility-bridge.mjs';
@@ -48,6 +49,8 @@ const musicRoutes=new MusicRoutes(dataDir,path.resolve(dataDir)===path.join(os.h
 const port = Number(process.env.AIR_STUDIO_PORT || process.env.AIR_STUDIO_PREFERRED_PORT || 0),
   token = process.env.AIR_STUDIO_TOKEN ?? randomBytes(32).toString("hex");
 const store = await new Store(dataDir).load();
+const ambientLighting = new AmbientLighting();
+const ambientSettings = () => store.data.settings.ambientLighting ?? DEFAULT_AMBIENT_LIGHTING;
 const verifiedNativeGesture=Symbol('verifiedNativeGesture');
 const verifyNativeKey=createNativeKeyVerifier();
 const nativeHoldEnvironment=takeNativeHoldEnvironment();
@@ -289,12 +292,35 @@ const claudeSelected = () => claudeTasks().find((task) => task.id === claudeLigh
 let codexKeyHost = null, codexKeyEvent = null, codexKeyEventId = 0;
 let nativeHostPermissions = null, driverHandoff = false, applicationUpdating = false, reconnectPlayback = null;
 let nativeHelperPermissionsCheckedAt = 0;
+let nativePermissionRevision = -1, nativePermissionPresentation = {};
 const permissionKeys = ['inputMonitoring','accessibility','canPostEvents'];
+function isPermissionSnapshot(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) &&
+    permissionKeys.every(key => typeof value[key] === 'boolean');
+}
+function receiveNativePermissions(snapshot) {
+  if (!isPermissionSnapshot(snapshot)) throw new Error('原生权限状态无效');
+  const {systemPermissions,permissionRecoveryPending,permissionRevision}=snapshot;
+  if ((Object.hasOwn(snapshot,'systemPermissions') && !isPermissionSnapshot(systemPermissions)) ||
+      (Object.hasOwn(snapshot,'permissionRecoveryPending') && typeof permissionRecoveryPending !== 'boolean') ||
+      (Object.hasOwn(snapshot,'permissionRevision') && (!Number.isSafeInteger(permissionRevision) || permissionRevision < 0)))
+    throw new Error('原生权限状态无效');
+  // A delayed native POST must not replace a newer WKWebView refresh reply.
+  if (nativePermissionRevision >= 0 && (permissionRevision === undefined || permissionRevision <= nativePermissionRevision)) return;
+  if (permissionRevision !== undefined) nativePermissionRevision=permissionRevision;
+  nativeHostPermissions=Object.fromEntries(permissionKeys.map(key=>[key,snapshot[key]]));
+  // A fresh process can see a grant before the running host can use it.
+  // Keep that information separate from the operational gates.
+  nativePermissionPresentation={
+    ...(systemPermissions ? {systemPermissions:Object.fromEntries(permissionKeys.map(key=>[key,systemPermissions[key]]))} : {}),
+    ...(permissionRecoveryPending === undefined ? {} : {permissionRecoveryPending}),
+  };
+}
 function nativePermissions() {
   const helper=hardware.state.permissions ?? {inputMonitoring:null,accessibility:null,canPostEvents:null};
   if (!nativeHostPermissions) return helper;
-  return {...helper,...Object.fromEntries(['inputMonitoring','accessibility','canPostEvents'].map(key=>[key,helper[key]===true&&nativeHostPermissions[key]===true])),
-    source:'appHostAndHelper',host:nativeHostPermissions,helper};
+  return {...helper,...Object.fromEntries(permissionKeys.map(key=>[key,helper[key]===true&&nativeHostPermissions[key]===true])),
+    ...nativePermissionPresentation,source:'appHostAndHelper',host:nativeHostPermissions,helper};
 }
 let codexKeyRevision = 0, codexKeySignature = '';
 let codexSetupRevision = 0;
@@ -376,6 +402,7 @@ function state() {
       connectionPaused: explicitDisconnect,
       driverHandoff,
     },
+    ambientLighting: ambientLighting.snapshot(store.data.settings.brightness,ambientSettings(),hardware.state),
     audio: audio.snapshot(store.data.settings.audio),
     bluetooth: bluetoothInput.snapshot(),
     native: nativePermissions(),
@@ -421,7 +448,7 @@ async function output(input) {
     }
   }
   // A transient full-white welcome does not rewrite the user's saved dimmer.
-  const brightness = wakeFrame ? 100 : store.data.settings.brightness;
+  const brightness = wakeFrame ? 100 : ambientLighting.brightness(store.data.settings.brightness,ambientSettings(),hardware.state);
   const logicalColors = out.map(c => scaleColor(c, brightness / 100));
   const wireColors = hardware.outputColors(out, {brightness});
   const signature = wireColors.join("");
@@ -938,9 +965,11 @@ async function tick() {
         }
       }
       await output(frame);
-    } else if (hardware.state.armed && agentLightingSource())
+    } else if (hardware.state.armed && (agentLightingSource() || ambientSettings().enabled && ['static','paused'].includes(playback.mode)))
       await output(playback.mode === 'paused' ? renderAnimation(baseColors, animation, playback.elapsed ?? 0)
         : playback.mode === 'static' ? baseColors : blank());
+    else if (ambientSettings().enabled && hardware.state.armed && playback.mode === 'game')
+      await output(game.render()); // A paused game fades without advancing its state.
     if (performance.now() - lastStatusCheck > 4000) {
       lastStatusCheck = performance.now();
       await hardware.status();
@@ -1153,13 +1182,15 @@ async function command(req) {
       }
       return { url: FIRMWARE_URL };
     }
+    case "ambientLightSample": {
+      const accepted=ambientLighting.receive(req.sample);
+      return {accepted};
+    }
     case "nativePermissions": {
-      const permissions=req.permissions;
-      if(!permissions || typeof permissions!=='object' || ['inputMonitoring','accessibility','canPostEvents'].some(key=>typeof permissions[key]!=='boolean')) throw new Error('原生权限状态无效');
-      const next=Object.fromEntries(permissionKeys.map(key=>[key,permissions[key]]));
-      const changed=JSON.stringify(next)!==JSON.stringify(nativeHostPermissions);
+      const previousHost=nativeHostPermissions;
+      receiveNativePermissions(req.permissions);
+      const changed=permissionKeys.some(key=>previousHost?.[key]!==nativeHostPermissions[key]);
       const previousHelper=hardware.state.permissions;
-      nativeHostPermissions=next;
       // A WKWebView does not always get a focus/visibility event when the user
       // returns from System Settings. Keep the helper's independent snapshot
       // fresh when the native host reports a grant or while setup is pending.
@@ -1199,11 +1230,7 @@ async function command(req) {
     case "refreshPermissions": {
       const previous=hardware.state.permissions;
       const previousHost=nativeHostPermissions;
-      if(Object.hasOwn(req,'hostPermissions')) {
-        const host=req.hostPermissions;
-        if(!host || typeof host!=='object' || permissionKeys.some(key=>typeof host[key]!=='boolean')) throw new Error('原生权限状态无效');
-        nativeHostPermissions=Object.fromEntries(permissionKeys.map(key=>[key,host[key]]));
-      }
+      if(Object.hasOwn(req,'hostPermissions')) receiveNativePermissions(req.hostPermissions);
       let refreshError;
       try {
         const permissions=await hardware.request("permissions");
@@ -1331,7 +1358,7 @@ async function command(req) {
         return store.settings(req.settings);
       // Reject an invalid mixed preference batch before touching held keys.
       validateSettings(req.settings, store.data.settings);
-      const lightingKeys = ['brightness','outputColorProfile','lightDurationMs','lightIdleMs','autoConnect','quotaSideEnabled','audio'];
+      const lightingKeys = ['brightness','ambientLighting','outputColorProfile','lightDurationMs','lightIdleMs','autoConnect','quotaSideEnabled','audio'];
       if (connectionWake.active && Object.entries(req.settings).some(([key,value]) =>
           (lightingKeys.includes(key) || key.startsWith('codex') || key.startsWith('claude') || key === 'agentSource') &&
           JSON.stringify(value) !== JSON.stringify(store.data.settings[key])))
@@ -1340,7 +1367,15 @@ async function command(req) {
       codexPresses.reset();
       const old = store.data.settings;
       if(audio.session && req.settings.audio && (req.settings.audio.source !== undefined && req.settings.audio.source!==old.audio.source || req.settings.audio.deviceId !== undefined && req.settings.audio.deviceId!==old.audio.deviceId)) await stop();
-      const settings = await store.settings(req.settings);
+      const nextRequest={...req.settings};
+      if (typeof req.settings.brightness === 'number') {
+        const config=validateAmbientLighting(req.settings.ambientLighting??{},ambientSettings());
+        nextRequest.ambientLighting=!lightPower.sleeping && !connectionWake.active
+          ? ambientLighting.preference(config,hardware.state,old.brightness,req.settings.brightness) : config;
+      }
+      const settings = await store.settings(nextRequest);
+      if (settings.ambientLighting.enabled !== old.ambientLighting?.enabled) ambientLighting.reset();
+      if (typeof req.settings.brightness === 'number') ambientLighting.manualBrightness(settings.brightness);
       void codexCommandBridge.inspect();
       if(keyBindingFingerprint(old)!==keyBindingFingerprint(settings))keyBindingEpoch++;
       hardware.setOutputColorProfile(settings.outputColorProfile);

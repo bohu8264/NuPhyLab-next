@@ -88,3 +88,17 @@ test('changing the app language updates the native HUD immediately without reque
  module.setLanguage('en');module.setLanguage('en');module.setLanguage('zh-CN');
  assert.deepEqual(calls,[{op:'language',language:'en'},{op:'language',language:'zh-CN'}]);assert.equal(ui.document.documentElement.lang,'zh-CN');
 });
+
+test('mouse shortcut names and recording hints render fully in English',async()=>{
+ const f=await fixture();f.state.preferences.shortcut={keyCode:0,modifiers:0,buttonIndex:4,label:'Mouse side button 2'};
+ await f.remount();englishOnly(f.instance.tree);assert.match(textOf(f.instance.tree),/Mouse side button 2/);
+ assert.match(textOf(f.instance.tree),/keyboard shortcut or mouse side button/);
+ f.state.setupState='recording';f.state.ready=false;await f.remount();englishOnly(f.instance.tree);
+ assert.match(textOf(f.instance.tree),/Release to save; Esc to cancel/);f.close();
+});
+
+test('Reply action and its explanation are fully localized and can be selected in English',async()=>{
+ const f=await fixture();await f.click('Reply');englishOnly(f.instance.tree);
+ assert.equal(f.state.preferences.defaultAction,'reply');assert.match(textOf(f.instance.tree),/Draft a reply from the selection and your spoken requirements/);
+ f.ui.document.documentElement.lang='zh-CN';f.instance.render();assert.match(textOf(f.instance.tree),/回复/);assert.equal(f.state.preferences.defaultAction,'reply');f.close();
+});

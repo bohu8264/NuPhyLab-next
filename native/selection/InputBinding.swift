@@ -22,7 +22,7 @@ public struct InputBinding: Codable, Equatable, Hashable, Sendable {
         switch kind {
         case .disabled: return language == .zh ? "未设置" : "Not set"
         case .modifiers: return modifiers == .function ? "Fn" : prefix.trimmingCharacters(in: .whitespaces)
-        case .mouseButton: return prefix + (language == .zh ? "鼠标按钮 \((buttonIndex ?? -1) + 1)" : "Mouse Button \((buttonIndex ?? -1) + 1)")
+        case .mouseButton: return prefix + (language == .zh ? "鼠标侧键 \((buttonIndex ?? 3) - 2)" : "Mouse side button \((buttonIndex ?? 3) - 2)")
         case .keyboard: return prefix + Self.keyLabel(keyCode ?? 0)
         }
     }
@@ -40,6 +40,9 @@ public struct InputBinding: Codable, Equatable, Hashable, Sendable {
     /// Explain only the consequence of the selected binding; no settings change
     /// is performed by this module, and a vendor-private Fn key may never reach macOS.
     public func activationNotice(language: AppLanguage) -> String {
+        if kind == .mouseButton {
+            return language == .zh ? "按住此侧键并移动鼠标框选，松开完成。" : "Hold this side button and move to select a region. Release to finish."
+        }
         if modifiers.contains(.function) {
             return language == .zh ? "使用 macOS 上报的 Fn / 地球键。系统原有的表情、输入法或听写动作可能仍会响应；此模块不会更改系统设置。厂商私有 Fn 键不一定可读取。" : "Uses the Fn / Globe key reported by macOS. System emoji, input-source or Dictation actions may still respond; this module does not change system settings. Vendor-private Fn keys may not be available."
         }

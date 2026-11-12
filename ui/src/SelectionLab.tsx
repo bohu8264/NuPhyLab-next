@@ -21,10 +21,11 @@ type Preferences = {
         modifiers: number;
         label: string;
         modifierOnly?: boolean;
+        buttonIndex?: number;
     };
     configuration: Configuration;
     voiceEnabled: boolean;
-    defaultAction: 'translate' | 'summarize' | 'explain';
+    defaultAction: 'translate' | 'summarize' | 'explain' | 'reply';
     translationLanguage?: TranslationLanguage;
 };
 type Status = {
@@ -106,7 +107,7 @@ function selectionReadiness(status: Status | null) {
     if (!status.preferences.enabled)
         return { label: '已关闭', detail: '开启后可使用快捷键框选。' };
     if (status.setupState === 'recording')
-        return { label: '正在录制快捷键', detail: '按键后松开保存，Esc 取消。' };
+        return { label: '正在录制快捷键', detail: '按下键盘快捷键或鼠标侧键，松开保存；Esc 取消。' };
     if (!configuredForSelection(status))
         return { label: '等待模型设置', detail: '选择模型并保存 API Key 后即可继续。' };
     if (status.needsRelaunch)
@@ -196,7 +197,7 @@ export function SelectionLab() {
     <Switch label={t("开启框选提问")} checked={prefs.enabled} disabled={!status || unavailable || busy} onChange={enabled => void save({ enabled })}/>
    </div>
    <div className="sl-preferences">
-    <div className="sl-preference-row"><div className="sl-row-copy"><h3>{t("快捷键")}</h3><p>{t(recording ? '按键后松开保存，Esc 取消。' : '点击录制单键或组合键')}</p></div>
+    <div className="sl-preference-row"><div className="sl-row-copy"><h3>{t("快捷键")}</h3><p>{t(recording ? '按下键盘快捷键或鼠标侧键，松开保存；Esc 取消。' : '点击后按键盘快捷键或鼠标侧键')}</p></div>
      <button className={'sl-shortcut ' + (recording ? 'recording' : '')} aria-label={t("录制框选快捷键")} disabled={!status || unavailable || busy} onClick={async (event) => { event.currentTarget.focus(); setRecording(true); setBusy(true); setIssue(''); try {
         setStatus(await native('recordShortcut'));
     }
@@ -206,11 +207,11 @@ export function SelectionLab() {
     finally {
         setRecording(false);
         setBusy(false);
-    } }}>{t(recording ? '等待按键…' : prefs.shortcut.label)}</button>
+    } }}>{t(recording ? '等待键盘或侧键…' : prefs.shortcut.label)}</button>
     </div>
     {t(status?.shortcutNotice && <p className="sl-binding-alert" role="status">{t(status.shortcutNotice)}</p>)}
-    <div className="sl-preference-row"><div className="sl-row-copy"><h3>{t("松开后")}</h3><p>{t("框选时可用滚轮切换")}</p></div>
-     <div className="sl-actions" role="group" aria-label={t("默认框选动作")}>{t(([['translate', '翻译'], ['summarize', '总结'], ['explain', '解释']] as const).map(([value, label]) => <button key={value} aria-pressed={prefs.defaultAction === value} disabled={!status || unavailable || busy} onClick={() => void save({ defaultAction: value })}>{t(label)}</button>))}</div>
+    <div className="sl-preference-row"><div className="sl-row-copy"><h3>{t("松开后")}</h3><p>{t(prefs.defaultAction === 'reply' ? "结合选中内容和口述要求生成回复" : "框选时可用滚轮切换")}</p></div>
+     <div className="sl-actions" role="group" aria-label={t("默认框选动作")}>{t(([['translate', '翻译'], ['summarize', '总结'], ['explain', '解释'], ['reply', '回复']] as const).map(([value, label]) => <button key={value} aria-pressed={prefs.defaultAction === value} disabled={!status || unavailable || busy} onClick={() => void save({ defaultAction: value })}>{t(label)}</button>))}</div>
     </div>
     <div className="sl-preference-row sl-translation-row"><div className="sl-row-copy"><label htmlFor="selection-translation-language">{t("翻译为")}</label><p>{t("保存后，后续翻译默认使用此语言。")}</p></div><select id="selection-translation-language" aria-label={t("翻译目标语言")} value={prefs.translationLanguage ?? 'zh-CN'} disabled={!status || unavailable || busy} onChange={event => void save({ translationLanguage: event.target.value as TranslationLanguage })}>{translationLanguages.map(item => <option key={item.id} value={item.id}>{item.id === "zh-CN" ? item.label : t(item.label)}</option>)}</select></div>
     <div className="sl-preference-row"><div className="sl-row-copy"><h3>{t("按住说话")}</h3><p>{t("按住时说出问题，语音在本机转写。")}</p></div><Switch label={t("开启按住说话")} checked={prefs.voiceEnabled} disabled={!status || unavailable || busy} onChange={voiceEnabled => void save({ voiceEnabled })}/></div>
@@ -267,7 +268,7 @@ export function SelectionPermissionSettings() {
   {t(status && status.supported !== false && needsVoicePermissions(status) && <div className="lab-permission-footer"><span>{t("语音权限未完整开启，文字框选不需要这两项权限。")}</span><Button kind="ghost" disabled={!!busy} onClick={() => void perform('disableVoice')}>{t("关闭语音，继续文字框选")}</Button></div>)}
   {t(status && status.preferences.enabled && !configuredForSelection(status) && <div className="lab-permission-footer"><span>{t("模型服务尚未配置。")}</span><Button kind="ghost" onClick={openSettings}>{t("前往模型设置")}</Button></div>)}
   <div className="lab-permission-footer"><details className="lab-settings-help"><summary><CircleHelp size={15}/>{t("授权帮助")}</summary><p>{t("点击“前往授权”，在系统设置中开启“NuPhy Lab”。返回后会自动检查。权限“已允许”不代表框选已可用，请同时查看上方框选状态。如果系统要求重新打开，可使用下方按钮完成授权。")}</p></details></div>
-  {t(status && (status.needsRelaunch || !status.screenRecording || !status.accessibility || !status.inputMonitoring) && <div className="lab-permission-footer"><span>{t(status.needsRelaunch ? '系统授权已更新，需要重新打开后生效。' : '系统已授权但尚未生效时，可重新打开。')}</span><Button disabled={!!busy} onClick={() => void perform('relaunch')}>{t("完成授权并重新打开")}</Button></div>)}
+  {t(status?.needsRelaunch && <div className="lab-permission-footer"><span>{t('系统授权已更新，需要重新打开后生效。')}</span><Button disabled={!!busy} onClick={() => void perform('relaunch')}>{t("完成授权并重新打开")}</Button></div>)}
   {t((error || issue) && <p className="settings-v6-note is-error" role="alert">{t(issue || error)}</p>)}
  </div>;
 }

@@ -101,6 +101,24 @@ test('actual mode stays checked during the game/trigger and recording safety pau
   const f=await fixture({enabled:true});f.current.codex.keys.capturing=true;f.instance.render();assert.ok(textOf(f.instance.tree).includes('正在录入按键'));assert.equal(f.mode().props.checked,true);f.instance.unmount();
 });
 
+test('agent shortcuts display the pending system grant without enabling a command early',async()=>{
+  const f=await fixture({enabled:true});
+  const granted={inputMonitoring:true,accessibility:true,canPostEvents:true};
+  f.current.native={...granted,canPostEvents:false,systemPermissions:granted,permissionRecoveryPending:true};
+  f.current.codex.shortcuts=[{id:'newTask',label:'新聊天',available:true}];
+  f.instance.render();
+  const button=()=>f.find(node=>node.type==='button'&&textOf(node)==='F10新聊天');
+  assert.match(textOf(f.instance.tree),/正在应用系统授权/);
+  assert.equal(button().props.title,'辅助功能已授权，等待生效');
+  assert.equal(button().props.disabled,true);
+  f.find(node=>node.type===f.nodes.AgentTabs).props.onChange('setup');f.instance.render();
+  assert.match(textOf(f.instance.tree),/辅助功能已授权，等待生效/);
+  f.current.native=granted;
+  f.find(node=>node.type===f.nodes.AgentTabs).props.onChange('tasks');f.instance.render();
+  assert.equal(button().props.disabled,false);
+  f.instance.unmount();
+});
+
 for(const source of['codex','claude'])test(`actual ${source} setup enables the same mode rather than exposing a separate function-key switch`,async()=>{
   const f=await fixture({source}),Setup=(await f.ui.load(new URL('../ui/src/CodexSetup.tsx',import.meta.url))).exports.CodexSetup;
   const instance=f.ui.mount(Setup,{source,state:f.current,command:f.command});

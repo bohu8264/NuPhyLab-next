@@ -1,3 +1,4 @@
+import {AmbientLightingPreferences} from './AmbientLightingPreferences';
 import {SelectionAPISettings, SelectionPermissionSettings} from "./SelectionLab";
 import { useEffect, useRef, useState } from "react";
 import { ArrowUpRight, ChevronRight, CircleHelp, RotateCcw, Sun } from "lucide-react";
@@ -60,6 +61,7 @@ function LightingPreferences({ state, command, display, onNavigateStudio }: {sta
     : copy(deadline.nextSleepReason === "idle" ? "若无操作，将在此时间后休眠" : "本次亮灯剩余时间", deadline.nextSleepReason === "idle" ? "If inactive, sleep in" : "Lighting duration remaining") + " " + timeLabel(Math.max(1000, Math.ceil(remaining / 60000) * 60000));
   return <div className="lab-lighting-preferences">
     <div className="lab-settings-intro"><h2>{copy("灯光与休眠", "Lighting and sleep")}</h2><p>{copy("计时适用于普通作品。两项分别计时，先到先熄灯；AI 状态灯持续显示，关闭模式后才停止。", "Timers apply to ordinary artwork. The first deadline sleeps the lights; AI status lights stay on until the mode is turned off.")}</p></div>
+    <AmbientLightingPreferences state={state} command={command}/>
     <div className="lab-setting-panel lab-timer-panel">{rows.map(({key,label,detail}) => {
       const value = Number(state?.settings[key] ?? DEFAULT_LIGHT_TIME_MS);
       const options = timeOptions.includes(value) ? timeOptions : [...timeOptions, value].sort((a,b)=>a-b);
@@ -73,7 +75,9 @@ function LightingPreferences({ state, command, display, onNavigateStudio }: {sta
       </div>;
     })}</div>
     {durationLimit > 0 && idleLimit > 0 && idleLimit < durationLimit && <p className="lab-settings-note" role="status">{copy(`亮灯时长为 ${timeLabel(durationLimit)}，空闲休眠为 ${timeLabel(idleLimit)}；持续无操作时会先进入空闲休眠。`, `Lighting duration is ${timeLabel(durationLimit)} and idle sleep is ${timeLabel(idleLimit)}. Continued inactivity reaches idle sleep first.`)}</p>}
-    {state?.device.modelId === "air75-v3" && <p className="lab-settings-note">{copy("Air75 V3 自身另有自动休眠，开启时约 6 分钟无键盘输入会熄灯，不受本页时长控制。若灯光早于这里的计时熄灭，请检查键盘自身的休眠设置。", "Air75 V3 also has its own auto sleep. When enabled, about 6 minutes without keyboard input can turn off its lights independently of these timers. If lighting stops earlier, check the keyboard's sleep setting.")} <a href={OFFICIAL_DRIVER_URL}>{copy("打开 NuPhyIO 设置", "Open NuPhyIO settings")}<ArrowUpRight size={13} aria-hidden="true"/></a></p>}
+    {state?.device.capabilities?.boardSleepLease === true
+      ? <p className="lab-settings-note">{copy("Lab 播放灯光时按本页设置计时，避免键盘自身休眠提前关灯；停止播放或退出后恢复键盘原来的休眠设置。", "While Lab controls lighting, these timers take priority over the keyboard's own sleep. Stopping playback or quitting restores the keyboard's original sleep settings.")}</p>
+      : state?.device.modelId === "air75-v3" && <p className="lab-settings-note">{copy("Air75 V3 自身另有自动休眠，开启时约 6 分钟无键盘输入会熄灯，不受本页时长控制。若灯光早于这里的计时熄灭，请检查键盘自身的休眠设置。", "Air75 V3 also has its own auto sleep. When enabled, about 6 minutes without keyboard input can turn off its lights independently of these timers. If lighting stops earlier, check the keyboard's sleep setting.")} <a href={OFFICIAL_DRIVER_URL}>{copy("打开 NuPhyIO 设置", "Open NuPhyIO settings")}<ArrowUpRight size={13} aria-hidden="true"/></a></p>}
     <div className="lab-lighting-summary-stack">
     <div className={`lab-setting-panel lab-current-timer ${noLightingSession?"v7-timer-unavailable":""}`}><div><h3>{timerTitle}</h3><p>{countdown}</p></div><Button kind={power?.sleeping ? "primary" : "secondary"} icon={power?.sleeping ? <Sun size={16}/> : <RotateCcw size={16}/>} busy={busy} disabled={!state?.device.armed || nativeOnly} aria-describedby={noLightingSession||nativeOnly?"lighting-timer-unavailable":undefined} onClick={() => run(wake())}>{copy(power?.sleeping ? "重新亮灯" : "重新计时", power?.sleeping ? "Restart lighting" : "Restart timer")}</Button>
       {noLightingSession&&<p id="lighting-timer-unavailable" className="v7-timer-action-reason" role="status">{connectionReason&&<span>{connectionReason}</span>}<span>{copy("开始键盘灯光后可重新计时；仍可修改时长与休眠设置。","Start keyboard lighting to restart its timer. Duration and sleep settings can still be edited.")}</span>{onNavigateStudio&&<button type="button" className="text-button v7-action-link v7-timer-studio-link" onClick={onNavigateStudio}>{copy("前往灯光创作","Go to lighting studio")}<ChevronRight size={16} aria-hidden="true"/></button>}</p>}

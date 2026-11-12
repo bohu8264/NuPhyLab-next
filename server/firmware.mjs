@@ -150,7 +150,7 @@ export class FirmwareChecker {
     return { status, modelId, modelName: model?.modelName ?? null, current, latest: entry.latest?.version ?? null,
       checkedAt: entry.checkedAt, hasChecked, latestConfirmed, checking: Boolean(entry.pending), stale,
       minimumRequired, updateRequired, updateAvailable,
-      upgradeRecommended: (updateRequired || updateAvailable) && latestSupported !== false,
+      upgradeRecommended: updateRequired || (updateAvailable && latestSupported !== false),
       latestSupported,qualifiedVersion:model?.qualifiedVersion ?? null,
       firmwareDetectionAvailable: Boolean(canDetectFirmware && model && current),
       error: entry.error, updateUrl: FIRMWARE_URL,

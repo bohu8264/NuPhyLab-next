@@ -4,6 +4,7 @@ import {Button,Modal} from './primitives';
 import {t} from './i18n';
 import {refreshAppPermissions,requestAppPermission,showFirmwareGuide} from './StartupGuide';
 import {friendlyConnectionError,keyRecoveryProblem} from './KeyRecoveryPanel';
+import {keyboardPermissions} from './keyboardPermissions';
 import type {AppState,Command} from './types';
 
 type Adaptation={status?:string;ready?:string[];unsupported?:string[];shared?:string[];mapped?:number;error?:string};
@@ -14,29 +15,38 @@ export function CodexSetup({state,command,source='codex'}:{state:AppState|null;c
   const name=source==='claude'?'Claude Code':'Codex';
   const enabled=(state?.settings.agentSource==='claude'?'claude':'codex')===source&&state?.settings[`${source}Enabled`]===true,a=(state?.codex.adaptation??{}) as Adaptation;
   const host=(state?.codex.keys as {host?:{registered?:string[];failed?:string[];suspended?:boolean}}|undefined)?.host;
-  const permissions=state?.native??{},input=permissions.inputMonitoring===true,access=permissions.accessibility===true&&permissions.canPostEvents===true;
+  const {input,access,inputReady,accessReady,applying,needsReopen}=keyboardPermissions(state?.native);
+  const permissionsReady=inputReady&&accessReady&&!applying;
+  const permissionMessage=applying?'正在应用系统授权…':needsReopen?'若重新检查后仍不可用，请重新打开 NuPhy Lab。':
+    input==='unknown'||access==='unknown'?'正在检查权限…':'完成下面两项授权后继续。';
   const wireless=state?.bluetooth?.connected===true&&!state?.device.connected,connected=state?.device.connected===true||wireless;
   const firmwareUpdate=state?.firmware?.upgradeRecommended===true;
   const registered=host?.registered?.length===12&&host.failed?.length===0;
-  const complete=!connectionIssue&&enabled&&a.status==='ready'&&registered&&host?.suspended!==true&&input&&access;
+  const complete=!connectionIssue&&enabled&&a.status==='ready'&&registered&&host?.suspended!==true&&permissionsReady;
   const model=state?.device.model?.replace(/ ANSI$/,'')??state?.firmware?.modelName??'键盘';
-  const summary=firmwareUpdate?'请先在 NuPhyIO 安装推荐固件。':!connected?'请使用 USB 数据线连接键盘。':!input||!access?'完成下面两项授权后继续。':connectionIssue?'请关闭其他键盘设置程序，再重新连接。':busy?'正在检查当前绑定按键…':complete?'当前绑定按键已准备好。':host?.suspended?'编辑、按键触发或游戏期间，快捷控制暂时暂停。':wireless?'蓝牙已连接。灯光播放仍需 USB。':'连接并授权后继续设置绑定按键。';
-  const act=async(op:string)=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');try{await command(op==='agentMode'?{op,source,enabled:true}:{op,source},{silent:true});}catch(failure){setError(failure instanceof Error?failure.message:'设置尚未完成，请重新检查。');}finally{lock.current=false;setBusy(false);}};
+  const summary=firmwareUpdate?'请先在 NuPhyIO 安装推荐固件。':!connected?'请使用 USB 数据线连接键盘。':!permissionsReady?permissionMessage:connectionIssue?'请关闭其他键盘设置程序，再重新连接。':busy?'正在检查当前绑定按键…':complete?'当前绑定按键已准备好。':host?.suspended?'编辑、按键触发或游戏期间，快捷控制暂时暂停。':wireless?'蓝牙已连接。灯光播放仍需 USB。':'连接并授权后继续设置绑定按键。';
+  const act=async(op:string)=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');try{
+    if(op==='refreshPermissions')await refreshAppPermissions(command,{silent:true});
+    else await command(op==='agentMode'?{op,source,enabled:true}:{op,source},{silent:true});
+  }catch(failure){setError(failure instanceof Error?failure.message:'设置尚未完成，请重新检查。');}finally{lock.current=false;setBusy(false);}};
   const begin=()=>{if(firmwareUpdate){showFirmwareGuide();return;}setOpen(true);setError('');if(!connectionIssue)void act('agentMode');};
-  const check=()=>{if(firmwareUpdate){setOpen(false);showFirmwareGuide();return;}void act(connectionIssue||!connected?'connect':enabled?'codexAdaptCheck':'agentMode');};
+  const check=()=>{if(firmwareUpdate){setOpen(false);showFirmwareGuide();return;}void act(connectionIssue||!connected?'connect':!enabled?'agentMode':permissionsReady?'codexAdaptCheck':'refreshPermissions');};
   const permission=async(kind:'inputMonitoring'|'accessibility')=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');try{await requestAppPermission(command,kind,{silent:true});}catch(failure){setError(failure instanceof Error?failure.message:'无法完成授权请求，请重试。');}finally{lock.current=false;setBusy(false);}};
   useEffect(()=>{if(!open)return;const refresh=()=>{void refreshAppPermissions(command,{silent:true}).catch(()=>{});};window.addEventListener('focus',refresh);return()=>window.removeEventListener('focus',refresh);},[open,command]);
   const row=(label:string,ok:boolean,detail:string,action?:React.ReactNode)=><div className="agent-setup-row-v6">{ok?<Check size={16} strokeWidth={1.5}/>:<CircleAlert size={16} strokeWidth={1.5}/>}<div><strong>{t(label)}</strong><p>{t(detail)}</p></div>{action??<span className={ok?'agent-row-ready':'agent-row-pending'}>{t(ok?'已就绪':'待完成')}</span>}</div>;
+  const permissionAction=(kind:'inputMonitoring'|'accessibility',status:typeof input)=>status==='denied'?
+    <Button disabled={busy} onClick={()=>{void permission(kind);}}>{t('允许')}</Button>:
+    <span className={status==='ready'?'agent-row-ready':'agent-row-pending'}>{t(status==='ready'?'已允许':status==='allowed'?'已授权，等待生效':'正在检查权限…')}</span>;
   return <>
     <section className="codex-setup-banner" aria-label={t('键盘设置')}>
-      <Keyboard size={19}/><div><strong>{t('功能键')}</strong><p>{t(firmwareUpdate?'前往 NuPhyIO 安装最新固件后即可使用。':!connected?'请使用 USB 数据线连接键盘。':!input||!access?'完成授权后即可使用':connectionIssue?'请关闭其他键盘设置程序，重新连接键盘。':complete?'当前绑定按键已准备好':host?.suspended?'编辑或游戏期间暂时暂停。':enabled?'正在检查当前绑定按键':`${name} 模式未开启`)}</p></div>
+      <Keyboard size={19}/><div><strong>{t('功能键')}</strong><p>{t(firmwareUpdate?'前往 NuPhyIO 安装最新固件后即可使用。':!connected?'请使用 USB 数据线连接键盘。':!permissionsReady?permissionMessage:connectionIssue?'请关闭其他键盘设置程序，重新连接键盘。':complete?'当前绑定按键已准备好':host?.suspended?'编辑或游戏期间暂时暂停。':enabled?'正在检查当前绑定按键':`${name} 模式未开启`)}</p></div>
       <Button busy={busy} onClick={firmwareUpdate?showFirmwareGuide:enabled?()=>{setOpen(true);check();}:begin}>{firmwareUpdate?t('前往更新'):enabled?t('重新检查'):t(`开启 ${name} 模式`)}</Button>
     </section>
     {open&&<Modal title={t('键盘设置')} width={560} className="agent-overlay-v6" initialFocus="title" onClose={()=>setOpen(false)} footer={<><Button kind="ghost" onClick={()=>setOpen(false)}>{t(complete?'完成':'稍后')}</Button><Button kind="primary" busy={busy} onClick={check}>{t(firmwareUpdate?'前往更新':connectionIssue||!connected?'重新连接':enabled?'重新检查':`开启 ${name} 模式`)}</Button></>}>
       <div className="agent-setup-content-v6"><p className="agent-overlay-intro" role="status">{t(summary)}</p>
         {row('键盘连接',connected,connected?`${model} · ${wireless?t('蓝牙'):'USB'}`:'使用支持数据传输的 USB 线。',!connected?<Button disabled={busy} onClick={()=>{void act('connect');}}>{t('连接键盘')}</Button>:<span className="agent-row-ready">{t('已连接')}</span>)}
-        {row('输入监控',input,'接收所选按键与按键灯效。',input?<span className="agent-row-ready">{t('已允许')}</span>:<Button disabled={busy} onClick={()=>{void permission('inputMonitoring');}}>{t('允许')}</Button>)}
-        {row('辅助功能',access,'执行系统快捷操作。',access?<span className="agent-row-ready">{t('已允许')}</span>:<Button disabled={busy} onClick={()=>{void permission('accessibility');}}>{t('允许')}</Button>)}
+        {row('输入监控',inputReady,'接收所选按键与按键灯效。',permissionAction('inputMonitoring',input))}
+        {row('辅助功能',accessReady,'执行系统快捷操作。',permissionAction('accessibility',access))}
         {firmwareUpdate?row('键盘固件',false,'前往 NuPhyIO 更新。'):row('绑定按键',complete,complete?'按实际绑定位置响应。':busy?'正在检查…':host?.suspended?'当前操作结束后恢复。':'连接并授权后继续。')}
         {wireless&&<p className="agent-overlay-hint">{t('若按键仍在调节亮度或音量，请使用标准 F 键的 Fn 组合，或更改绑定。')}</p>}
         {(error||a.error)&&<p className="agent-inline-error" role="alert">{t(error||friendlyConnectionError(a.error??''))}</p>}

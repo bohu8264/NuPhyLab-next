@@ -16,12 +16,21 @@ export function availableFirmwareUpdate(state){
 export function firmwarePrompt(state){
   const fw=state?.firmware,device=state?.device;
   const detected=device?.connected===true||device?.identified===true&&device.firmwareDetectionAvailable===true;
-  if(!detected||!parts(fw?.current)||!(fw.upgradeRecommended===true||fw.updateAvailable===true||fw.updateRequired===true||fw.status==='updateAvailable'))return null;
-  if(fw.latestSupported===false)return null;
-  const target=fw.latestConfirmed&&fw.latest?fw.latest:fw.minimumRequired;
-  if(compare(fw.current,target)!==-1)return null;
-  const modelId=device.modelId;if(!isKeyboardModel(modelId))return null;
-  return {key:[modelId,fw.current,target].join(':'),modelId,model:fw.modelName||device.model?.replace(/ ANSI$/,'')||getKeyboardProfile(modelId).name,current:fw.current,target};
+  const modelId=device?.modelId;
+  if(!detected||!isKeyboardModel(modelId)||fw?.modelId&&fw.modelId!==modelId)return null;
+  const profile=getKeyboardProfile(modelId);
+  const current=parts(device.firmware)?device.firmware:fw?.current;
+  if(!parts(current))return null;
+  // Required protocol upgrades are known locally, before the first network
+  // response and even when an old keyboard fails its lighting handshake.
+  const required=compare(current,profile.minimumVersion)===-1;
+  const qualifiedLatest=fw?.latestConfirmed===true&&fw.stale!==true&&fw.latestSupported!==false;
+  const recommended=qualifiedLatest&&compare(current,fw.latest)===-1;
+  if(!required&&!recommended)return null;
+  const target=qualifiedLatest&&compare(profile.minimumVersion,fw.latest)!==1?fw.latest:profile.minimumVersion;
+  if(compare(current,target)!==-1)return null;
+  return {key:[modelId,current,target].join(':'),modelId,model:profile.name,current,target,
+    required,latestUnverified:fw?.latestConfirmed===true&&fw.latestSupported===false};
 }
 export function currentFirmwareReady(state){
   const fw=state?.firmware;

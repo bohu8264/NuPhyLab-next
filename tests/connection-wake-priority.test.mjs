@@ -5,7 +5,9 @@ import {fakeService,until} from './helpers/fake-service.mjs';
 const identity={transport:'USB',vendorId:0x19f5,productId:0x1028,ledCount:104,keyLedCount:84,protocolReady:true};
 const settings={autoConnect:true,codexEnabled:true,codexKeyAdaptation:true,claudeEnabled:false,
   quotaSideEnabled:false,lightDurationMs:0,lightIdleMs:0};
-const control={skipInitialConnect:true,modelId:'air75-v3',firmwareVersion:'1.0.23.6',
+// Test the automatic connection itself; do not inject a legacy binding edit
+// through fakeService after the welcome has already started.
+const control={freshLibrary:true,skipInitialConnect:true,modelId:'air75-v3',firmwareVersion:'1.0.23.6',
   readProbeVerified:true,connectionWake:true,outputIdentity:identity,storedSettings:settings,
   permissions:{inputMonitoring:true,accessibility:true,canPostEvents:true},
   tasks:[{id:'priority-a',title:'Isolated task A',status:'running'},

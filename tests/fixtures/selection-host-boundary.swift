@@ -3,6 +3,14 @@
 // Keychain state, screen capture or global input monitors. Product integration is
 // separately compiled/checked using the production SelectionFeatureFactory.
 import AppKit
+// Unrelated host tests must not start ambient sensors. Production sampling and
+// lifecycle are compiled separately by ambient-lighting-native.test.mjs.
+final class AmbientLightMonitor {
+ var onSample:(([String:Any])->Void)?
+ private(set) var enabled=false
+ func sync(enabled:Bool){self.enabled=enabled}
+ func stop(){enabled=false}
+}
 enum AppLanguage {case zh,en}
 @MainActor protocol SelectionFeature: AnyObject {
  var showSettings:(()->Void)? {get set}

@@ -17,6 +17,7 @@ import {readAppState} from './api';
 import './agent-overlays-v6.css';
 import {Button,Modal,Switch,run} from './primitives';
 import {t} from './i18n';
+import {keyboardPermissions} from './keyboardPermissions';
 import type {AppState,Command,Task} from './types';
 const object=(value:unknown):Record<string,unknown>=>value&&typeof value==='object'?value as Record<string,unknown>:{};
 const taskId=(task:Task)=>String(task.id??task.threadId??'');
@@ -69,7 +70,10 @@ export function AgentDashboard({source,state,command,focusColors,readState=readA
   const releasingDictation=(id:string)=>!claude&&id==='dictation'&&Boolean(keys.held);
   const host=object(keys.host),failedKeys=Array.isArray(host.failed)?host.failed as string[]:[];
   const native=object(state?.native),permissions=object(native.permissions??state?.native??state?.device.permissions);
-  const canSend=permissions.accessibility===true&&permissions.canPostEvents===true;
+  const {input,access,inputReady,accessReady:canSend,applying,needsReopen}=keyboardPermissions(native,permissions);
+  const accessIssue=access==='allowed'?'辅助功能已授权，等待生效':access==='unknown'?'正在检查权限…':'需要辅助功能权限';
+  const permissionMessage=applying?'正在应用系统授权…':needsReopen?'若重新检查后仍不可用，请重新打开 NuPhy Lab。':
+    input==='unknown'||access==='unknown'?'正在检查权限…':'完成输入监控与辅助功能授权后即可使用全局快捷控制。';
   const commandIds=(settings[`${source}CommandIds`]??(claude?['nextAttention','focusApp','revealProject','copyResume','toggleLightMode','refresh']:defaultCommandIds)) as string[];
   const commands=claude?(state?.claude?.commands??[]):(state?.codex.shortcuts??[]).map(item=>({...item,id:String(item.id??item.action??'')}));
   const currentSource=object(integration?.taskSource),adaptation=object(state?.codex.adaptation),restoreError=object(state?.codex.adaptation).status==='error'&&!enabled&&activeSource===source;
@@ -111,7 +115,7 @@ export function AgentDashboard({source,state,command,focusColors,readState=readA
     if(releasingDictation(item.id))return '结束听写';
     if(!claude&&item.id==='dictation'&&dictationError)return dictationError;
     if(item.available===false)return item.reason??'当前版本尚不支持此操作。';
-    if(!claude)return canSend?'需 Codex 已打开及辅助功能权限；还取决于当前页面。':'需要辅助功能权限，才能发送此快捷操作。';
+    if(!claude)return canSend?'需 Codex 已打开及辅助功能权限；还取决于当前页面。':accessIssue;
     if(['focusApp','openSession'].includes(item.id)&&object(state?.claude?.app).installed===false)return '未找到 Claude 桌面应用，会话状态仍可读取。';
     if(item.id==='openSession'&&currentTask&&!/^local_[A-Za-z0-9-]{1,64}$/.test(String(currentTask.desktopId??'')))return '此会话无法在桌面应用中定位，可打开项目或复制恢复命令。';
     if(item.id==='focusApp'&&currentTask?.entrypoint&&currentTask.entrypoint!=='claude-desktop')return '此会话运行在终端里，可打开项目或复制恢复命令。';
@@ -183,11 +187,11 @@ export function AgentDashboard({source,state,command,focusColors,readState=readA
         </div>;})}</div>
       <div className="agent-command-heading"><h2>{t('命令键')}</h2><Button kind="ghost" disabled={!state} onClick={openEditor}>{t('编辑命令键')}</Button></div>
       {!claude&&enabled&&Boolean(object(keys.commandBridge).message)&&<p className="agent-feedback-v6" role="status">{t(String(object(keys.commandBridge).message))}</p>}
-      <div className="agent-command-strip">{Array.from({length:6},(_,index)=>{const id=commandIds[index]??'none',item=commands.find(item=>item.id===id);return <button key={index} disabled={!item||operationDisabled(item)} title={releasingDictation(id)?t('结束听写'):item&&operationUnavailable(item)?t(operationReason(item)):!claude&&!canSend?t('需要辅助功能权限'):id==='dictation'?t(dictation.mode==='toggle'?'听写时按一次开始，再按一次结束。':'听写时按住对应按键，松开结束。'):t(item?.label??'未绑定')} onClick={()=>execute(id)}><kbd>{t(bindings[index+6].label)}</kbd><span>{t(releasingDictation(id)?'结束听写':(!claude&&commandShortLabels[id])||item?.label||'未绑定')}</span></button>;})}</div>
+      <div className="agent-command-strip">{Array.from({length:6},(_,index)=>{const id=commandIds[index]??'none',item=commands.find(item=>item.id===id);return <button key={index} disabled={!item||operationDisabled(item)} title={releasingDictation(id)?t('结束听写'):item&&operationUnavailable(item)?t(operationReason(item)):!claude&&!canSend?t(accessIssue):id==='dictation'?t(dictation.mode==='toggle'?'听写时按一次开始，再按一次结束。':'听写时按住对应按键，松开结束。'):t(item?.label??'未绑定')} onClick={()=>execute(id)}><kbd>{t(bindings[index+6].label)}</kbd><span>{t(releasingDictation(id)?'结束听写':(!claude&&commandShortLabels[id])||item?.label||'未绑定')}</span></button>;})}</div>
       {dictationError&&!keys.held&&commandIds.includes('dictation')&&<p className="agent-warning" role="status">{t('听写')}: {t(dictationError)}</p>}
       {ordinaryKeys.length>0&&<p className="agent-note">{t('这些绑定是普通按键，开启本模式时会被全局接管，期间无法用它们正常输入：')}{ordinaryKeys.map(key=>t(key.label)).join('、')}</p>}
       {statusMessage&&<div className="agent-feedback-v6" role="status"><p>{t(statusMessage)}</p>{Boolean(serviceError||dataUnavailable)&&<small>{t('保留上次内容与绑定；恢复读取后自动更新。')}</small>}<div>{claude&&hookState.installed===false?<Button kind="ghost" onClick={()=>changeTab('setup')}>{t('接入设置')}</Button>:<Button kind="ghost" busy={operationBusy==='refreshState'} onClick={refresh}>{t('刷新状态')}</Button>}{emptySlots&&tasks.length>0&&<Button kind="ghost" onClick={()=>document.querySelector<HTMLSelectElement>('.agent-task-heading select')?.focus()}>{t('选择其他来源')}</Button>}</div></div>}
-      {(!permissions.inputMonitoring||!canSend)&&<div className="agent-feedback-v6"><p>{t('完成输入监控与辅助功能授权后即可使用全局快捷控制。')}</p><Button kind="ghost" onClick={()=>window.dispatchEvent(new CustomEvent('nuphylab:navigate',{detail:'permissions'}))}>{t('管理权限')}</Button></div>}
+      {(!inputReady||!canSend||applying)&&<div className="agent-feedback-v6"><p>{t(permissionMessage)}</p><Button kind="ghost" onClick={()=>window.dispatchEvent(new CustomEvent('nuphylab:navigate',{detail:'permissions'}))}>{t('管理权限')}</Button></div>}
       {feedback&&<div className="agent-feedback-v6" role="alert"><p>{t(feedback)}</p><div><Button kind="ghost" onClick={refresh}>{t('重新检查')}</Button>{claude&&currentTask&&<><Button kind="ghost" disabled={!currentTask.cwd||Boolean(operationBusy)} onClick={()=>execute('revealProject')}>{t('打开项目')}</Button><Button kind="ghost" disabled={Boolean(operationBusy)} onClick={()=>execute('copyResume')}>{t('复制恢复命令')}</Button></>}</div></div>}
 
     </section>}
@@ -196,7 +200,7 @@ export function AgentDashboard({source,state,command,focusColors,readState=readA
       <CodexSetup state={state} command={command} source={source}/>
       <div className="agent-setup-setting"><div><h2>{t('关闭模式后')}</h2><p>{t('恢复按键使用的默认功能。')}</p></div><select aria-label={t('关闭模式后的功能')} value={settings.codexKeycapFallback?'keycaps':'device'} onChange={e=>set({codexKeycapFallback:e.target.value==='keycaps'})}><option value="device">{t('键盘当前配置')}</option><option value="keycaps">{t('键帽上的原厂功能')}</option></select></div>
       {claude?<ClaudeSetup state={state} command={command}/>:<div className="agent-setup-setting"><div><h2>{t('本机接入')}</h2><p className={`agent-live-status ${integrationReady?'connected':''}`}><i/>{t(integrationReady?'Codex 已接入':'Codex 暂不可用')}</p></div><Button kind="ghost" icon={<ChevronRight size={15}/>} onClick={()=>setAllOperations(true)}>{t('接入详情')}</Button></div>}
-      <div className="agent-setup-setting"><div><h2>{t('按键与权限')}</h2><div className="agent-permission-status"><span className={permissions.inputMonitoring?'connected':''}><i/>{t(permissions.inputMonitoring?'输入监控已允许':'输入监控未允许')}</span><span className={canSend?'connected':''}><i/>{t(canSend?'辅助功能已允许':'辅助功能未允许')}</span></div></div><Button kind="ghost" icon={<ChevronRight size={15}/>} onClick={()=>window.dispatchEvent(new CustomEvent('nuphylab:navigate',{detail:'permissions'}))}>{t('管理权限')}</Button></div>
+      <div className="agent-setup-setting"><div><h2>{t('按键与权限')}</h2><div className="agent-permission-status"><span className={inputReady?'connected':''}><i/>{t(inputReady?'输入监控已允许':input==='allowed'?'输入监控已授权，等待生效':input==='unknown'?'正在检查输入监控…':'输入监控未允许')}</span><span className={canSend?'connected':''}><i/>{t(canSend?'辅助功能已允许':access==='allowed'?'辅助功能已授权，等待生效':access==='unknown'?'正在检查辅助功能…':'辅助功能未允许')}</span></div></div><Button kind="ghost" icon={<ChevronRight size={15}/>} onClick={()=>window.dispatchEvent(new CustomEvent('nuphylab:navigate',{detail:'permissions'}))}>{t('管理权限')}</Button></div>
     </section><details className="agent-setup-details agent-setup-details-v6" data-source={source}><summary>{t('更多按键选项')}</summary><div className="agent-more-options-v6"><Button className="agent-reset-keys-v6" kind="secondary" icon={<RefreshCw size={14}/>} onClick={()=>set({[`${source}TaskKeys`]:['F1','F2','F3','F4','F5','F6'],[`${source}CommandKeys`]:['F7','F8','F9','F10','F11','F12']})}>{t('恢复默认按键')}</Button>
       {claude&&<label>{t('任务键跳转')}<select value={String(settings.claudeTaskAction??'openSession')} onChange={e=>set({claudeTaskAction:e.target.value})}>{[['openSession','打开对应会话'],['focusApp','切换到 Claude 应用'],['revealProject','打开项目文件夹'],['copyResume','复制恢复命令'],['selectOnly','仅选中会话']].map(([id,label])=><option key={id} value={id}>{t(label)}</option>)}</select></label>}
       <p>{t('恢复当前 AI 的任务键与命令键，不重置动作与颜色。')}</p>

@@ -11,7 +11,7 @@ const stub=name=>Object.defineProperty(()=>null,'name',{value:name});
 async function fixture(language='zh-CN'){
  const commands=[],Button=stub('Button');
  const ui=createVMEnvironment({
-  'lucide-react':{},'./SelectionLab':{SelectionAPISettings:stub('SelectionAPISettings'),SelectionPermissionSettings:stub('SelectionPermissionSettings')},'./primitives':{Button,Modal:stub('Modal'),Switch:stub('Switch'),run:value=>value},
+  'lucide-react':{},'./AmbientLightingPreferences':{AmbientLightingPreferences:()=>null},'./SelectionLab':{SelectionAPISettings:stub('SelectionAPISettings'),SelectionPermissionSettings:stub('SelectionPermissionSettings')},'./primitives':{Button,Modal:stub('Modal'),Switch:stub('Switch'),run:value=>value},
   './DurationField':{DurationField:stub('DurationField')},'../../shared/lighting-power.mjs':power,
   './StartupGuide':{useStartupCopy:()=> (zh,en)=>language==='en'?en:zh,OFFICIAL_DRIVER_URL:'https://drive.nuphyio.com/#/setting'},'./codexKeys':{nativeCodexKeys:async()=>false},
   './i18n':{useLanguage:()=>language,t:value=>value},'../../package.json':{version:'fixture'},'./api':{readAppState:async()=>null},
@@ -41,6 +41,9 @@ for(const language of ['zh-CN','en'])test(`actual lighting preferences show the 
  assert.ok(text.includes(language==='en'?'Continued inactivity reaches idle sleep first.':'持续无操作时会先进入空闲休眠'));
  assert.ok(text.includes(language==='en'?'6 minutes without keyboard input':'6 分钟无键盘输入'));
  assert.equal(walkAll(f.instance.tree,node=>node.type==='a')[0].props.href,'https://drive.nuphyio.com/#/setting');
+ f.state.device.modelId='kick75';f.state.device.capabilities={boardSleepLease:true};f.instance.render();
+ assert.ok(textOf(f.instance.tree).includes(language==='en'?"restores the keyboard's original sleep settings":"恢复键盘原来的休眠设置"));
+ assert.ok(!textOf(f.instance.tree).includes(language==='en'?'6 minutes without keyboard input':'6 分钟无键盘输入'));
  const selects=walkAll(f.instance.tree,node=>node.type==='select');
  selects[0].props.onChange({target:{value:'3600000'}});selects[1].props.onChange({target:{value:'0'}});
  assert.deepEqual(f.commands,[{op:'settings',settings:{lightDurationMs:3600000}},{op:'settings',settings:{lightIdleMs:0}}]);

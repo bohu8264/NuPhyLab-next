@@ -11,7 +11,7 @@ const stub=name=>Object.defineProperty(()=>null,'name',{value:name});
 for(const language of ['zh-CN','en'])test(`merged About & updates keeps legacy links, firmware notification and help in ${language}`,async t=>{
  const UpdatePreferences=stub('UpdatePreferences'),Modal=stub('Modal');
  const ui=createVMEnvironment({
-  'lucide-react':{},'./SelectionLab':{SelectionAPISettings:stub('SelectionAPISettings'),SelectionPermissionSettings:stub('SelectionPermissionSettings')},'./primitives':{Button:stub('Button'),Modal,Switch:stub('Switch'),run:value=>value},
+  'lucide-react':{},'./AmbientLightingPreferences':{AmbientLightingPreferences:()=>null},'./SelectionLab':{SelectionAPISettings:stub('SelectionAPISettings'),SelectionPermissionSettings:stub('SelectionPermissionSettings')},'./primitives':{Button:stub('Button'),Modal,Switch:stub('Switch'),run:value=>value},
   './DurationField':{DurationField:stub('DurationField')},'../../shared/lighting-power.mjs':power,
   './StartupGuide':{useStartupCopy:()=> (zh,en)=>language==='en'?en:zh,OFFICIAL_DRIVER_URL:'https://drive.nuphyio.com/#/setting'},
   './i18n':{useLanguage:()=>language,t:value=>value},'../../package.json':{default:{version:'fixture-version'}},

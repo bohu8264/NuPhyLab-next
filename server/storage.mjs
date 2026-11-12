@@ -1,3 +1,4 @@
+import {DEFAULT_AMBIENT_LIGHTING,validateAmbientLighting} from '../shared/ambient-lighting.mjs';
 import {getCanvasCount,isKeyboardModel} from '../shared/keyboard-models.mjs';
 import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
 import path from "node:path";
@@ -116,6 +117,7 @@ import {validateClaudeStatusColors} from '../shared/claude-lighting.mjs';
 import {DEFAULT_CLAUDE_COMMAND_IDS, CLAUDE_TASK_ACTIONS, isClaudeCommandId} from './claude-actions.mjs';
 import {DEFAULT_AUDIO,validateAudio} from "../shared/audio-reactive.mjs";
 export const defaultSettings = {
+  ambientLighting: structuredClone(DEFAULT_AMBIENT_LIGHTING),
   audio: {...DEFAULT_AUDIO},
   codexTaskKeys: [...DEFAULT_TASK_KEYS],
   codexCommandKeys: [...DEFAULT_COMMAND_KEYS],
@@ -156,7 +158,9 @@ export function validateSettings(input, previous = defaultSettings) {
     throw new Error("设置格式无效");
   const s = { airTopRightModule: defaultSettings.airTopRightModule, ...previous };
   for (const [k, v] of Object.entries(input)) {
-    if (k === "outputColorProfile") {
+    if (k === "ambientLighting") {
+      s[k] = validateAmbientLighting(v,previous.ambientLighting);
+    } else if (k === "outputColorProfile") {
       const profile = validateOutputColorProfile(v);
       if (profile) s[k] = profile;
       else delete s[k];

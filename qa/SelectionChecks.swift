@@ -4,8 +4,10 @@ import Carbon
 @main struct SelectionChecks {
  static func main() throws {
   var count=0
-  func check(_ value:Bool,_ name:String){count+=1;precondition(value,name)}
+  func check(_ value:Bool,_ name:String){count+=1;if !value{FileHandle.standardError.write(Data("FAILED check \(count): \(name)\n".utf8))};precondition(value,name)}
   func rejects(_ shortcut:LabShortcut,_ name:String){do{try shortcut.validate();check(false,name)}catch{check(true,name)}}
+  try selectionSideButtonChecks(check)
+  try selectionReplyChecks(check)
   try LabShortcut().validate();check(true,"default accepted")
   try LabShortcut(keyCode:12,modifiers:0,label:"Q").validate();check(true,"single key")
   try LabShortcut(keyCode:40,modifiers:UInt32(cmdKey),label:"Cmd K").validate();check(true,"command combination")
@@ -40,7 +42,7 @@ import Carbon
   check(wheel.step(delta:1,precise:false,momentum:false,time:0)==(-1),"wheel tick")
   check(wheel.step(delta:1,precise:false,momentum:true,time:1)==nil,"inertia ignored")
   check(wheel.step(delta:1,precise:true,momentum:false,time:2)==nil,"trackpad noise ignored")
-  check(LabAction.translate.stepped(-1) == .explain && LabAction.explain.stepped(1) == .translate,"mode wraps")
+  check(LabAction.translate.stepped(-1) == .reply && LabAction.reply.stepped(1) == .translate,"mode wraps")
   let old=Data(#"{"enabled":true,"shortcut":{"keyCode":18,"modifiers":2048,"label":"Option 1"},"configuration":{"provider":"deepSeek","endpoint":"https://api.deepseek.com/chat/completions","model":"fixture","apiProtocol":"chatCompletions","imageInputConfirmed":false,"maximumOutputTokens":4096}}"#.utf8)
   let migrated=try JSONDecoder().decode(LabPreferences.self,from:old)
   check(migrated.enabled && migrated.shortcut.keyCode==18 && migrated.configuration.model=="fixture","R4 settings migrate")
@@ -66,6 +68,14 @@ import Carbon
   check(SelectionPermissionProbe.decode(Data("{}".utf8)) == nil,"incomplete probe is unknown")
   check(SelectionPermissionProbe.decode(Data("{\"accessibility\":1}".utf8)) == nil,"malformed probe must not grant access")
   check(SelectionPermissionProbe.decode(Data(repeating:32,count:2049)) == nil,"oversized probe rejected")
+  let live = LabPermissionSnapshot(accessibility:false,inputMonitoring:true,screenRecording:false,microphone:false,speechRecognition:false)
+  let verified = LabPermissionSnapshot(accessibility:true,inputMonitoring:false,screenRecording:false,microphone:false,speechRecognition:false)
+  let labels = live.confirmingGrants(from:verified)
+  check(labels.accessibility && labels.inputMonitoring,"labels use verified grants without replacing live grants with cached probe denials")
+  check(live.missing(voice:false) == ["accessibility","screenRecording"],"verified grants leave the live capture gate unchanged")
+  check(labels.missing(voice:false) == ["screenRecording"],"permission guidance shows only unconfirmed grants")
+  check(!live.requiresRelaunch(fresh:verified,voice:false),"a genuine missing grant takes priority over relaunch")
+  check(live.confirmingGrants(from:nil) == live,"no recent probe uses the local snapshot")
   func setup(enabled:Bool=true,configured:Bool=true,permissions:Bool=true,relaunch:Bool=false,conflict:Bool=false,secure:Bool=false,monitor:Bool=true,recording:Bool=false)->LabSetupState {
    LabSetupState.resolve(enabled:enabled,recording:recording,configured:configured,permissions:permissions,relaunch:relaunch,conflict:conflict,secureInput:secure,monitorReady:monitor)
   }

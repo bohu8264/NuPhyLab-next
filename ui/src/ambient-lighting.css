@@ -1,0 +1,14 @@
+.ambient-lighting-panel { margin-bottom: 20px; }
+.ambient-lighting-panel .lab-setting-row { min-height: 74px; padding: 16px 0; }
+.ambient-lighting-panel .lab-setting-row > div:first-child { flex: 1; min-width: 0; }
+.ambient-lighting-panel .lab-setting-row > .switch-field { flex: 0 0 auto; width: auto; }
+.ambient-lighting-panel .switch-field > span { display: none; }
+.ambient-lighting-panel .lab-setting-row:first-child { border-bottom: 0; }
+.ambient-lighting-state { padding: 0 22px 16px; color: #666; font-size: 13px; }
+.ambient-brightness-row { display: flex; align-items: center; gap: 18px; padding: 20px 22px; border-top: 1px solid #e8e8e8; }
+.ambient-brightness-row label { flex: 0 0 auto; font-size: 14px; }
+.ambient-brightness-row input { min-width: 80px; flex: 1; accent-color: #222; }
+.ambient-brightness-row output { min-width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; }
+.ambient-lighting-footer { display: flex; align-items: center; gap: 16px; padding: 0 22px 18px; }
+.ambient-lighting-footer p { flex: 1; margin: 0; color: #777; font-size: 12px; line-height: 1.6; }
+@media (max-width: 720px) { .ambient-lighting-footer { flex-wrap: wrap; } }

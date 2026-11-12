@@ -513,6 +513,29 @@ final class NativeTitlebarWindow: NSWindow {
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandlerWithReply {
     let audioCapture = AudioCapture()
+    lazy var ambientLight: AmbientLightMonitor = {
+        let monitor=AmbientLightMonitor()
+        monitor.onSample = { [weak self] sample in self?.sendAmbientLight(sample) }
+        return monitor
+    }()
+    private var ambientTask: URLSessionDataTask?
+    private var pendingAmbient: [String:Any]?
+    private var ambientGeneration=0
+    private func sendAmbientLight(_ sample:[String:Any]) {
+        guard !terminating,ambientLight.enabled,let base=baseURL else { return }
+        if ambientTask != nil { pendingAmbient=sample; return }
+        let generation=ambientGeneration
+        var request=URLRequest(url:base.appendingPathComponent("api/command"),timeoutInterval:3)
+        request.httpMethod="POST"; request.setValue(apiToken,forHTTPHeaderField:"X-Air-Token")
+        request.setValue("application/json",forHTTPHeaderField:"Content-Type")
+        request.httpBody=try? JSONSerialization.data(withJSONObject:["op":"ambientLightSample","sample":sample])
+        ambientTask=URLSession.shared.dataTask(with:request) { [weak self] _,_,_ in DispatchQueue.main.async {
+            guard let self,self.ambientGeneration==generation else { return }
+            self.ambientTask=nil
+            if let next=self.pendingAmbient { self.pendingAmbient=nil; self.sendAmbientLight(next) }
+        }}
+        ambientTask?.resume()
+    }
     var pendingAudio: [String:Any]?
     var audioSending = false
     var window: NSWindow!
@@ -539,7 +562,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     var permissionRecovery=PermissionCaptureRecovery()
     var permissionRelaunchPending=false
     var permissionShutdownCommitted=false
-    var permissionHelperReady=false
+    private var permissionHelperReady:Bool?
+    private var permissionRevision=0
     private var permissionProbeProcess:Process?
     private var permissionProbeResult:[String:Any]?
     private var permissionProbeAt:TimeInterval = -.infinity
@@ -670,7 +694,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }
         dragConvert.selectionReservedTrigger = { [weak self] in self?.selectionLab.dragReservedTrigger }
         dragConvert.activityChanged = { [weak self] active in self?.typingSounds.setPaused("fileDrag",active:active) }
-        selectionLab.fileDragActive = { [weak self] in self?.dragConvert.isFileDragActive == true }
+        selectionLab.fileDragActive = { [weak self] in
+            guard let self else{return true}
+            return self.dragConvert.isFileDragActive || self.permissionRelaunchPending || self.terminating
+        }
         _ = typingSounds
         selectionLab.voiceActivityChanged = { [weak self] active in self?.typingSounds.setPaused("selectionVoice", active:active);self?.setMusicCapture("selectionVoice",active:active) }
         selectionLab.updateLanguage(english ? .en:.zh)
@@ -678,6 +705,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         selectionLab.recordingChanged = { [weak self] active in self?.selectionShortcutRecording=active;self?.typingSounds.setPaused("shortcut",active:active);self?.refreshHotkeys() }
         selectionLab.requestRelaunch = { [weak self] in
             guard let self, !self.terminating, !self.preparingUpdate, !self.updateInstallCommitted, !self.driverOpenInFlight,
+                  !self.applicationQuitPending, !self.permissionRelaunchPending, self.worker?.isRunning == true,
                   !self.capturingKey, !self.musicSaveFailed, !self.musicActive, !self.musicExportActive, !self.musicFlushInProgress, self.keyGestureGate.activeCount == 0, !self.selectionLab.isBusy, !self.dragConvert.busy, !self.dragConvert.isFileDragActive else { return false }
             self.permissionShutdownCommitted=false
             self.permissionRelaunchPending = true
@@ -872,6 +900,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let permissionRecoveryFailed=permissionRelaunchPending && (status != 0 || signaled)
         permissionShutdownCommitted=false
         stopHotkeyMonitoring()
+        permissionHelperReady=nil
         worker=nil
         baseURL=nil;apiToken=""
         if updateInstallCommitted && !terminating {
@@ -881,12 +910,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         if permissionRelaunchPending {
             permissionRelaunchPending=false
             if status==0 && !signaled {
-                do {try PermissionAppRelaunch.launch();self.replyToTermination(true);return}
+                do {
+                    try PermissionAppRelaunch.launch()
+                    selectionLab.shutdown()
+                    self.replyToTermination(true);return
+                }
                 catch {appendWorkerLog(Data("Permission relaunch could not start.\n".utf8))}
             }
             // A recovery may not bypass failed keyboard restoration. Keep the
             // host open; the ordinary failure alert below retains diagnostics.
             terminating=false;typingSounds.setPaused("quitting",active:false);self.replyToTermination(false);setExitPresentation(false)
+            dragConvert.resume()
+            selectionLab.refreshAuthorization()
             if status==0 && !signaled {startWorker();return}
             permissionRecovery.attempted=true
         }
@@ -1297,11 +1332,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                   let result=requestNativePermission(permission) else{replyHandler(nil,"Invalid permission");return}
             replyHandler(result,nil);return
         case "permissions","refreshPermissions":
+            let permissions=nativePermissionSnapshot()
+            refreshCapturePermissions(permissions)
             refreshHotkeys()
             // The caller sends this exact snapshot with its helper refresh.
             // A fire-and-forget POST here races that refresh and can leave the
             // response using the host's previous (denied) permissions.
-            replyHandler(nativePermissionSnapshot(),nil);return
+            replyHandler(permissionStatus(permissions),nil);return
         case "capture":
             let session=body["session"] as? String
             if body["active"] as? Bool == true {
@@ -1322,9 +1359,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         // IOHIDCheckAccess is a public, read-only API; unknown stays denied.
         PermissionProbe.snapshot()
     }
+    private func freshPermissionSnapshot(now:TimeInterval)->[String:Any]? {
+        now-permissionProbeAt<4 ? permissionProbeResult : nil
+    }
+    private func permissionStatus(_ local:[String:Any])->[String:Any] {
+        var status=local
+        let system=freshPermissionSnapshot(now:ProcessInfo.processInfo.systemUptime) ?? local
+        status["systemPermissions"]=Dictionary(uniqueKeysWithValues:PermissionProbe.keys.map{($0,system[$0] as? Bool == true)})
+        status["permissionRecoveryPending"]=permissionRelaunchPending || (permissionRecovery.grantAt != nil && !permissionRecovery.attempted && !CommandLine.arguments.contains(PermissionAppRelaunch.argument))
+        permissionRevision+=1
+        status["permissionRevision"]=permissionRevision
+        return status
+    }
     func refreshPermissionProbe(now:TimeInterval,needed:Bool) {
         guard needed,permissionProbeProcess==nil,now>=nextPermissionProbe,
-              !permissionRecovery.attempted,!terminating,
+              !terminating,!permissionRelaunchPending,
               let executable=Bundle.main.executableURL else{return}
         nextPermissionProbe=now+2
         let process=Process(),output=Pipe()
@@ -1343,7 +1392,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                     self.lastPermissionProbeSignature=signature
                     self.appendWorkerLog(Data("Fresh permission probe (input/access/post): \(signature)\n".utf8))
                 }
-                self.reportNativePermissions(force:true)
+                self.reportNativePermissions()
             }
         }
         do {try process.run()} catch {permissionProbeProcess=nil;permissionProbeResult=nil}
@@ -1357,14 +1406,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let permissions=nativePermissionSnapshot()
         refreshCapturePermissions(permissions)
         let now=ProcessInfo.processInfo.systemUptime,localGranted=PermissionProbe.allGranted(permissions)
-        let stale = !localGranted || !permissionHelperReady
+        // A helper that has not answered yet is not evidence of cached denial.
+        let stale = !localGranted || permissionHelperReady == false
         refreshPermissionProbe(now:now,needed:stale)
-        let fresh=now-permissionProbeAt<4 ? permissionProbeResult:nil
+        let fresh=freshPermissionSnapshot(now:now)
         let granted=fresh.map{PermissionProbe.allGranted($0)} ?? localGranted
         permissionRecovery.observe(granted:granted,
-            captureReady:localGranted && permissionHelperReady && (!hotkeysEnabled || functionKeyTapIsActive()),now:now,
+            captureReady:!stale && (!hotkeysEnabled || functionKeyTapIsActive()),now:now,
             freshGrantNeedsRelaunch:fresh != nil && granted && stale)
-        let canRecover = !dragConvert.busy && !dragConvert.isFileDragActive && !musicSaveFailed && !musicActive && !musicExportActive && !musicFlushInProgress && !selectionLab.isBusy && !capturingKey && keyGestureGate.activeCount==0 && !driverOpenInFlight && !preparingUpdate && !updateInstallCommitted && !updateAbortRecoveryRequested && !permissionRelaunchPending
+        let canRecover = NSApp?.isActive == true && worker?.isRunning == true && !IsSecureEventInputEnabled()
+            && !applicationQuitPending && !dragConvert.busy && !dragConvert.isFileDragActive
+            && !musicSaveFailed && !musicActive && !musicExportActive && !musicFlushInProgress
+            && !selectionLab.isBusy && !capturingKey && keyGestureGate.activeCount==0
+            && !driverOpenInFlight && !preparingUpdate && !updateInstallCommitted
+            && !updateAbortRecoveryRequested && !permissionRelaunchPending
             && !CommandLine.arguments.contains(PermissionAppRelaunch.argument)
         if permissionRecovery.shouldRecover(now:now,idle:canRecover) {
             permissionShutdownCommitted=false
@@ -1372,10 +1427,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             appendWorkerLog(Data("Applying newly granted permissions by a single clean app relaunch.\n".utf8))
             NSApp.terminate(nil);return
         }
-        let signature=["inputMonitoring","accessibility","canPostEvents"].map{permissions[$0] as? Bool == true ? "1":"0"}.joined()
+        let status=permissionStatus(permissions)
+        let system=status["systemPermissions"] as? [String:Bool] ?? [:]
+        let signature=PermissionProbe.keys.map { key in
+            "\(permissions[key] as? Bool == true)/\(system[key] == true)"
+        }.joined() + "/\(status["permissionRecoveryPending"] as? Bool == true)"
         guard force || signature != lastPermissionReportSignature || Date().timeIntervalSince(lastPermissionReport)>5 else{return}
         lastPermissionReportSignature=signature;lastPermissionReport=Date()
-        post(["op":"nativePermissions","permissions":permissions])
+        post(["op":"nativePermissions","permissions":status])
     }
     // TCC can change while this process and its old event tap remain alive.
     // Invalidate that tap on an authorization edge, release owned holds, then
@@ -1383,6 +1442,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     func refreshCapturePermissions(_ permissions:[String:Any]) {
         let signature=["inputMonitoring","accessibility","canPostEvents"].map{permissions[$0] as? Bool == true ? "1":"0"}.joined()
         guard signature != capturePermissionSignature else{return}
+        // A probe started before a live grant or revocation cannot describe
+        // the new state. Drop its presentation result and check again.
+        if capturePermissionSignature != nil {
+            permissionProbeResult=nil
+            if permissionProbeProcess?.isRunning == true {permissionProbeProcess?.terminate()}
+            permissionProbeProcess=nil
+            nextPermissionProbe=0
+        }
         capturePermissionSignature=signature
         cancelPhysicalHold();interruptFunctionKeyTap();stopReservedKeyCapture()
         nextCaptureRetry = .distantPast
@@ -1406,7 +1473,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let opened=NSWorkspace.shared.open(URL(string:"x-apple.systempreferences:com.apple.preference.security?"+pane)!)
         reportNativePermissions(force:true)
         refreshHotkeys()
-        return ["opened":opened,"permission":permission,"permissions":nativePermissionSnapshot()]
+        return ["opened":opened,"permission":permission,"permissions":permissionStatus(nativePermissionSnapshot())]
     }
     func applicationDidBecomeActive(_ notification:Notification){
         refreshMusicPause()
@@ -1667,6 +1734,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         pollHotkeySetting()
     }
     func stopHotkeyMonitoring(){
+        ambientLight.stop(); ambientGeneration += 1
+        ambientTask?.cancel(); ambientTask=nil; pendingAmbient=nil
         audioCapture.stop();pendingAudio=nil
         hotkeyPollGeneration+=1
         hotkeyPollTimer?.invalidate();hotkeyPollTimer=nil
@@ -1690,12 +1759,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                 self.hotkeyStateTask=nil
                 let native=state?["native"] as? [String:Any]
                 let helper=native?["helper"] as? [String:Any] ?? native
-                self.permissionHelperReady=["inputMonitoring","accessibility","canPostEvents"].allSatisfy{helper?[$0] as? Bool==true}
+                let grants=PermissionProbe.keys.compactMap { helper?[$0] as? Bool }
+                self.permissionHelperReady=grants.contains(false) ? false : (grants.count==PermissionProbe.keys.count ? true : nil)
                 if let value=settings?["language"] as? String, ["en","zh-CN"].contains(value), self.english != (value == "en") {
                     self.english = value == "en"; self.buildMenus(); self.selectionLab.updateLanguage(self.english ? .en:.zh); self.dragConvert.updateLanguage(english:self.english)
                     #if canImport(Sparkle)
                     self.updateUserDriver?.refreshLanguage()
                     #endif
+                }
+                if (response as? HTTPURLResponse)?.statusCode == 200 {
+                    self.ambientLight.sync(enabled:(settings?["ambientLighting"] as? [String:Any])?["enabled"] as? Bool == true)
                 }
                 self.applyKeyConfiguration(keys)
                 let capture=(state?["audio"] as? [String:Any])?["capture"] as? [String:Any]
@@ -2006,11 +2079,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         if terminating{return .terminateLater}
         guard !dragConvert.busy else{presentDragBusyNotice();return .terminateCancel}
         dragConvert.shutdown()
-        selectionLab.shutdown()
+        if permissionRelaunchPending { selectionLab.cancel() }
+        else { selectionLab.shutdown() }
         typingSounds.setPaused("quitting",active:true)
         resetOfficialDriverReturn()
         stopHotkeyMonitoring()
-        guard let worker=worker else{return .terminateNow}
+        guard let worker=worker else{selectionLab.shutdown();return .terminateNow}
         // A stopped process may still have a queued termination callback and log flush.
         // Let that callback surface a nonzero exit instead of bypassing it on a second quit.
         permissionShutdownCommitted=permissionRelaunchPending

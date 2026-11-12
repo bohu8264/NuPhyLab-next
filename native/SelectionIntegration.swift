@@ -28,8 +28,22 @@ struct LabPermissionSnapshot: Codable, Equatable {
         let keys = ["accessibility","inputMonitoring","screenRecording"] + (voice ? ["microphone","speechRecognition"] : [])
         return keys.filter { dictionary[$0] as? Bool != true }
     }
+    // A fresh child can confirm a grant that the host has not applied yet.
+    // Use this view for permission labels, never for enabling capture.
+    func confirmingGrants(from fresh: Self?) -> Self {
+        guard let fresh else { return self }
+        return .init(accessibility: accessibility || fresh.accessibility,
+                     inputMonitoring: inputMonitoring || fresh.inputMonitoring,
+                     screenRecording: screenRecording || fresh.screenRecording,
+                     microphone: microphone || fresh.microphone,
+                     speechRecognition: speechRecognition || fresh.speechRecognition,
+                     microphoneState: !microphone && fresh.microphone ? fresh.microphoneState : microphoneState,
+                     speechRecognitionState: !speechRecognition && fresh.speechRecognition ? fresh.speechRecognitionState : speechRecognitionState)
+    }
     func requiresRelaunch(fresh: Self, voice: Bool) -> Bool {
-        missing(voice: voice).contains { fresh.dictionary[$0] as? Bool == true }
+        let missingPermissions = missing(voice: voice)
+        let verified = fresh.dictionary
+        return !missingPermissions.isEmpty && missingPermissions.allSatisfy { verified[$0] as? Bool == true }
     }
 }
 // Permission grants alone are not proof that a working global listener exists.

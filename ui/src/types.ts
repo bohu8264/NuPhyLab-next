@@ -1,3 +1,4 @@
+import type {AmbientLightingSettings,AmbientLightingState} from '../../shared/ambient-lighting.mjs';
 import {blank} from '../../shared/layout.mjs';
 import type {KeyboardModel} from '../../shared/layout.mjs';
 export type Key = {
@@ -115,6 +116,7 @@ export type AppState = {
   layout?: Key[];
   audio?: import("./AudioPanel").AudioState;
   bluetooth?: {connected:boolean;status:'connected'|'disconnected'|'ambiguous'|'unavailable';count:number;error:string|null};
+  ambientLighting?: AmbientLightingState;
   lightPower?: {sleeping:boolean;reason:"duration"|"idle"|null;remainingMs:number|null;idleMs:number;systemIdleAvailable:boolean|null};
   connectionWake?: {active:boolean;status:string;elapsedMs:number;durationMs:number;sessionId:string|null};
   firmware?: {
@@ -170,6 +172,7 @@ export type AppState = {
   scenes: Scene[];
   previewColors?: string[];
   settings: {
+    ambientLighting?: AmbientLightingSettings;
     airTopRightModule?: "rotary" | "keycap";
     brightness: number;
     codexEnabled: boolean;

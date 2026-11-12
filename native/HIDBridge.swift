@@ -404,6 +404,11 @@ enum USBKeyboardModel: String, CaseIterable {
     func supportsFunctionKeyAdaptation(_ firmware:[UInt8]) -> Bool {
         self != .air65 && S4.supportsPerKey(firmware,model:self)
     }
+    func supportsBoardSleep(_ firmware:[UInt8]) -> Bool {
+        // F3/F5 have been checked independently for these exact firmwares.
+        // Do not infer sleep writes from RGB or connection-wake support.
+        (self == .air75 || self == .kick75) && hasQualifiedFirmware(firmware)
+    }
     func validGeometry(_ value: [UInt8]) -> Bool {
         value.count == 8 && value[0] <= 1 && Array(value[1...4]) == [8,4,rows,columns] &&
             (value[5] & 0x80 != 0 ? Int(value[5] & 0x7f) == extraKeys : extraKeys == 2)
@@ -604,7 +609,7 @@ enum S4 {
                 throw failure("INVALID_FRAME", "Only journaled factory function-key leases are permitted.")
             }
         }
-        // Inspected AIR 1.0.23.6: F3 is a board-global four-byte read;
+        // Inspected AIR 1.0.23.6 and Kick 4.0.18.6: F3 is a board-global four-byte read;
         // F5 address 0 / length 1 changes only enable. Never expose the
         // official client's wider sleep-time setters or profile handles.
         if command == 0xf3 {
@@ -828,17 +833,18 @@ struct BoardSleepJournal {
         let saved: BoardSleepBackup
         do { saved = try JSONDecoder().decode(BoardSleepBackup.self, from: Data(contentsOf: url)) }
         catch { throw failure("SLEEP_BACKUP_INVALID", "The original board sleep record cannot be read; it has been retained.") }
-        guard saved.schema == 1, !saved.createdAt.isEmpty, saved.vendorID == 0x19f5, saved.productID == 0x1028,
-              saved.firmware.count == 8, Array(saved.firmware.prefix(6)) == [23,0,1,170,6,0],
+        guard saved.schema == 1, !saved.createdAt.isEmpty,
+              let savedModel = USBKeyboardModel.identify(vendor:saved.vendorID,product:saved.productID),
+              savedModel.supportsBoardSleep(saved.firmware),
               saved.original.count == 4, saved.original[0] <= 1, saved.installedEnable == 0,
               !saved.serial.isEmpty else {
             throw failure("SLEEP_BACKUP_INVALID", "The original board sleep record has an invalid identity or schema; it has been retained.")
         }
         return saved
     }
-    func read(serial: String, firmware: [UInt8]) throws -> BoardSleepBackup {
+    func read(serial: String, firmware: [UInt8], productID: Int = 0x1028) throws -> BoardSleepBackup {
         let saved = try readRetained()
-        guard !serial.isEmpty, saved.serial == serial else {
+        guard !serial.isEmpty, saved.serial == serial, saved.productID == productID else {
             throw failure("SLEEP_BACKUP_DEVICE_MISMATCH", "The board sleep record belongs to a different keyboard. No sleep setting was written.")
         }
         guard firmware.count == 8, Array(saved.firmware.prefix(6)) == Array(firmware.prefix(6)) else {
@@ -872,7 +878,7 @@ struct BoardSleepJournal {
         try writeNew(encoder.encode(record), to: url)
     }
     func archive(_ record: BoardSleepBackup) throws -> URL {
-        guard try read(serial: record.serial, firmware: record.firmware) == record else {
+        guard try read(serial: record.serial, firmware: record.firmware, productID:record.productID) == record else {
             throw failure("SLEEP_BACKUP_CHANGED", "The original board sleep record changed; it has been retained.")
         }
         let bytes = try Data(contentsOf: url)
@@ -903,7 +909,9 @@ final class Air75Device {
     var customColorScale: Int { model == .air75 && S4.stateLength(firmware, model: model) == 22 ? 200 : 255 }
     var backupURL: URL { journals.url(lightingProfile) }
     var functionKeyBackupURL: URL { journals.legacyURL.deletingLastPathComponent().appendingPathComponent("function-key-backup.json") }
-    var boardSleepJournal: BoardSleepJournal { BoardSleepJournal(url: baseBackupURL.deletingLastPathComponent().appendingPathComponent("board-sleep-backup.json")) }
+    // Keep the legacy AIR location; other models use their own product/serial
+    // namespace so a Kick can neither overwrite nor restore an AIR original.
+    var boardSleepJournal: BoardSleepJournal { BoardSleepJournal(url: journals.legacyURL.deletingLastPathComponent().appendingPathComponent("board-sleep-backup.json")) }
     private var locationId: Int { testExchange == nil ? device.flatMap { propertyInt($0,kIOHIDLocationIDKey) } ?? 0 : testLocation?() ?? 1 }
     var hasFunctionKeyBackup: Bool { FileManager.default.fileExists(atPath:functionKeyBackupURL.path) }
     private var manager: IOHIDManager?
@@ -979,8 +987,8 @@ final class Air75Device {
     var recoveryPending: Bool { backup != nil || journals.hasLegacy || FileManager.default.fileExists(atPath: backupURL.path) }
     var deferredProfiles: [UInt8] { journals.profiles.filter { $0 != lightingProfile } }
     var hasPendingBackups: Bool { recoveryPending || !deferredProfiles.isEmpty }
-    var boardSleepLeasePending: Bool { (model == .air75 && boardSleepJournal.exists) || sleepMutationAttempted }
-    private var supportsBoardSleepLease: Bool { model == .air75 && supportsConnectionWake && !serial.isEmpty }
+    var boardSleepLeasePending: Bool { ((model == .air75 || model == .kick75) && boardSleepJournal.exists) || sleepMutationAttempted }
+    private var supportsBoardSleepLease: Bool { model.supportsBoardSleep(firmware) && supportsConnectionWake && !serial.isEmpty }
     private var boardSleepLeaseStatus: [String: Any] {
         ["supported":supportsBoardSleepLease,"active":connected && sleepLeaseGeneration == connectionGeneration && boardSleepLeasePending,
          "pending":boardSleepLeasePending,"ownsChanges":sleepMutationAttempted,
@@ -1157,7 +1165,7 @@ final class Air75Device {
             throw compatibilityError ?? failure("UNSUPPORTED_PROTOCOL", "键盘尚未通过兼容性检查，未修改任何键盘设置。请先通过 NuPhyIO 检查固件。")
         }
         if [UInt8(0xf3),0xf5].contains(command), !supportsBoardSleepLease {
-            throw failure("SLEEP_UNSUPPORTED", "Board sleep control is available only for a verified Air75 V3 1.0.23.6 with a nonempty serial.")
+            throw failure("SLEEP_UNSUPPORTED", "Board sleep control requires a verified Air75 V3 1.0.23.6 or Kick75 4.0.18.6 with a nonempty serial.")
         }
         let handle = [UInt8(0xd5),0xd6,0xd8].contains(command) ? lightingProfile : 0
         let frame = try S4.frame(command: command, length: length, address: address, payload: payload, handle: handle, key: key)
@@ -1301,7 +1309,7 @@ final class Air75Device {
         try requireConnected()
         if refreshIdentity { try identify() }
         guard supportsBoardSleepLease else {
-            throw failure("SLEEP_UNSUPPORTED", "Board sleep control is available only for a verified Air75 V3 1.0.23.6 with a nonempty serial.")
+            throw failure("SLEEP_UNSUPPORTED", "Board sleep control requires a verified Air75 V3 1.0.23.6 or Kick75 4.0.18.6 with a nonempty serial.")
         }
     }
     private func readBoardSleepInfo() throws -> [UInt8] {
@@ -1316,7 +1324,7 @@ final class Air75Device {
         return ["sleepInfo":try readBoardSleepInfo(),"boardSleepLease":boardSleepLeaseStatus,"verified":true]
     }
     private func requireSleepOriginal(_ saved: BoardSleepBackup) throws {
-        guard boardSleepJournal.exists, try boardSleepJournal.read(serial: serial, firmware: firmware) == saved,
+        guard boardSleepJournal.exists, try boardSleepJournal.read(serial: serial, firmware: firmware, productID:productID) == saved,
               sleepLeaseOriginal == nil || sleepLeaseOriginal == saved else {
             throw failure("SLEEP_BACKUP_CHANGED", "The original board sleep record changed or disappeared; no sleep setting was written.")
         }
@@ -1350,7 +1358,7 @@ final class Air75Device {
         }
         // Validate an existing original before even considering the already-off
         // fast path. Never recapture zero as the baseline after a crash/unplug.
-        let pending = boardSleepJournal.exists ? try boardSleepJournal.read(serial: serial, firmware: firmware) : nil
+        let pending = boardSleepJournal.exists ? try boardSleepJournal.read(serial: serial, firmware: firmware, productID:productID) : nil
         if let saved = pending { try requireSleepOriginal(saved) }
         let before = try readBoardSleepInfo()
         if pending == nil && before[0] == 0 {
@@ -1359,7 +1367,7 @@ final class Air75Device {
         let saved: BoardSleepBackup
         if let original = pending { saved = original }
         else {
-            saved = BoardSleepBackup(createdAt: ISO8601DateFormatter().string(from: Date()), serial: serial, firmware: firmware, original: before)
+            saved = BoardSleepBackup(createdAt: ISO8601DateFormatter().string(from: Date()), productID:productID, serial: serial, firmware: firmware, original: before)
             try boardSleepJournal.save(saved)
             try requireSleepOriginal(saved)
         }
@@ -1392,7 +1400,7 @@ final class Air75Device {
         guard boardSleepJournal.exists else {
             throw failure("SLEEP_BACKUP_MISSING", "The original board sleep record is missing; recovery cannot be confirmed.")
         }
-        let saved = try boardSleepJournal.read(serial: serial, firmware: firmware)
+        let saved = try boardSleepJournal.read(serial: serial, firmware: firmware, productID:productID)
         try requireSleepOriginal(saved)
         let before = try readBoardSleepInfo()
         let externalEnable = before[0] != saved.installedEnable && before[0] != saved.original[0]
@@ -2397,7 +2405,7 @@ final class Air75Device {
                     let neverIdentified = serial.isEmpty && firmware.isEmpty &&
                         !sleepMutationAttempted && sleepLeaseOriginal == nil
                     let saved = try neverIdentified ? boardSleepJournal.readRetained() :
-                        boardSleepJournal.read(serial:serial,firmware:firmware)
+                        boardSleepJournal.read(serial:serial,firmware:firmware,productID:productID)
                     if let owned = sleepLeaseOriginal, owned != saved {
                         throw failure("SLEEP_BACKUP_CHANGED", "The owned board sleep original changed; it has been retained.")
                     }
@@ -4971,15 +4979,41 @@ func testBoardSleepLifecycle(_ check: (Bool, String) throws -> Void) throws {
     try rejected("replacement serial cannot restore the old sleep original") {_ = try replacementDevice.releaseBoardSleepLease()}
     try check(replacement.writes == [0] && replacementDevice.boardSleepJournal.exists,"replacement connection sends no sleep restoration to a different board")
 
-    for variant in ["unknown","kick","emptySerial"] {
+    for variant in ["unknown","oldKick","emptySerial"] {
         let unsupported = Board()
         if variant == "unknown" {unsupported.firmware[0] = 24}
-        if variant == "kick" {unsupported.firmware = [18,0,4,170,6,0,0,0]}
+        if variant == "oldKick" {unsupported.firmware = [15,0,4,170,6,0,0,0]}
         if variant == "emptySerial" {unsupported.serial = ""}
-        let unsupportedDevice = try make(unsupported,model:variant == "kick" ? .kick75 : .air75)
+        let unsupportedDevice = try make(unsupported,model:variant == "oldKick" ? .kick75 : .air75)
         try rejected("\(variant) cannot acquire board sleep control") {_ = try unsupportedDevice.acquireBoardSleepLease()}
         try check(!unsupported.frames.contains{$0[1] == 0xf3 || $0[1] == 0xf5},"\(variant) sends neither new sleep read nor write")
     }
+    let kickBoard = Board();kickBoard.firmware = [18,0,4,170,6,0,0,0]
+    let kickDevice = try make(kickBoard,model:.kick75)
+    let kickOriginal = kickBoard.sleep
+    _ = try kickDevice.acquireBoardSleepLease()
+    let kickPath = kickDevice.boardSleepJournal.url
+    let kickBytes = try Data(contentsOf:kickPath)
+    let kickSaved = try kickDevice.boardSleepJournal.read(serial:kickBoard.serial,firmware:kickBoard.firmware,productID:0x1026)
+    try check(kickSaved.productID == 0x1026 && kickSaved.original == kickOriginal,"Kick records its own exact original before disabling firmware sleep")
+    try check(kickPath.path.contains("devices/kick75-1026-") && kickBoard.sleep == [0,6,30,97],"Kick sleep uses its product/serial namespace and changes only the enable flag")
+    try rejected("a sleep original cannot cross Kick USB product IDs") {_ = try kickDevice.boardSleepJournal.read(serial:kickBoard.serial,firmware:kickBoard.firmware,productID:0x1027)}
+    let legacyAirPath = directory.appendingPathComponent("legacy-air/board-sleep-backup.json")
+    try FileManager.default.createDirectory(at:legacyAirPath.deletingLastPathComponent(),withIntermediateDirectories:true)
+    let airSaved = BoardSleepBackup(createdAt:"fixture",serial:kickBoard.serial,firmware:[23,0,1,170,6,0,0,0],original:[1,6,30,97])
+    try BoardSleepJournal(url:legacyAirPath).save(airSaved)
+    try rejected("same serial does not permit cross-model sleep restoration") {_ = try BoardSleepJournal(url:legacyAirPath).read(serial:kickBoard.serial,firmware:kickBoard.firmware,productID:0x1026)}
+    kickBoard.profile = 1;_ = try kickDevice.status();_ = try kickDevice.acquireBoardSleepLease()
+    try check(kickBoard.writes == [0] && (try Data(contentsOf:kickPath)) == kickBytes,"Kick profile changes do not reset its original or repeat sleep writes")
+    kickDevice.didRemove();kickBoard.serial = "replacement-kick";_ = try kickDevice.connect()
+    _ = try kickDevice.releaseBoardSleepLease()
+    try check(kickBoard.writes == [0] && (try Data(contentsOf:kickPath)) == kickBytes,"replacement Kick neither restores another serial nor deletes its original")
+    kickDevice.didRemove();kickBoard.serial = "self-test";_ = try kickDevice.connect()
+    _ = try kickDevice.acquireBoardSleepLease()
+    try check((try Data(contentsOf:kickPath)) == kickBytes,"reconnecting the original Kick retains the enabled baseline rather than recapturing zero")
+    try check(kickDevice.shutdown() && kickBoard.sleep == kickOriginal && !FileManager.default.fileExists(atPath:kickPath.path),"Kick exit restores its original flag and preserves both times and reserved byte")
+    try check(kickBoard.writes == [0,1],"one Kick session performs only one disable and one restore")
+    try check(kickBoard.frames.filter{$0[1] == 0xf5}.allSatisfy{ $0[4] == 1 && $0[5] == 0 && $0[6] == 0 && $0[7] == 0 },"Kick sleep writes never touch times or profile handles")
     let lost = Board(), lostDevice = try make(lost)
     _ = try lostDevice.acquireBoardSleepLease();try FileManager.default.removeItem(at:lostDevice.boardSleepJournal.url)
     try rejected("missing in-process original never captures disabled zero") {_ = try lostDevice.acquireBoardSleepLease()}
@@ -5629,7 +5663,7 @@ func testKickLifecycle(_ check: (Bool,String) throws -> Void) throws {
     let identified = try upgraded.connect()
     try check((identified["capabilities"] as? [String:Any])?["perKey"] as? Bool == true,"qualified Kick 4.0.18.6 exposes its D8 capability")
     try check((identified["capabilities"] as? [String:Any])?["connectionWake"] as? Bool == true,"qualified Kick exposes connection wake")
-    try check((identified["capabilities"] as? [String:Any])?["boardSleepLease"] as? Bool == false,"Kick does not inherit AIR sleep writes")
+    try check((identified["capabilities"] as? [String:Any])?["boardSleepLease"] as? Bool == true,"qualified Kick exposes its independently inspected sleep control")
     _ = try upgraded.armConnectionWake()
     try check(latest.colors.prefix(240).allSatisfy{$0 == 0},"Kick wake starts with a verified black main palette")
     _ = try upgraded.restore()

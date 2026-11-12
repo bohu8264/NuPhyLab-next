@@ -1,5 +1,5 @@
 import type {AppState} from '../ui/src/types';
-export type FirmwarePrompt={key:string;modelId:string;model:string;current:string;target:string};
+export type FirmwarePrompt={key:string;modelId:string;model:string;current:string;target:string;required?:boolean;latestUnverified?:boolean};
 export function availableFirmwareUpdate(state:AppState|null):FirmwarePrompt|null;
 export function firmwarePrompt(state:AppState|null):FirmwarePrompt|null;
 export function currentFirmwareReady(state:AppState|null):boolean;

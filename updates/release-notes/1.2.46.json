@@ -1,0 +1,17 @@
+{
+  "version": "1.2.46",
+  "zh-CN": [
+    "框选新增“回复”：根据选中的对话和可选口述要求生成可复制的回复，支持在浮窗中继续调整。",
+    "框选快捷键支持录制鼠标侧键；按住侧键移动鼠标选择区域，松开完成。",
+    "改进首次授权后的状态刷新和监听恢复，分别显示系统授权与实际运行状态。",
+    "新增自动感光背光：在支持的 Mac 上根据环境亮度平滑调节 Lab 背光，并可按键盘型号学习亮度偏好。",
+    "改进 Kick75 旧固件更新引导，以及兼容固件在 Lab 灯光计时结束前提前休眠的问题。"
+  ],
+  "en": [
+    "Add Reply to selection actions: draft a ready-to-copy response from the selected conversation and optional spoken requirements, with further adjustments in the answer panel.",
+    "Record a mouse side button as the selection shortcut. Hold it and move to select a region, then release to finish.",
+    "Improve permission status refresh and listener recovery after authorization, showing system access and actual runtime readiness separately.",
+    "Add automatic backlighting on supported Macs: smoothly adapt Lab lighting to ambient brightness and optionally learn brightness preferences per keyboard model.",
+    "Improve old-firmware guidance for Kick75 and prevent compatible firmware from sleeping before the Lab lighting timer ends."
+  ]
+}

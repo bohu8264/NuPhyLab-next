@@ -24,6 +24,10 @@ If the keyboard needs a firmware update, follow the NuPhyIO reminder, close the 
 
 See [keyboard compatibility](docs/KEYBOARD_COMPATIBILITY.md) for firmware requirements and validation coverage. AIR65 V3 has no physical function row and does not offer automatic F1–F12 takeover.
 
+## Automatic backlight
+
+Enable automatic backlighting in **Settings → Lighting and sleep** to turn Lab lighting off or keep a faint glow in bright surroundings, brighten smoothly in dim surroundings, and optionally learn manual brightness preferences per keyboard model. It starts off, requires ambient-light support on the Mac, and applies only to compatible per-key lighting played by Lab over USB. Unavailable readings or a closed lid fall back to manual brightness. [Full guide](docs/AMBIENT_BACKLIGHT.md)
+
 ## Typing Sounds
 
 Open **Typing Sounds** below **Lighting Games** in the sidebar. Choose from 18 sounds: three each in Marbly, Creamy, Woody, Soft, Tactile and Retro. Preview and save favorites, and adjust master volume, release strength, natural variation, and separate levels for Space, Return, Backspace, left/right Shift, Tab and Caps Lock.
@@ -59,14 +63,18 @@ Selection requires **macOS 14 or later**. Keyboard features continue to support 
 
 1. Open **Settings → Models & API**, choose a service and model, and save your own API key. Choose from model presets, load account models where supported, or enter a custom model ID and compatible endpoint.
 2. Enable **Labs → Ask about a selection** and grant Accessibility, Input Monitoring and Screen Recording access. The app checks permissions and the actual shortcut listener.
-3. Hold the shortcut, drag over a region and release to run the default action. Scroll during selection to switch between translation, summary and explanation. The default shortcut is **Option–Shift–Q** and can be changed.
+3. Hold the shortcut, drag over a region and release to run the default action. Scroll during selection to switch between translation, summary, explanation and reply. The default shortcut is **Option–Shift–Q** and can be changed.
 4. Choose one of 16 targets under **Translate to**, including Chinese, English, Japanese and Korean. You can also change the target in the answer panel. The choice is saved independently of the interface language.
+
+You can also use a mouse side button: click the shortcut control, then press and release the side button to save it. Hold that button and move the mouse to select a region; release to finish, without holding the left button.
+
+Choose **Reply**, select the other person’s message, and optionally say your preferred tone or points, such as “Thank them for the invitation and politely decline.” The result is a ready-to-copy reply; without spoken requirements, it is drafted from the conversation. Replies use the conversation’s language unless you request another language.
 
 For spoken questions, enable **Hold to speak** and allow Microphone and Speech Recognition access. Speech is transcribed locally; recordings are not uploaded. The image switch below it allows selected images to be included when needed. The model and endpoint must support image input.
 
 Selected text, questions and any enabled images needed for the selected action are sent to your configured model service. API keys stay in the local Keychain. Selection and voice are disabled by default for new users.
 
-[Full setup and usage](docs/SELECTION.md) · [Models, images and permissions](docs/SELECTION_R2.md) · [Interface and translation languages](docs/SELECTION_LANGUAGES.md) · [What's new in 1.2.44](docs/RELEASE_1.2.44.md)
+[Full setup and usage](docs/SELECTION.md) · [Models, images and permissions](docs/SELECTION_R2.md) · [Interface and translation languages](docs/SELECTION_LANGUAGES.md) · [What's new in 1.2.46](docs/RELEASE_1.2.46.md)
 
 ## Updates and compatibility
 
@@ -99,4 +107,4 @@ The native build downloads a pinned, checksum-verified Sparkle framework. Run `n
 
 Enable **Labs → Drag Convert**, drag files from Finder, press Shift (or hold it before dragging), then release over a menu option. Shift is the default trigger. Choose a single modifier, letter, number, arrow or another supported key on the page. Processing stays on your Mac. Originals are kept and duplicate output names are numbered. Progress, cancellation and the last 20 batches stay on the page, without an extra result window. No API or model download is required.
 
-[功能与格式说明 / Features and formats](docs/DRAG_CONVERT.md)
+[Features and formats](docs/DRAG_CONVERT.md)

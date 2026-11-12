@@ -220,7 +220,7 @@ final class IntentBindingReceiver {
         #if DEBUG
         if let testSafetyAllowed { return testSafetyAllowed }
         #endif
-        return !IsSecureEventInputEnabled() && AXIsProcessTrusted() && CGPreflightListenEventAccess()
+        return !IsSecureEventInputEnabled() && AXIsProcessTrusted() && SelectionHoldMonitor.inputAccessGranted
     }
     private var failed = false
     private enum SideRepresentation: Hashable { case standard, auxiliary }

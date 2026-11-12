@@ -73,7 +73,7 @@ struct SelectionAnswerView:View {
      icon(copied ? "checkmark":"doc.on.doc",state.t("复制回答")){
       NSPasteboard.general.clearContents();NSPasteboard.general.setString(LabAnswerMarkdown.plainText(state.answerBlocks),forType:.string);copied=true
      }.disabled(state.answer.isEmpty)
-     icon("text.bubble",state.t("继续提问")){
+     icon("text.bubble",state.questionLabel){
       state.showQuestion.toggle()
       if state.showQuestion{state.beginTyping?();DispatchQueue.main.async{questionFocused=true}}
      }
@@ -114,13 +114,13 @@ struct SelectionAnswerView:View {
      }
      if state.showQuestion {
       HStack(alignment:.bottom,spacing:8){
-       TextField(state.t("继续提问…"),text:$state.question,axis:.vertical).lineLimit(1...4)
+       TextField(state.questionPlaceholder,text:$state.question,axis:.vertical).lineLimit(1...4)
         .textFieldStyle(.plain).font(.system(size:13)).focused($questionFocused)
-        .onSubmit{if !state.busy && !state.question.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty{questionFocused=false;state.showQuestion=false;state.submit?("ask")}}
-       Button{questionFocused=false;state.showQuestion=false;state.submit?("ask")}label:{
+        .onSubmit{if !state.busy && !state.question.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty{questionFocused=false;state.showQuestion=false;state.submit?(state.questionAction)}}
+       Button{questionFocused=false;state.showQuestion=false;state.submit?(state.questionAction)}label:{
         Image(systemName:"arrow.up").font(.system(size:11,weight:.semibold)).frame(width:24,height:24)
          .background(AnswerPalette.accent,in:Circle()).foregroundStyle(AnswerPalette.ink)
-       }.buttonStyle(.plain).disabled(state.busy || state.question.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty).help(state.t("发送")).accessibilityLabel(state.t("发送问题"))
+       }.buttonStyle(.plain).disabled(state.busy || state.question.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty).help(state.t("发送")).accessibilityLabel(state.submitLabel)
       }.padding(10).background(AnswerPalette.raised,in:RoundedRectangle(cornerRadius:12)).id("question")
      }
     }.frame(maxWidth:.infinity,alignment:.leading)

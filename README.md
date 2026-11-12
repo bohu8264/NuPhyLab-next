@@ -42,6 +42,12 @@ Lighting requires USB. AIR75 V3 also supports Bluetooth shortcut control. Follow
 
 各型号固件与兼容范围 / Model-specific firmware and compatibility: [键盘兼容性 / Keyboard compatibility](docs/KEYBOARD_COMPATIBILITY.md)。AIR65 V3 无实体 F 区，不提供 F1–F12 自动接管。/ AIR65 V3 has no physical function row and does not offer automatic F1–F12 takeover.
 
+## 自动感光背光 / Automatic backlight
+
+在 **设置 → 灯光与休眠** 可开启自动感光背光：明亮时关闭或保留微光，较暗时平滑亮起，并可按键盘型号学习手动亮度偏好。默认关闭，需要 Mac 支持环境光读取；仅调节 USB 下由 Lab 播放的兼容逐键背光。读数不可用或合盖时回到手动亮度。[完整说明](docs/AMBIENT_BACKLIGHT.md)
+
+Enable automatic backlighting in **Settings → Lighting and sleep** to turn Lab lighting off or keep a faint glow in bright surroundings, brighten smoothly in dim surroundings, and optionally learn manual brightness preferences per keyboard model. It starts off, requires ambient-light support on the Mac, and applies only to compatible per-key lighting played by Lab over USB. Unavailable readings or a closed lid fall back to manual brightness. [Full guide](docs/AMBIENT_BACKLIGHT.md)
+
 ## 模拟声浪 / Typing Sounds
 
 在侧栏“灯光游戏”下方打开 **模拟声浪**。麻将、奶油、木质、轻柔、段落、复古六类各三款，共 18 款；可试听、收藏，并调节总音量、回弹和空格等大键的声音。首次默认关闭，开启后在其他应用中打字也会播放。
@@ -91,7 +97,7 @@ Approval commands require a current request. Sending requires the chat composer 
 - 六种演奏音色、鼓机、片段与个人音乐作品库。/ Six performance instruments, drums, clips and a personal music library.
 - Codex / Claude Code 任务快捷键和状态灯。/ Codex / Claude Code task shortcuts and status lights.
 - USB 自动识别键盘型号，各型号的作品分别保存。/ Automatic USB model detection, with separate artwork for each keyboard model.
-- 框选翻译、总结与提问，可选本机语音转写，并连接自己的模型服务。/ Selection translation, summaries and questions, with optional local speech transcription and your own model service.
+- 框选翻译、总结、解释、回复与提问，可选本机语音转写，并连接自己的模型服务。/ Selection translation, summaries, explanations, reply drafts and questions, with optional local speech transcription and your own model service.
 - 中英文界面与 16 种可保存的翻译目标语言。/ Chinese and English interfaces, with 16 saved translation-language choices.
 
 ## 文档与源码 / Documentation and source
@@ -108,6 +114,14 @@ Approval commands require a current request. Sending requires the chat composer 
 
 Open **Labs → Ask about a selection**, choose a service and model in **Settings → Models & API**, and save your own API key. Complete the permission prompts, hold the shortcut, drag over a region and release for a translation or summary. You can also type or dictate a question.
 
+也可将快捷键设为鼠标侧键：点击快捷键按钮，按下并松开所选侧键即可保存。之后按住该侧键移动鼠标框选，松开完成，无需再按左键。
+
+You can also use a mouse side button: click the shortcut control, then press and release the side button to save it. Hold that button and move the mouse to select a region; release to finish, without holding the left button.
+
+选择“回复”后，框选对方的话，可同时说出语气和要点，例如“谢谢邀请，委婉拒绝”。软件会生成可复制发送的回复正文；没有口述要求时，也会根据对话拟好回复。回复使用对话的语言，或你明确指定的语言。
+
+Choose **Reply**, select the other person’s message, and optionally say your preferred tone or points, such as “Thank them for the invitation and politely decline.” The result is a ready-to-copy reply; without spoken requirements, it is drafted from the conversation. Replies use the conversation’s language unless you request another language.
+
 “翻译为”支持中文、英语、日语、韩语等 16 种语言，选择会保存。界面语言与翻译目标独立设置。“发送图片”位于“按住说话”下方，仅在你开启且所选模型支持图片输入时使用；语音在本机转写。
 
 **Translate to** offers 16 languages, including Chinese, English, Japanese and Korean, and remembers your choice independently of the interface language. The image switch sits below **Hold to speak** and requires a model that supports image input. Speech is transcribed locally.
@@ -116,7 +130,7 @@ Open **Labs → Ask about a selection**, choose a service and model in **Setting
 
 Selected text and questions are sent to your configured model service. Images are included only when enabled and needed for the selected action. API keys are stored in the local Keychain.
 
-[设置与使用 / Setup and usage](docs/SELECTION.md) · [界面与翻译语言 / Interface and translation languages](docs/SELECTION_LANGUAGES.md) · [1.2.45 更新说明 / What's new in 1.2.45](docs/RELEASE_1.2.45.md)
+[设置与使用 / Setup and usage](docs/SELECTION.md) · [界面与翻译语言 / Interface and translation languages](docs/SELECTION_LANGUAGES.md) · [1.2.46 更新说明 / What's new in 1.2.46](docs/RELEASE_1.2.46.md)
 
 ## 拖拽转换 / Drag Convert
 

@@ -10,7 +10,8 @@
 - [模拟声浪与音源说明 / Typing Sounds and sound credits](TYPING_SOUNDS.md)
 - [拖拽转换与自定义触发键 / Drag Convert and custom trigger keys](DRAG_CONVERT.md)
 - [演奏模式与作品 / Performance and saved works](PERFORMANCE.md)
-- [框选提问 / Ask about a selection](SELECTION.md)
+- [框选提问与回复 / Ask about a selection and Reply](SELECTION.md)
+- [自动感光背光 / Automatic backlight](AMBIENT_BACKLIGHT.md)
 - [模型、图片与权限 / Models, images and permissions](SELECTION_R2.md)
 - [界面与翻译语言 / Interface and translation languages](SELECTION_LANGUAGES.md)
 - [退出与窗口大小 / Quitting and window size](QUIT_WINDOW_R3.md)
@@ -24,6 +25,8 @@
 - [第三方声明 / Third-party notices](../THIRD_PARTY_NOTICES.md)
 
 ## 分版记录 / Version history
+
+- [1.2.46 发行说明 / Release notes](RELEASE_1.2.46.md)
 
 - [1.2.45 发行说明 / Release notes](RELEASE_1.2.45.md)
 

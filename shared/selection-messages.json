@@ -250,5 +250,14 @@
   "选区图片与问题会发送至模型服务；录音不上传。": "Selected images and questions are sent to your model service. Audio is not uploaded.",
   "配置模型": "Set up model",
   "需要填写服务地址": "Enter a service endpoint",
-  "预设": "Preset"
+  "预设": "Preset",
+  "点击后按键盘快捷键或鼠标侧键": "Click, then press a keyboard shortcut or mouse side button",
+  "按下键盘快捷键或鼠标侧键，松开保存；Esc 取消。": "Press a keyboard shortcut or mouse side button. Release to save; Esc to cancel.",
+  "等待键盘或侧键…": "Press a key or side button…",
+  "回复": "Reply",
+  "正在回复": "Drafting reply",
+  "希望怎么回复…": "How would you like to reply…",
+  "调整回复": "Adjust reply",
+  "生成回复": "Generate reply",
+  "结合选中内容和口述要求生成回复": "Draft a reply from the selection and your spoken requirements"
 }

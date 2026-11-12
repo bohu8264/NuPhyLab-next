@@ -17,6 +17,7 @@ public enum SelectionAction: Equatable, Sendable {
     case translate(targetLanguage: String)
     case summarize, rewrite, explain, extractText
     case ask(instruction: String)
+    case reply(instruction: String)
 
     public var instruction: String {
         switch self {
@@ -25,8 +26,21 @@ public enum SelectionAction: Equatable, Sendable {
         case .rewrite: return "Rewrite the selected text for clarity and fluency while preserving its meaning. Return only the rewritten text."
         case .explain: return "Explain the selected content clearly and concisely. Distinguish visible facts from inferences."
         case .ask(let instruction): return instruction
+        case .reply(let instruction):
+            return """
+            Draft a natural, concise message that the user can send in reply to the selected conversation. Use the surrounding conversation to identify the other person's latest relevant message, and write the response from the user's perspective to that person. Follow the user's requested intent, tone, points to include, and language. With no extra requirements, use a friendly, context-appropriate tone.
+            Return only the ready-to-send reply text, without a heading, explanation, quotation marks around the whole message, or unsolicited alternatives. Do not answer the user with advice on how to reply, and do not merely rewrite the other person's message. Do not invent facts, commitments, dates, prices or personal details that the user has not supplied. If an essential fact is missing, phrase the draft as a brief clarifying question to the other person. This is a draft for review; never claim it has been sent.
+            User's reply requirements: \(instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "No extra requirements." : instruction)
+            """
         case .extractText: return ""
         }
+    }
+    /// Spoken requirements refine Reply instead of turning it into a generic Q&A.
+    public func applyingInstruction(_ value: String) -> SelectionAction {
+        let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return self }
+        if case .reply = self { return .reply(instruction: text) }
+        return .ask(instruction: text)
     }
 }
 
@@ -71,7 +85,7 @@ public struct SelectionWork: Sendable {
         switch action {
         case .translate, .summarize, .rewrite, .explain:
             return content.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        case .ask: return true
+        case .ask, .reply: return true
         case .extractText: return false
         }
     }
@@ -80,7 +94,9 @@ public struct SelectionWork: Sendable {
         if case .ask = action, let target = translationTargetLanguage, !target.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             instruction += "\nTranslation preference: only when this task asks for translation and gives no target language, use \(target). An explicit target takes precedence. Do not translate non-translation tasks."
         }
-        if !outputLanguage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if case .reply = action {
+            instruction += "\nUse the language of the selected conversation unless the user's reply requirements specify another language. If the conversation's language is unclear, use \(outputLanguage). The translation target preference does not apply to replies."
+        } else if !outputLanguage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             instruction += "\nPreferred answer language: \(outputLanguage). An explicit target or output language in the user's instruction takes precedence."
         }
         // The system prompt and JSON serialization separate user instructions
@@ -163,7 +179,7 @@ public struct SelectionSession: Sendable {
         guard !content.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !(content.imagePNG?.isEmpty ?? true) else {
             error = .unreadableSelection; throw SelectionFlowError.unreadableSelection
         }
-        let selectedAction = finalSpeech.isEmpty ? action : .ask(instruction: finalSpeech)
+        let selectedAction = finalSpeech.isEmpty ? action : (action?.applyingInstruction(finalSpeech) ?? .ask(instruction: finalSpeech))
         guard let selectedAction else { return nil }
         if case .translate(let target) = selectedAction, target.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             error = .missingTranslationLanguage; throw SelectionFlowError.missingTranslationLanguage

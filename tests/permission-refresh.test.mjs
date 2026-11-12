@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {coalescePermissionRefresh,refreshPermissionSession,watchPermissionRefresh} from '../shared/permission-refresh.mjs';
+import {createVMEnvironment,textOf,walkAll} from './helpers/source-ui-vm.mjs';
 
 const flush = async () => { for (let i=0;i<6;i++) await Promise.resolve(); };
 
@@ -78,4 +79,33 @@ test('manual, focus and device checks share only in-flight work for the same com
   resolve('granted');assert.equal(await first,'granted');await flush();
   assert.equal(await coalescePermissionRefresh(command,async()=>{calls++;return 'revoked';}),'revoked');
   assert.equal(await coalescePermissionRefresh(other,async()=>{calls++;return 'other';}),'other');assert.equal(calls,3);
+});
+
+test('first-run guide distinguishes an allowed Accessibility grant from active shortcuts',async()=>{
+  const Modal=()=>null,Button=()=>null;
+  const ui=createVMEnvironment({
+    'lucide-react':{},
+    './primitives':{Modal,Button,run:promise=>promise},
+    './codexKeys':{nativeCodexRequest:async()=>({available:false})},
+    '../../shared/permission-refresh.mjs':{coalescePermissionRefresh,refreshPermissionSession,watchPermissionRefresh:()=>()=>{}},
+    '../../shared/firmware-onboarding.mjs':{firmwarePrompt:()=>null,firmwareUpdateSatisfied:()=>false},
+  });
+  ui.document.documentElement.lang='en';
+  const {StartupGuide}=(await ui.load(new URL('../ui/src/StartupGuide.tsx',import.meta.url))).exports;
+  const command=async()=>({});
+  const granted={inputMonitoring:true,accessibility:true,canPostEvents:true};
+  const props=native=>({state:{native,device:{}},command});
+  const instance=ui.mount(StartupGuide,props({}));
+  const modal=()=>walkAll(instance.tree,node=>node.type===Modal)[0];
+  assert.equal(modal(),undefined,'unknown initial permission state must not show an authorization prompt');
+  instance.update(props({...granted,accessibility:false,canPostEvents:false,systemPermissions:granted,permissionRecoveryPending:true}));
+  assert.match(textOf(modal()),/Allowed, activation pending/);
+  assert.match(textOf(modal()),/If needed, it will reopen after the current operation finishes/);
+  assert.equal(walkAll(modal(),node=>node.type===Button&&textOf(node)==='Allow').length,0);
+  instance.update(props({...granted,permissionRecoveryPending:true}));
+  assert.ok(modal(),'successful trust checks do not imply the listener has recovered');
+  assert.match(textOf(modal()),/applying permissions/);
+  instance.update(props(granted));
+  assert.equal(modal(),undefined);
+  instance.unmount();
 });
