@@ -1,6 +1,6 @@
 // Air75 V3 / Kick75 user-space HID bridge. No firmware or session-key setters.
 // Keymap writes are limited to journaled factory function-key leases with full restoration.
-// Build: swiftc -O native/HIDBridge.swift -o native/air75-hid-bridge
+// Build: swiftc -O -swift-version 6 -strict-concurrency=complete native/HIDBridge.swift -o native/air75-hid-bridge
 import Foundation
 import CryptoKit
 import IOKit
@@ -242,7 +242,7 @@ final class KeyAdaptation {
 }
 
 
-struct BridgeError: Error, CustomStringConvertible {
+struct BridgeError: Error, CustomStringConvertible, @unchecked Sendable {
     let code: String
     let message: String
     var controlDiagnostic: [String:Any]? = nil
@@ -294,7 +294,7 @@ func openPermissionSettings(_ permission: Any?) throws -> [String: Any] {
     if permission as? String == "inputMonitoring", IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) != kIOHIDAccessTypeGranted {
         _ = CGRequestListenEventAccess()
     } else if permission as? String == "accessibility", !AXIsProcessTrusted() {
-        _ = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String:true] as CFDictionary)
+        _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt":true] as CFDictionary)
     }
     guard NSWorkspace.shared.open(url) else {
         throw failure("SETTINGS_OPEN_FAILED", "无法打开系统设置，请在“隐私与安全性”中打开对应权限页面。")
@@ -338,7 +338,7 @@ func parseColors(_ value: Any?, count: Int) throws -> [UInt8] {
 
 // Device profiles keep the USB identity, protocol schema and restoration
 // namespace together. A Kick is never treated as an Air with fewer LEDs.
-enum USBKeyboardModel: String, CaseIterable {
+enum USBKeyboardModel: String, CaseIterable, Sendable {
     case air75 = "air75-v3", kick75 = "kick75"
     case node75LP = "node75-lp"
     case node75HP = "node75-hp"
@@ -679,7 +679,7 @@ enum S4 {
     }
 }
 
-struct LightingBackup: Codable, Equatable {
+struct LightingBackup: Codable, Equatable, Sendable {
     var schema = 1
     var createdAt: String
     var vendorID = 0x19f5
@@ -697,7 +697,7 @@ struct LightingBackup: Codable, Equatable {
 
 // Mac and Win have separate lighting configurations. Retain the inactive
 // profile's journal until that profile is selected; never write it to the other.
-struct LightingJournals {
+struct LightingJournals: Sendable {
     let legacyURL: URL
     var model: USBKeyboardModel = .air75
     var productID: Int = 0x1028
@@ -790,11 +790,11 @@ struct LightingJournals {
     }
 }
 
-struct FunctionKeyAssignment: Codable, Equatable {
+struct FunctionKeyAssignment: Codable, Equatable, Sendable {
     let position: Int
     let target: Int
 }
-struct FunctionKeyBackup: Codable, Equatable {
+struct FunctionKeyBackup: Codable, Equatable, Sendable {
     let firmware: [UInt8]
     let serial: String
     let locationId: Int
@@ -813,7 +813,7 @@ struct FunctionKeyBackup: Codable, Equatable {
 
 // Sleep enable is board-global, unlike the two independent RGB profiles.
 // Keep its original separately so profile changes cannot replace its baseline.
-struct BoardSleepBackup: Codable, Equatable {
+struct BoardSleepBackup: Codable, Equatable, Sendable {
     var schema = 1
     var createdAt: String
     var vendorID = 0x19f5
@@ -824,7 +824,7 @@ struct BoardSleepBackup: Codable, Equatable {
     var installedEnable: UInt8 = 0
 }
 
-struct BoardSleepJournal {
+struct BoardSleepJournal: Sendable {
     let url: URL
     var exists: Bool { FileManager.default.fileExists(atPath: url.path) }
     // A retained journal can be validated while no keyboard is attached. Device
@@ -1244,7 +1244,15 @@ final class Air75Device {
         // Refresh it using read-only A1 rather than mutating the key with EE.
         // A1 identity/firmware discovery must remain available when an older
         // firmware cannot pass the lighting route. No writes are enabled here.
-        do { try readIdentity() } catch { closeTransport(); throw error }
+        do {
+            for attempt in 0..<3 {
+                do { try readIdentity(); break }
+                catch {
+                    if attempt == 2 || !S4.retryableProbe(error) { throw error }
+                    pump(0.06)
+                }
+            }
+        } catch { closeTransport(); throw error }
         protocolReady = false; compatibilityError = nil;ledCount=0
         var state = [UInt8]()
         var probeFailure: Error?
@@ -2435,7 +2443,7 @@ final class Air75Device {
     }
 }
 
-struct KeyBinding {
+struct KeyBinding: Equatable, Sendable {
     let name: String
     let code: Int
     let flags: CGEventFlags
@@ -2445,8 +2453,8 @@ struct KeyBinding {
 // A global hold needs real modifier transitions as well as a keyDown/keyUp.
 // Codex's native release watcher observes the global event stream; posting an
 // up directly to one PID leaves that watcher holding the shortcut forever.
-struct ShortcutChord {
-    struct Step {
+struct ShortcutChord: Equatable, Sendable {
+    struct Step: Equatable, Sendable {
         let code: CGKeyCode
         let type: CGEventType
         let flags: CGEventFlags
@@ -2609,7 +2617,7 @@ struct CodexAccessibilityActivationIdentity: Hashable {
 // gesture only requests readiness; no action or PTT start is scheduled here.
 // Even an unsupported AX setter response can have requested the mode, because
 // Chromium handles this attribute before forwarding it to its superclass.
-final class CodexAccessibilityActivation {
+final class CodexAccessibilityActivation: @unchecked Sendable {
     static let maximumProcesses=8
     private struct Request {let at:Double;var response:String}
     private var requests=[CodexAccessibilityActivationIdentity:Request]()
@@ -3325,7 +3333,7 @@ enum CodexControlRunner {
 }
 // Ownership is local to the helper, not a target preference or a public token.
 // A late release can never consume a newer physical press's capture.
-final class CodexDictationOwnership {
+final class CodexDictationOwnership: @unchecked Sendable {
     private var capture: (owner:String,context:CodexControlContext)?
     var activeOwner: String? {capture?.owner}
     static func request(_ command: [String:Any]) throws -> (phase:String,owner:String) {
@@ -3367,11 +3375,11 @@ enum CodexControls {
         let document: AXUIElement
     }
     private static let dictation=CodexDictationOwnership()
-    private static var ownedTarget: OwnedTarget?
+    private nonisolated(unsafe) static var ownedTarget: OwnedTarget?
     private static let activation=CodexAccessibilityActivation()
     // Retain the process object associated with the one-shot AT request. A
     // reused PID or a different launch date never inherits its readiness.
-    private static var activationProcesses=[CodexAccessibilityActivationIdentity:NSRunningApplication]()
+    private nonisolated(unsafe) static var activationProcesses=[CodexAccessibilityActivationIdentity:NSRunningApplication]()
     private static func enableManual(_ application:AXUIElement) -> String {
         let status=AXUIElementSetAttributeValue(application,"AXManualAccessibility" as CFString,kCFBooleanTrue)
         switch status {
@@ -4677,7 +4685,7 @@ func testConnectionRecoveryProbes(_ check: (Bool, String) throws -> Void) throws
     try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:true)
     defer {try? FileManager.default.removeItem(at:directory)}
     for model in [USBKeyboardModel.air75,.kick75] {
-        for fault in ["geometry","state","rgb","session","persistent","firmware"] {
+        for fault in ["geometry","state","rgb","session","persistent","firmware","wake"] {
             var commands=[UInt8](), injected=false, identityReads=0
             var sessionKey:UInt8=0
             let firmware:[UInt8]=fault == "firmware" ? [99,9,9,170,6,0,0,0] : model == .kick75 ? [18,0,4,170,6,0,0,0] : [16,0,1,170,6,0,0,0]
@@ -4686,6 +4694,7 @@ func testConnectionRecoveryProbes(_ check: (Bool, String) throws -> Void) throws
                 switch frame[1] {
                 case 0xa1:
                     identityReads += 1
+                    if fault == "wake" && !injected {injected=true;throw failure("HID_TIMEOUT","simulated shallow sleep initial wake timeout")}
                     if fault == "session" && identityReads == 2 {sessionKey=0x37;injected=true}
                     payload=firmware
                 case 0xd1:payload=[fault == "persistent" ? 218 : UInt8(model.totalCount)]
@@ -6176,13 +6185,17 @@ DispatchQueue.global(qos: .userInitiated).async {
             DispatchQueue.main.async { emit(["id": NSNull(), "ok": false, "error": failure("REQUEST_TOO_LARGE", "A JSONL request must be smaller than 32 KiB.").json]) }
             continue
         }
-        do {
-            guard let command = try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any] else {
-                throw failure("INVALID_JSON", "Every line must be a JSON object.")
+        DispatchQueue.main.async {
+            do {
+                guard let command = try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any] else {
+                    throw failure("INVALID_JSON", "Every line must be a JSON object.")
+                }
+                server.enqueue(command)
+            } catch let error as BridgeError {
+                emit(["id": NSNull(), "ok": false, "error": error.json])
+            } catch {
+                emit(["id": NSNull(), "ok": false, "error": failure("INVALID_JSON", "Invalid JSON request.").json])
             }
-            DispatchQueue.main.async { server.enqueue(command) }
-        } catch {
-            DispatchQueue.main.async { emit(["id": NSNull(), "ok": false, "error": failure("INVALID_JSON", "Invalid JSON request.").json]) }
         }
     }
     DispatchQueue.main.async { server.finishInput() }

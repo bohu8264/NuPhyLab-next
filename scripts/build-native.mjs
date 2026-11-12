@@ -7,7 +7,7 @@ const framework=await ensureSparkle();
 await mkdir('bin',{recursive:true});
 const target=`${process.arch==='arm64'?'arm64':'x86_64'}-apple-macosx13.0`;
 const webp = await buildWebP(target);
-if(!process.argv.includes('--host-only')) execFileSync('swiftc',['-target',target,'native/HIDBridge.swift','-O','-o','bin/HIDBridge','-framework','IOKit','-framework','AppKit','-framework','ApplicationServices'],{stdio:'inherit'});
+if(!process.argv.includes('--host-only')) execFileSync('swiftc',['-target',target,'-swift-version','6','-strict-concurrency=complete','native/HIDBridge.swift','-O','-o','bin/HIDBridge','-framework','IOKit','-framework','AppKit','-framework','ApplicationServices'],{stdio:'inherit'});
 execFileSync('clang',['-target',target,'-fobjc-arc','-c','native/selection-audio/ChordAudioBoundary.m','-I','native/selection-audio/include','-o','bin/SelectionAudioBoundary.o'],{stdio:'inherit'});
 const selected=(await readdir('native/selection')).filter(x=>x.endsWith('.swift')).map(x=>'native/selection/'+x);
 const typing=(await readdir('native/typing')).filter(x=>x.endsWith('.swift')).map(x=>'native/typing/'+x);
