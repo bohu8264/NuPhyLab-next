@@ -12,7 +12,8 @@ execFileSync('clang',['-target',target,'-fobjc-arc','-c','native/selection-audio
 const selected=(await readdir('native/selection')).filter(x=>x.endsWith('.swift')).map(x=>'native/selection/'+x);
 const typing=(await readdir('native/typing')).filter(x=>x.endsWith('.swift')).map(x=>'native/typing/'+x);
 const drag=(await readdir('native/drag')).filter(x=>x.endsWith('.swift')).map(x=>'native/drag/'+x);
-const integration=[...drag,...typing,'native/LabNotchGeometry.swift','native/SelectionIntegration.swift','native/SelectionLab.swift','native/SelectionInteraction.swift','native/SelectionNotch.swift','native/SelectionAnswerView.swift','native/SelectionMarkdown.swift','bin/SelectionAudioBoundary.o',webp,...selected];
+const pocket=(await readdir('native/pocket')).filter(x=>x.endsWith('.swift')).map(x=>'native/pocket/'+x);
+const integration=[...pocket,...drag,...typing,'native/LabNotchGeometry.swift','native/SelectionIntegration.swift','native/SelectionLab.swift','native/SelectionInteraction.swift','native/SelectionNotch.swift','native/SelectionAnswerView.swift','native/SelectionMarkdown.swift','bin/SelectionAudioBoundary.o',webp,...selected];
 execFileSync('swiftc',['-target',target,'-swift-version','5','-import-objc-header','native/AppBridge.h',...integration,'native/main.swift','native/AppInstance.swift','native/AmbientLight.swift','native/AppHost.swift','native/UpdateUserDriver.swift','native/AudioCapture.swift','native/KeyGestureGate.swift','-O','-o','bin/AirStudio','-larchive.2',
   '-F',framework,'-framework','Sparkle','-Xlinker','-rpath','-Xlinker','@executable_path/../Frameworks',
   ...['AppKit','WebKit','QuartzCore','Carbon','AVFoundation','CoreAudio','Accelerate','SwiftUI','ScreenCaptureKit','Vision','Security','Speech','ImageIO','UniformTypeIdentifiers','PDFKit'].flatMap(name=>['-framework',name])],{stdio:'inherit'});

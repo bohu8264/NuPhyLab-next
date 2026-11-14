@@ -1,8 +1,8 @@
 # 演奏模式 / Performance
 
-在 **实验室 → 演奏模式** 打开。声音在本机生成，通过系统默认音频设备输出；不需要 API、麦克风或全局输入监听权限。蓝牙音频可能有可感知延迟，实时演奏建议使用内置扬声器或有线耳机。
+在 **功能中心 → 添加演奏模式** 打开。声音在本机生成，通过系统默认音频设备输出；不需要 API、麦克风或全局输入监听权限。蓝牙音频可能有可感知延迟，实时演奏建议使用内置扬声器或有线耳机。
 
-Open **Labs → Performance**. Sound is generated locally and plays through the system audio device. No API, microphone or global input monitoring permission is required. Bluetooth audio can add noticeable latency; built-in speakers or wired headphones work better for live playing.
+Open **Feature Center → Add Music Mode**. Sound is generated locally and plays through the system audio device. No API, microphone or global input monitoring permission is required. Bluetooth audio can add noticeable latency; built-in speakers or wired headphones work better for live playing.
 
 ## 演奏与片段 / Playing and clips
 

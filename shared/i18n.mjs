@@ -3,7 +3,8 @@ import {overlayMessages} from "./ui-overlays-i18n.mjs";
 export const messages = {
   "演奏模式":"Performance",
   "实验室":"Labs",
-  "框选提问":"Ask about a selection",
+  "键盘口袋":"Keyboard Pocket",
+  "智能框选":"Smart Selection",
   "请允许辅助功能，授权后会自动连接。": "Allow Accessibility; NuPhy Lab will connect automatically after permission is granted.",
   "请打开 Codex。": "Open Codex to use AI commands.",
   "请保留一个 Codex 应用实例。": "Keep one Codex application instance open.",

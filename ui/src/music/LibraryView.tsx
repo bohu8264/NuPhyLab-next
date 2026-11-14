@@ -4,7 +4,7 @@ import {useState} from 'react';
 import {PresetCover,presetCoverGenres,type PresetCoverGenre} from './MusicPanelGraphics';
 import {Play,Square,Plus,Search,Copy,Pencil,Trash2,RotateCcw,ArrowUpRight,FolderHeart,Disc3} from 'lucide-react';
 import {songPresets,genres,genreName,type Preset} from './presets';
-export type WorkMeta={id:string;name:string;updatedAt:string;createdAt:string;bpm:number;bars:number;eventCount:number;instrument:string;sourcePreset?:string;seconds:number};
+export type WorkMeta={id:string;name:string;updatedAt:string;createdAt:string;bpm:number;bars:number;eventCount:number;instrument:string;sourcePreset?:string;seconds:number;preview?:{kind:string;beat:number;duration:number;value:number}[];drumPreview?:boolean[][]};
 export function Cover({genre='original',variant=0}:{genre?:string;variant?:number}){const safe=presetCoverGenres.includes(genre as any)?genre as PresetCoverGenre:'original';return <div className={'ml-cover cover-'+safe} aria-hidden="true"><PresetCover genre={safe}/><span className="ml-cover-index">{String(variant+1).padStart(2,'0')}</span></div>;}
 export function LibraryView({works,deletedWorks,activeId,busy,previewId,onPreview,onPreviewWork,onCreate,onOpen,onDuplicate,onRename,onDelete,onRestore,onNew}:{works:WorkMeta[];deletedWorks:WorkMeta[];activeId?:string;busy:boolean;previewId:string|null;onPreview:(p:Preset)=>void;onPreviewWork:(w:WorkMeta)=>void;onCreate:(p:Preset)=>void;onOpen:(w:WorkMeta)=>void;onDuplicate:(w:WorkMeta)=>void;onRename:(w:WorkMeta)=>void;onDelete:(w:WorkMeta)=>void;onRestore:(w:WorkMeta)=>void;onNew:()=>void}){
  useLanguage();

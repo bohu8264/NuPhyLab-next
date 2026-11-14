@@ -136,7 +136,10 @@ enum DragArchiveConverter {
             guard archive_write_set_format_pax_restricted(writer) == ARCHIVE_OK,
                   archive_write_add_filter_gzip(writer) == ARCHIVE_OK else { throw DragConvertError.encoding }
         } else {
-            guard archive_write_set_format_zip(writer) == ARCHIVE_OK else { throw DragConvertError.encoding }
+            // GUI launches need not have a UTF-8 C locale. Declare the ZIP
+            // filename encoding explicitly so other readers don't assume CP437.
+            guard archive_write_set_format_zip(writer) == ARCHIVE_OK,
+                  archive_write_set_options(writer, "zip:hdrcharset=UTF-8") == ARCHIVE_OK else { throw DragConvertError.encoding }
             if format == .zipFast, archive_write_set_options(writer, "zip:compression=store") != ARCHIVE_OK { throw DragConvertError.encoding }
         }
         guard archive_write_open_filename(writer, output.path) == ARCHIVE_OK else { throw DragConvertError.output }

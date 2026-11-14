@@ -1,6 +1,6 @@
 {
   "name": "nuphy-lab",
-  "version": "1.2.46",
+  "version": "1.2.47",
   "private": true,
   "type": "module",
   "description": "NuPhy Lab lighting and AI keyboard controls",

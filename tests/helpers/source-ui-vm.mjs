@@ -1,5 +1,6 @@
 import * as presetNames from '../../shared/preset-names.mjs';
 import {translate} from '../../shared/i18n.mjs';
+import * as selectionActions from '../../ui/src/selection-actions.ts';
 import {translationLanguages} from '../../ui/src/selection-languages.ts';
 import {keyboardPermissions} from '../../ui/src/keyboardPermissions.ts';
 import * as layouts from '../../shared/layout.mjs';
@@ -62,7 +63,7 @@ export function createVMEnvironment(modules={},options={}){
   const globals={console,TextEncoder,TextDecoder,setInterval:timer,clearInterval:id=>timers.delete(id),structuredClone,JSON,Error,TypeError,SyntaxError,RangeError,URL,Blob,AbortSignal,Promise,Date,performance:{now:()=>1000},crypto:{randomUUID:()=>`vm-scene-${++nextUUID}`},window,document,localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,String(value)),removeItem:key=>storage.delete(key)},setTimeout:timer,clearTimeout:id=>timers.delete(id),fetch:()=>{throw new Error('Network disabled in source-only QA.');},CustomEvent:class{constructor(type,options){this.type=type;this.detail=options?.detail;}},Element:class{},HTMLElement:class{}};
   Object.assign(globals,options.globals??{});
   globals.sessionStorage={getItem:key=>sessionStorage.get(key)??null,setItem:(key,value)=>sessionStorage.set(key,String(value)),removeItem:key=>sessionStorage.delete(key)};
-  const dependencies={'../../shared/preset-names.mjs':presetNames,'./selection-languages':{translationLanguages},'./keyboardPermissions':{keyboardPermissions},'./i18n':{t:value=>translate(document.documentElement.lang,value),useLanguage:()=>document.documentElement.lang},'../../shared/layout.mjs':layouts,'../../shared/keyboard-models.mjs':keyboardModels,'./keyboard-geometry':{keyboardGeometry},react,'react/jsx-runtime':{jsx,jsxs:jsx,Fragment:'Fragment'},...modules};
+  const dependencies={'./selection-actions':selectionActions,'../../shared/preset-names.mjs':presetNames,'./selection-languages':{translationLanguages},'./keyboardPermissions':{keyboardPermissions},'./i18n':{t:value=>translate(document.documentElement.lang,value),useLanguage:()=>document.documentElement.lang},'../../shared/layout.mjs':layouts,'../../shared/keyboard-models.mjs':keyboardModels,'./keyboard-geometry':{keyboardGeometry},react,'react/jsx-runtime':{jsx,jsxs:jsx,Fragment:'Fragment'},...modules};
   const load=async(path)=>{
     const source=await readFile(path,'utf8');
     const module={exports:{}};

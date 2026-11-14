@@ -11,6 +11,8 @@ export function setLanguage(value:Language) {
   // settings polling remains a fallback if the bridge is still starting.
   const bridge=(window as unknown as {webkit?:{messageHandlers?:{selectionLab?:{postMessage:(body:unknown)=>Promise<unknown>}}}}).webkit?.messageHandlers?.selectionLab;
   if(bridge)void bridge.postMessage({op:'language',language:value}).catch(()=>{});
+  const pocket=(window as unknown as {webkit?:{messageHandlers?:{keyboardPocket?:{postMessage:(body:unknown)=>Promise<unknown>}}}}).webkit?.messageHandlers?.keyboardPocket;
+  if(pocket)void pocket.postMessage({op:'language',language:value}).catch(()=>{});
   for (const notify of listeners) notify();
 }
 export function language() {return currentLanguage;}

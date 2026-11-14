@@ -1,8 +1,8 @@
 # 拖拽转换 / Drag Convert
 
-在 **实验室 → 拖拽转换** 开启功能，从访达拖起文件，按 Shift（也可先按住再拖），移到菜单选项后松手。默认触发键为 Shift，可在页面自定义为单个修饰键、字母、数字、方向键或其他受支持的按键。转换在本机完成，原件保留，同名副本自动编号；进度、取消和最近 20 次结果都在页面中，不弹出额外结果窗口。无需 API 或模型下载。
+在 **功能中心 → 添加拖拽转换** 开启功能，从访达拖起文件，按 Shift（也可先按住再拖），移到菜单选项后松手。默认触发键为 Shift，可在页面自定义为单个修饰键、字母、数字、方向键或其他受支持的按键。转换在本机完成，原件保留，同名副本自动编号；进度、取消和最近 20 次结果都在页面中，不弹出额外结果窗口。无需 API 或模型下载。
 
-Enable **Labs → Drag Convert**, drag files from Finder, press Shift (or hold it before dragging), then release over a menu option. Shift is the default trigger. Choose a single modifier, letter, number, arrow or another supported key on the page. Processing stays on your Mac. Originals are kept and duplicate output names are numbered. Progress, cancellation and the last 20 batches stay on the page, without an extra result window. No API or model download is required.
+Enable **Feature Center → Add Drag Convert**, drag files from Finder, press Shift (or hold it before dragging), then release over a menu option. Shift is the default trigger. Choose a single modifier, letter, number, arrow or another supported key on the page. Processing stays on your Mac. Originals are kept and duplicate output names are numbered. Progress, cancellation and the last 20 batches stay on the page, without an extra result window. No API or model download is required.
 
 | 文件 / Files | 操作 / Actions |
 | --- | --- |
@@ -19,9 +19,9 @@ The menu follows the file type and selection count. Shift-selection alone does n
 
 ## 自定义触发键 / Custom trigger key
 
-在本页“触发键”选择一个按键，设置会自动保存。只有实际拖动文件时才会唤出菜单，不拦截正常打字。字母、数字、方向键和功能键需要 macOS 输入监控权限；授权后返回本页，状态会自动刷新。Esc 用于取消，不可作为触发键；Caps Lock 和 Fn 不在可选范围。功能键需要键盘发送标准 F 键，已被 AI 模式或框选提问占用的键不可用。键名跟随当前键盘布局，保存的物理键位保持不变。
+在本页“触发键”选择一个按键，设置会自动保存。只有实际拖动文件时才会唤出菜单，不拦截正常打字。字母、数字、方向键和功能键需要 macOS 输入监控权限；授权后返回本页，状态会自动刷新。Esc 用于取消，不可作为触发键；Caps Lock 和 Fn 不在可选范围。功能键需要键盘发送标准 F 键，已被 AI 模式或智能框选占用的键不可用。键名跟随当前键盘布局，保存的物理键位保持不变。
 
-Choose one key under **Trigger key**; the choice is saved automatically. The menu opens only during an actual file drag and does not intercept normal typing. Letters, numbers, arrows and function keys require macOS Input Monitoring permission; status refreshes automatically when you return. Escape is reserved for cancellation; Caps Lock and Fn are not offered. Function keys must send standard F-key events and cannot be used while assigned to AI mode or Ask about a selection. Names follow the current layout; the saved physical key stays the same.
+Choose one key under **Trigger key**; the choice is saved automatically. The menu opens only during an actual file drag and does not intercept normal typing. Letters, numbers, arrows and function keys require macOS Input Monitoring permission; status refreshes automatically when you return. Escape is reserved for cancellation; Caps Lock and Fn are not offered. Function keys must send standard F-key events and cannot be used while assigned to AI mode or Smart Selection. Names follow the current layout; the saved physical key stays the same.
 
 ## 格式与限制 / Formats and limits
 
@@ -33,7 +33,7 @@ Up to 128 selected items. Images: 100 MP / 512 MB; PDFs: 200 pages / 512 MB; med
 
 Each archive is limited to 20,000 entries and 8 GB of original/expanded data; input archives may be up to 4 GB. Passwords, split volumes, links and special files are unsupported; download quarantine is preserved; other extended attributes and resource forks are not preserved. Unsafe paths, integrity errors or limit violations stop that operation. Cancellation keeps completed copies and removes unpublished temporary output. macOS may request access to protected folders. Avoid enabling drag menus in two app copies at once.
 
-退出或安装更新前，请等待正在转换的任务结束，或在本页取消。文件转换不会被自动权限重启中断。框选提问与拖拽菜单协调显示。
+退出或安装更新前，请等待正在转换的任务结束，或在本页取消。文件转换不会被自动权限重启中断。智能框选与拖拽菜单协调显示。
 
 Before quitting or installing an update, finish or cancel the active conversion on this page. Automatic permission recovery waits for conversion to finish. Selection overlays are coordinated with the drag menu.
 

@@ -24,7 +24,7 @@ test('load ignores only the two retired UI keys without rewriting old libraries 
     const {store,file,bytes}=await fixture(t,extra);
     assert.equal(store.warning,null);assert.notEqual(store.readOnly,true);assert.equal(await readFile(file,'utf8'),bytes,'load is read-only');
     for(const key of retired){assert.equal(Object.hasOwn(store.data.settings,key),false);assert.equal(Object.hasOwn(defaultSettings,key),false);}
-    assert.deepEqual(store.data.settings,validateSettings(settings));assert.deepEqual(store.data.scenes,[scene]);
+    assert.deepEqual(store.data.settings,{...validateSettings(settings),sidebarFeatures:['studio','library','codex','game']});assert.deepEqual(store.data.scenes,[scene]);
     assert.equal(store.data.bestScore,37);assert.deepEqual(store.data.gameBestScores,library().gameBestScores);
   }
 });
@@ -33,7 +33,7 @@ test('ordinary scene and settings saves after legacy load drop retired keys whil
   const {store,file}=await fixture(t,{appearanceStyle:'glass',glassStrength:82});
   const original=structuredClone(store.data);await store.saveScene({name:'New artwork',colors,animation:{effect:'pulse',brightness:61,hueShift:-20}});
   let saved=JSON.parse(await readFile(file,'utf8'));for(const key of retired)assert.equal(Object.hasOwn(saved.settings,key),false);
-  assert.deepEqual(saved.settings,original.settings);assert.deepEqual(saved.scenes.find(s=>s.id===scene.id),scene);
+  const {sidebarFeatures,...originalStoredSettings}=original.settings;assert.deepEqual(saved.settings,originalStoredSettings);assert.deepEqual(saved.scenes.find(s=>s.id===scene.id),scene);
   await store.settings({brightness:48});const reopened=await new Store(store.dir).load();saved=JSON.parse(await readFile(file,'utf8'));
   assert.equal(reopened.warning,null);assert.equal(reopened.data.settings.brightness,48);assert.deepEqual(reopened.data.settings.outputColorProfile,original.settings.outputColorProfile);
   assert.deepEqual(reopened.data.scenes,store.data.scenes);assert.deepEqual(reopened.data.gameBestScores,original.gameBestScores);

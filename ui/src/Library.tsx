@@ -1,7 +1,7 @@
 import {displayPresetName} from '../../shared/preset-names.mjs';
 import {getKeyboardProfile} from '../../shared/keyboard-models.mjs';
 import {getLayoutModel} from '../../shared/layout.mjs';
-import { t as tr, dateLocale } from "./i18n";
+import { t as tr, dateLocale, useLanguage } from "./i18n";
 import "./library-native-v5.css";
 import "./library-closeout-v6.css";
 import './library-play-edit-v8.css';
@@ -44,6 +44,7 @@ const thumbnailColors=(scene:Pick<Scene,'colors'|'animation'|'trigger'>,layout:K
     ?typingCrossThumbnail(layout,triggerPlaybackConfig(scene.trigger,scene.animation).color)
     :applyArtworkAppearance(scene.colors,scene.animation);
 export function Library({
+  embedded, editLabel, onInspect,
   state,
   layout,
   display,
@@ -55,6 +56,9 @@ export function Library({
   command,
   notify,
 }: {
+  embedded?: {source:"saved"|"presets";search:string;onSearch:(value:string)=>void;onSource:(value:"saved"|"presets")=>void;showTools?:boolean;hideEmpty?:boolean};
+  editLabel?: string;
+  onInspect?: (scene:Scene)=>void;
   state: AppState | null;
   layout: Key[];
   display?: ConnectionDisplay;
@@ -66,7 +70,8 @@ export function Library({
   command: Command;
   notify: Notify;
 }) {
-  const [search, setSearch] = useState(""),
+  const en=useLanguage()==='en';
+  const [localSearch, setLocalSearch] = useState(""),
     [rename, setRename] = useState<Scene | null>(null),
     [name, setName] = useState(""),
     [deleting, setDeleting] = useState<Scene | null>(null),
@@ -76,7 +81,9 @@ export function Library({
   const menuAnchor=useRef<HTMLButtonElement|null>(null),dialogAnchor=useRef<HTMLElement|null>(null),menuFocus=useRef<"first"|"last">("first"),busyLock=useRef(false);
   const closeMenu=(restore=false)=>{setMenu(undefined);if(restore)menuAnchor.current?.focus();};
   const openMenu=(id:string|undefined,anchor:HTMLButtonElement,last=false)=>{menuAnchor.current=anchor;menuFocus.current=last?"last":"first";setMenuFlip(anchor.getBoundingClientRect().bottom+130>window.innerHeight);setMenu(menu===id?undefined:id);};
-  const [source, setSource] = useState<"saved" | "presets">("presets");
+  const [localSource, setLocalSource] = useState<"saved" | "presets">("presets");
+  const source=embedded?.source??localSource, setSource=embedded?.onSource??setLocalSource;
+  const search=embedded?.search??localSearch, setSearch=embedded?.onSearch??setLocalSearch;
   const [category, setCategory] = useState<"all" | "pattern" | "motion">("all");
   const [previewId, setPreviewId] = useState<string>();
   const outputBlocked=Boolean(serviceError)||!state?.device.connected||state.device.readOnly===true
@@ -186,16 +193,16 @@ export function Library({
     finally{busyLock.current=false;setBusy(false);}
   };
   return (
-    <section className="lab-library-page library-play-edit-v8">
-      <div className="lab-library-tabs" role="tablist" aria-label={tr("作品来源")}>
+    <section className={"lab-library-page library-play-edit-v8"+(embedded?" unified-lighting-items":"")}>
+      {!embedded&&<div className="lab-library-tabs" role="tablist" aria-label={tr("作品来源")}>
         <button role="tab" aria-selected={source === "presets"} onClick={() => {setSource("presets"); setSearch("");}}>{tr("默认预设")}</button>
         <button role="tab" aria-selected={source === "saved"} onClick={() => {setSource("saved"); setSearch("");}}>{tr("我的作品")}</button>
-      </div>
+      </div>}
       <input ref={fileInput} type="file" aria-label={tr("导入")} accept=".json,application/json" className="visually-hidden" onChange={event => run(importFile(event.target.files?.[0]))}/>
-      <div className="lab-library-toolbar">
+      {(!embedded||embedded.showTools)&&<div className="lab-library-toolbar">
         <label className="lab-library-search"><input ref={searchInput} aria-label={tr(source === "presets" ? "搜索预设" : "搜索作品")} placeholder={tr(source === "presets" ? "搜索图案或灯效" : "搜索作品名称")} value={search} onChange={event => setSearch(event.target.value)}/><Search size={16} strokeWidth={1.5}/></label>
-        <div className="lab-library-actions"><Button kind="ghost" icon={<Import size={16}/>} disabled={busy} onClick={() => fileInput.current?.click()}>{tr("导入")}</Button><Button kind="ghost" icon={<Download size={16}/>} disabled={!scenes.length} onClick={() => requestExport(scenes,tr("NuPhy Lab-作品.json"))}>{tr("导出全部")}</Button><Button kind="primary" icon={<Plus size={16}/>} disabled={transitionBlocked} onClick={onNew}>{tr("新建作品")}</Button></div>
-      </div>
+        <div className="lab-library-actions"><Button kind="ghost" icon={<Import size={16}/>} disabled={busy} onClick={() => fileInput.current?.click()}>{tr("导入")}</Button><Button kind="ghost" icon={<Download size={16}/>} disabled={!scenes.length} onClick={() => requestExport(scenes,tr("NuPhy Lab-作品.json"))}>{embedded?(en?"Export lighting":"导出灯光"):tr("导出全部")}</Button><Button kind="primary" icon={<Plus size={16}/>} disabled={transitionBlocked} onClick={onNew}>{embedded?(en?"New lighting":"新建灯光"):tr("新建作品")}</Button></div>
+      </div>}
       {source === "presets" ? <section className="lab-preset-library" aria-label={tr("默认预设")}>
         <div className="lab-library-categories" role="group" aria-label={tr("预设分类")}>{([["all","全部"],["pattern","动态图形"],["motion","氛围灯效"]] as const).map(([id,label]) => <button key={id} aria-pressed={category === id} onClick={() => setCategory(id)}>{tr(label)}</button>)}</div>
         {!layout.length ? <Empty icon={<FolderOpen size={28}/>} title={tr("正在读取键盘布局")}>{tr("布局就绪后显示预设图案。")}</Empty> : matchingPresets.length ? <div className="lab-library-grid">{matchingPresets.map(preset => <article className="lab-library-item" key={preset.id}>
@@ -206,9 +213,9 @@ export function Library({
         </article>)}</div> : <div className="lab-library-empty-v6"><Empty title={tr("没有匹配的预设")} actions={<Button kind="primary" onClick={clearSearch}>{tr("清空搜索")}</Button>}>{tr("换个关键词或分类试试。")}</Empty></div>}
         <p className="lab-library-footnote">{tr(previewId&&catalog.some(preset=>preset.id===previewId&&preset.trigger?.effect==='cross')?'等待按键 · 每次按键产生独立光波':'页面预览仅在屏幕显示；播放到键盘后可继续编辑。')}</p>
       </section> : !state ? <Empty icon={<FolderOpen size={28}/>} title={tr("正在读取作品")}>{tr("作品库就绪后显示已保存的作品。")}</Empty> : filtered.length ? <><div className="lab-library-grid lab-saved-grid">{filtered.map(scene => <article key={scene.id} className="lab-library-item">
-        <button className="lab-library-art" disabled={transitionBlocked} onClick={() => onLoad(scene)} aria-label={tr(`打开作品 ${displayPresetName(scene.name,tr)}`)}><Keyboard modelId={getLayoutModel()} layout={layout} colors={thumbnailColors(scene,layout)} mini/></button>
-        <div className="lab-library-item-info"><div className="lab-library-item-meta"><h3 translate="no">{displayPresetName(scene.name,tr)}</h3><p>{tr(scene.trigger ? "按键触发" : scene.animation.effect === "static" ? "绘制" : "动画")}{!scene.trigger && scene.animation.effect === "frames" ? tr(` · ${scene.animation.frames?.length || 0} 帧`) : ""}{scene.updatedAt ? ` · ${new Date(scene.updatedAt).toLocaleDateString(dateLocale(),{month:"numeric",day:"numeric"})}` : ""}</p></div>
-          <div className="lab-library-item-actions"><Button kind="ghost" disabled={transitionBlocked} onClick={() => onLoad(scene)}>{tr("打开编辑")}</Button><Button className="lab-library-play-v8" icon={<Play size={14}/>} disabled={outputBlocked||transitionBlocked||Boolean(Boolean(triggerPlayReason(scene)))} aria-describedby={outputReason?"library-play-reason":triggerPlayReason(scene)?`library-trigger-reason-${scene.id}`:undefined} onClick={()=>playFromLibrary(scene)} aria-label={tr(scene.trigger?`启用作品 ${displayPresetName(scene.name,tr)} 的按键触发`:`播放作品 ${displayPresetName(scene.name,tr)} 到键盘`)}>{tr(scene.trigger?"启用按键触发":"播放到键盘")}</Button><div className="lab-library-menu"><Button kind="ghost" className="icon-button" icon={<MoreHorizontal size={18}/>} aria-label={tr(`作品 ${displayPresetName(scene.name,tr)} 的更多操作`)} aria-expanded={menu === scene.id} disabled={busy} onClick={event=>openMenu(scene.id,event.currentTarget)} onKeyDown={event=>{if(event.key==="ArrowDown"||event.key==="ArrowUp"){event.preventDefault();openMenu(scene.id,event.currentTarget,event.key==="ArrowUp");}}}/>
+        <button className="lab-library-art" disabled={transitionBlocked} onClick={() => onInspect?onInspect(scene):onLoad(scene)} aria-label={tr(`打开作品 ${displayPresetName(scene.name,tr)}`)}><Keyboard modelId={getLayoutModel()} layout={layout} colors={thumbnailColors(scene,layout)} mini/></button>
+        <div className="lab-library-item-info"><div className="lab-library-item-meta"><span className="unified-kind">{en?"Lighting":"灯光"}</span><h3 translate="no">{displayPresetName(scene.name,tr)}</h3><p>{tr(scene.trigger ? "按键触发" : scene.animation.effect === "static" ? "绘制" : "动画")}{!scene.trigger && scene.animation.effect === "frames" ? tr(` · ${scene.animation.frames?.length || 0} 帧`) : ""}{scene.updatedAt ? ` · ${new Date(scene.updatedAt).toLocaleDateString(dateLocale(),{month:"numeric",day:"numeric"})}` : ""}</p></div>
+          <div className="lab-library-item-actions"><Button kind="ghost" disabled={transitionBlocked} onClick={() => onLoad(scene)}>{editLabel??tr("打开编辑")}</Button><Button className="lab-library-play-v8" icon={<Play size={14}/>} disabled={outputBlocked||transitionBlocked||Boolean(Boolean(triggerPlayReason(scene)))} aria-describedby={outputReason?"library-play-reason":triggerPlayReason(scene)?`library-trigger-reason-${scene.id}`:undefined} onClick={()=>playFromLibrary(scene)} aria-label={tr(scene.trigger?`启用作品 ${displayPresetName(scene.name,tr)} 的按键触发`:`播放作品 ${displayPresetName(scene.name,tr)} 到键盘`)}>{tr(scene.trigger?"启用按键触发":"播放到键盘")}</Button><div className="lab-library-menu"><Button kind="ghost" className="icon-button" icon={<MoreHorizontal size={18}/>} aria-label={tr(`作品 ${displayPresetName(scene.name,tr)} 的更多操作`)} aria-expanded={menu === scene.id} disabled={busy} onClick={event=>openMenu(scene.id,event.currentTarget)} onKeyDown={event=>{if(event.key==="ArrowDown"||event.key==="ArrowUp"){event.preventDefault();openMenu(scene.id,event.currentTarget,event.key==="ArrowUp");}}}/>
           {menu === scene.id && <div className="lab-library-dropdown" role="menu" data-flip={menuFlip} aria-label={tr('作品操作')} onKeyDown={event=>{
             if(['ArrowDown','ArrowUp','Home','End'].includes(event.key)){event.preventDefault();const items=Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not([disabled])'));const index=items.indexOf(document.activeElement as HTMLButtonElement);const next=event.key==='Home'?0:event.key==='End'?items.length-1:(index+(event.key==='ArrowDown'?1:-1)+items.length)%items.length;items[next]?.focus();}
             else if(event.key==='Escape'||event.key==='Tab'){event.preventDefault();event.stopPropagation();closeMenu(true);}
@@ -216,8 +223,8 @@ export function Library({
           </div></div>
         </div>
         {triggerPlayReason(scene)&&<p id={`library-trigger-reason-${scene.id}`} className="lab-library-play-reason-v8">{triggerPlayReason(scene)}</p>}
-      </article>)}</div><p className="lab-library-footnote">{tr(`${filtered.length} 个作品`)} · {getKeyboardProfile(getLayoutModel()).name}</p></> : <div className="lab-library-empty-v6"><Empty title={tr(search ? "没有找到作品" : "还没有保存的作品")} actions={search ? <Button kind="primary" onClick={clearSearch}>{tr("清空搜索")}</Button> : <Button kind="primary" disabled={transitionBlocked} onClick={onNew}>{tr("新建作品")}</Button>}>{tr(search ? "换一个名称，或清空搜索。" : "在「灯光创作」保存作品后，会显示在这里。")}</Empty></div>}
-      {outputReason&&<p id="library-play-reason" className="lab-library-play-reason-v8" role="status">{outputReason}</p>}
+      </article>)}</div><p className="lab-library-footnote">{tr(`${filtered.length} 个作品`)} · {getKeyboardProfile(getLayoutModel()).name}</p></> : embedded?.hideEmpty?null:<div className="lab-library-empty-v6"><Empty title={tr(search ? "没有找到作品" : "还没有保存的作品")} actions={search ? <Button kind="primary" onClick={clearSearch}>{tr("清空搜索")}</Button> : <Button kind="primary" disabled={transitionBlocked} onClick={onNew}>{tr("新建作品")}</Button>}>{tr(search ? "换一个名称，或清空搜索。" : "在「灯光创作」保存作品后，会显示在这里。")}</Empty></div>}
+      {outputReason&&(!embedded||embedded.showTools)&&<p id="library-play-reason" className="lab-library-play-reason-v8" role="status">{outputReason}</p>}
       {rename&&<Modal title={tr('重命名作品')} width={424} busy={busy} initialFocus="input" returnFocus={dialogAnchor.current} onClose={()=>setRename(null)} footer={<><Button kind="ghost" disabled={busy} onClick={()=>setRename(null)}>{tr('取消')}</Button><Button kind="primary" busy={busy} disabled={!name.trim()} onClick={()=>run(renameScene())}>{tr(busy?'保存中…':'保存名称')}</Button></>}>
         <label className="form-field">{tr('作品名称')}<input aria-label={tr('作品名称')} aria-invalid={!name.trim()} value={name} maxLength={80} disabled={busy} onChange={event=>{setName(event.target.value);setFormError('');}} onKeyDown={event=>{if(event.key==='Enter'&&!event.nativeEvent.isComposing){event.preventDefault();run(renameScene());}}}/></label>
         {!name.trim()&&<p className="overlay-field-error">{tr('请输入作品名称。')}</p>}

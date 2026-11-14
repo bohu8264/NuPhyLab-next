@@ -12,9 +12,9 @@ Availability depends on your provider account, region and provider changes. A li
 
 ## 发送图片 / Include images
 
-开关位于 **实验室 → 框选提问** 的“按住说话”下方。关闭时只发送本机 OCR 文字；开启后，提问可附图，翻译、总结、解释在没有识别到文字时可附图。“提取文字”始终只在本机执行。
+开关位于 **功能中心 → 智能框选** 的“按住说话”下方。关闭时只发送本机 OCR 文字；开启后，提问可附图，翻译、总结、解释在没有识别到文字时可附图。“提取文字”始终只在本机执行。
 
-The switch is below **Hold to speak** in **Labs → Ask about a selection**. When off, only local OCR text is sent. When on, questions can include an image; translation, summary and explanation may include an image when OCR found no text. Extract Text always runs locally.
+The switch is below **Hold to speak** in **Feature Center → Smart Selection**. When off, only local OCR text is sent. When on, questions can include an image; translation, summary and explanation may include an image when OCR found no text. Extract Text always runs locally.
 
 只有模型和接口支持图片输入时，图片请求才能成功。更换模型不会自动打开图片开关，开关本身也不代表已验证账户访问或图片能力。
 

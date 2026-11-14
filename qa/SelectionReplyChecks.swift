@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 
 @MainActor func selectionReplyChecks(_ check:(Bool,String)->Void) throws {
- check(LabAction.allCases.map(\.rawValue)==["translate","summarize","explain","reply"],"four actions retain old order and add reply")
+ check(LabAction.allCases.map(\.rawValue)==["translate","summarize","explain","reply"],"four actions retain old order")
  check(LabAction.explain.stepped(1) == .reply && LabAction.reply.stepped(1) == .translate,"wheel reaches reply and wraps")
  check(LabAction.translate.stepped(-1) == .reply && LabAction.reply.stepped(-1) == .explain,"reverse wheel reaches reply")
  check(LabAction.reply.title(in:.zh)=="回复" && LabAction.reply.title(in:.en)=="Reply","reply mode is bilingual")

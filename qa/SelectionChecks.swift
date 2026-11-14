@@ -8,6 +8,7 @@ import Carbon
   func rejects(_ shortcut:LabShortcut,_ name:String){do{try shortcut.validate();check(false,name)}catch{check(true,name)}}
   try selectionSideButtonChecks(check)
   try selectionReplyChecks(check)
+  try selectionActionMigrationChecks(check)
   try LabShortcut().validate();check(true,"default accepted")
   try LabShortcut(keyCode:12,modifiers:0,label:"Q").validate();check(true,"single key")
   try LabShortcut(keyCode:40,modifiers:UInt32(cmdKey),label:"Cmd K").validate();check(true,"command combination")

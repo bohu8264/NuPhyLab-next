@@ -1,3 +1,4 @@
+import * as sidebarFeatures from '../../shared/sidebar-features.mjs';
 // Executes the production App.tsx and draftPersistence.ts. Child rendering,
 // React scheduling, API and browser storage are controlled; never React DOM,
 // WebKit, the production service, user storage, native host or hardware.
@@ -34,7 +35,7 @@ export async function appDraftFixture(options={}){
     useEffect(fn,deps){const i=cursor++,old=hooks[i];if(!old||!equal(old.deps,deps)){hooks[i]={kind:'effect',deps,cleanup:old?.cleanup};effects.push(()=>{old?.cleanup?.();hooks[i].cleanup=fn();});}},
   };
   const localStorage={getItem(key){reads.push(key);if(readFailure)throw new Error('fixture storage read unavailable');return storage.get(key)??null;},setItem(key,value){writes.push({key,value});if(quota)throw new DOMException('fixture full','QuotaExceededError');storage.set(key,String(value));}};
-  const command=async body=>{commands.push(clone(body));if(options.onCommand)return options.onCommand(body,{state,commands});if(body.op==='saveScene'){const saved={...clone(body.scene),updatedAt:'fixture-saved'};const index=state.scenes.findIndex(s=>s.id===saved.id);if(index<0)state.scenes.push(saved);else state.scenes[index]=saved;return{savedScene:clone(saved)};}return{ok:true};};
+  const command=async body=>{commands.push(clone(body));if(options.onCommand)return options.onCommand(body,{state,commands});if(body.op==='saveScene'){const saved={...clone(body.scene),updatedAt:'fixture-saved'};const index=state.scenes.findIndex(s=>s.id===saved.id);if(index<0)state.scenes.push(saved);else state.scenes[index]=saved;return{savedScene:clone(saved)};}if(body.op==='settings')Object.assign(state.settings,clone(body.settings));return{ok:true};};
   const readState=async()=>{if(options.onReadState)return options.onReadState({state,commands});return clone(state);};
   const api={state,layout,serviceError:'',command,readState,refresh:async()=>{},exiting:false};
   const host={scrollTo(){},addEventListener(type,fn){if(!events.has(type))events.set(type,new Set());events.get(type).add(fn);},removeEventListener(type,fn){events.get(type)?.delete(fn);},dispatchEvent(e){events.get(e.type)?.forEach(fn=>fn(e));}};
@@ -68,6 +69,11 @@ export async function appDraftFixture(options={}){
     if(name==='../../shared/connection-display.mjs')return{deriveConnectionDisplay:()=>({stateId:'connected'})};
     if(name==='./connection-copy-v7')return{presentConnectionDisplay:v=>v,connectionCopy:v=>v.zh,connectionHeader:()=>'',connectionSidebar:()=>''};
     if(name==='./primitives')return{Button:component('Button'),Modal:component('Modal'),run:promise=>{void promise.catch(()=>{});}};
+    if(name==='../../shared/sidebar-features.mjs')return sidebarFeatures;
+    if(name==='./FeatureCenter')return {FeatureCenter:component('FeatureCenter'),features:sidebarFeatures.FEATURE_IDS.map((id,index)=>({id,zh:['灯光创作','作品库','AI 助手','灯光游戏','模拟声浪','演奏模式','智能框选','拖拽转换','键盘口袋'][index],en:id,icon:component('feature-icon')}))};
+    if(name==='./UnifiedLibrary')return {UnifiedLibrary:component('Library')};
+    if(name==='./KeyboardPocketLab')return {KeyboardPocketLab:component('KeyboardPocketLab')};
+    if(name==='./music/persistence')return{prepareMusicLibraryAction:async()=>{}};
     if(name==='./music/MusicLab')return {MusicLab:component('MusicLab')};
     const child=name.match(/^\.\/(FeedbackToast|AudioPanel|AudioPendingNotice|NativeLighting|Studio|Library|Codex|ClaudeCode|Device|Settings|SelectionLab|TypingSounds|DragConvertLab|StartupGuide)$/)?.[1];
     if(child)return{[child]:component(child)};

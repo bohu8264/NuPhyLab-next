@@ -91,16 +91,18 @@ enum SelectionPermissionProbe {
     var fileDragActive: (() -> Bool)? { get set }
     var isBusy: Bool { get }
     var dragReservedTrigger: String? { get }
+    var selectionReservedBinding: InputBinding? { get }
     func updateLanguage(_ language: AppLanguage)
     func updateReservedKeys(_ codes: Set<UInt32>)
     func handle(_ body: [String:Any], reply: @escaping (Any?, String?) -> Void)
     func consumeLocal(_ event: NSEvent) -> Bool
     func cancel(animatePanel: Bool)
     func cancelShortcutRecording()
+    func setExternalShortcutRecording(_ active:Bool)
     func refreshAuthorization()
     func shutdown()
 }
-extension SelectionFeature { var dragReservedTrigger:String? {nil}; func cancel() { cancel(animatePanel: false) } }
+extension SelectionFeature { func setExternalShortcutRecording(_ active:Bool) {} ; var selectionReservedBinding:InputBinding? {nil}; var dragReservedTrigger:String? {nil}; func cancel() { cancel(animatePanel: false) } }
 
 @MainActor enum SelectionFeatureFactory {
     static func make(directory: URL) -> any SelectionFeature {
@@ -126,10 +128,10 @@ extension SelectionFeature { var dragReservedTrigger:String? {nil}; func cancel(
             var result = LabPermissionSnapshot.current().dictionary
             result.merge(["supported":false,"ready":false,"setupState":"unsupported","hasKey":false,"shortcutRegistered":false,
                 "preferences":(try? JSONSerialization.jsonObject(with:JSONEncoder().encode(LabPreferences()))) ?? [:],
-                "issue":LabText.text("框选提问需要 macOS 14 或更新版本；键盘功能可继续使用。",language:language),
+                "issue":LabText.text("智能框选需要 macOS 14 或更新版本；键盘功能可继续使用。",language:language),
                 "shortcutNotice":"","phase":LabText.text("系统版本不支持",language:language)],uniquingKeysWith: { _,new in new })
             reply(result,nil)
-        } else { reply(nil,LabText.text("框选提问需要 macOS 14 或更新版本。",language:language)) }
+        } else { reply(nil,LabText.text("智能框选需要 macOS 14 或更新版本。",language:language)) }
     }
     func consumeLocal(_ event: NSEvent) -> Bool { false }
     func cancel(animatePanel: Bool) {}

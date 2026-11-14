@@ -29,7 +29,7 @@ function fixture(scenes,{connected=true,serviceError='',display,otherState={},ca
     if(name==='react/jsx-runtime')return{jsx,jsxs:jsx,Fragment:Symbol.for('fixture.Fragment')};
     if(name.endsWith('.css'))return{};
     if(name==='lucide-react')return new Proxy({},{get:(_t,key)=>component(String(key))});
-    if(name==='./i18n')return{t:v=>v,dateLocale:()=> 'zh-CN'};
+    if(name==='./i18n')return{t:v=>v,useLanguage:()=> 'zh-CN',dateLocale:()=> 'zh-CN'};
     if(name==='./connection-copy-v7')return{connectionCopy:pair=>pair?.zh??''};
     if(name==='../../shared/device-status.mjs')return{lightingUnavailableMessage:()=> 'Fixture USB unavailable'};
     if(name==='../../shared/render-animation.mjs')return appearance;

@@ -51,13 +51,13 @@ test('relaunch remains explicit and does not immediately query a stopping app',a
  const f=await fixture({ready:false,needsRelaunch:true,setupState:'relaunch'});assert.match(content(f),/等待重新打开/);assert(!f.calls.some(x=>x.op==='relaunch'));await f.click('完成授权并重新打开');assert.equal(f.calls.at(-1).op,'relaunch');f.close();
 });
 test('missing API goes directly to settings without capture, preserves default configuration',async()=>{
- const f=await fixture({hasKey:false,configurationIssue:'请先配置模型',ready:false});f.state.preferences.enabled=false;await f.focus();await f.click('配置模型');assert.deepEqual(f.events,['ai']);assert(!f.calls.some(x=>x.op==='capture'));await f.toggle('开启框选提问',true);assert.equal(f.state.preferences.enabled,true);assert.deepEqual(f.events,['ai','ai']);f.close();
+ const f=await fixture({hasKey:false,configurationIssue:'请先配置模型',ready:false});f.state.preferences.enabled=false;await f.focus();await f.click('配置模型');assert.deepEqual(f.events,['ai']);assert(!f.calls.some(x=>x.op==='capture'));await f.toggle('开启智能框选',true);assert.equal(f.state.preferences.enabled,true);assert.deepEqual(f.events,['ai','ai']);f.close();
 });
 test('unsupported system disables selection controls without ready claims',async()=>{
- const f=await fixture({supported:false,ready:false,setupState:'unsupported'});assert.match(content(f),/macOS 14/);assert(f.find(n=>n.props?.label==='开启框选提问').props.disabled);assert(f.find(n=>n.props?.label==='发送选区图片').props.disabled);assert.doesNotMatch(content(f),/已就绪/);f.close();
+ const f=await fixture({supported:false,ready:false,setupState:'unsupported'});assert.match(content(f),/macOS 14/);assert(f.find(n=>n.props?.label==='开启智能框选').props.disabled);assert(f.find(n=>n.props?.label==='发送选区图片').props.disabled);assert.doesNotMatch(content(f),/已就绪/);f.close();
 });
 test('image consent is directly below voice and changes only that configuration field',async()=>{
- const f=await fixture();const switches=walkAll(f.instance.tree,n=>n.props?.label&&n.props?.onChange).map(n=>n.props.label);assert.deepEqual(switches,['开启框选提问','开启按住说话','发送选区图片']);
+ const f=await fixture();const switches=walkAll(f.instance.tree,n=>n.props?.label&&n.props?.onChange).map(n=>n.props.label);assert.deepEqual(switches,['开启智能框选','开启按住说话','发送选区图片']);
  f.nextStatus(s=>{s.preferences.configuration.maximumOutputTokens=8192;s.preferences.configuration.anthropicWorkspaceID='keep-workspace';s.preferences.defaultAction='explain';});
  // Turning off must preserve even a concurrently changed credential scope.
  await f.toggle('发送选区图片',false);assert.equal(f.state.preferences.configuration.maximumOutputTokens,8192);assert.equal(f.state.preferences.configuration.anthropicWorkspaceID,'keep-workspace');assert.equal(f.state.preferences.defaultAction,'explain');
@@ -128,11 +128,49 @@ test('cancelled native recording leaves the old shortcut and re-enables the cont
  assert(!f.find(n=>n.props?.['aria-label']==='录制框选快捷键').props.disabled);f.close();
 });
 
-test('Reply is a fourth persisted action and preserves the latest side-button and voice settings',async()=>{
+test('Reply remains a persisted action and preserves the latest side-button and voice settings',async()=>{
  const f=await fixture();const group=f.find(n=>n.props?.['aria-label']==='默认框选动作');
  assert.deepEqual(walkAll(group,n=>n.type==='button').map(textOf),['翻译','总结','解释','回复']);
  f.nextStatus(s=>{s.preferences.shortcut={keyCode:0,modifiers:0,buttonIndex:4,label:'鼠标侧键 2'};s.preferences.configuration.model='latest-model';s.preferences.voiceEnabled=true;});
  await f.click('回复');assert.equal(f.state.preferences.defaultAction,'reply');assert.equal(f.state.preferences.shortcut.buttonIndex,4);assert.equal(f.state.preferences.configuration.model,'latest-model');assert(f.state.preferences.voiceEnabled);
  assert(f.find(n=>n.type==='button'&&textOf(n)==='回复').props['aria-pressed']);assert.match(content(f),/结合选中内容和口述要求生成回复/);
  assert(!f.calls.some(x=>['capture','permission','test'].includes(x.op)));f.close();
+});
+
+test('enabled actions are separate from the default; removing the default selects the next enabled one',async()=>{
+ const f=await fixture();
+ const boxes=()=>walkAll(f.instance.tree,n=>n.type==='input'&&n.props?.type==='checkbox');
+ assert.deepEqual(boxes().map(n=>n.props['aria-label']),['翻译','总结','解释','回复']);
+ assert(boxes().every(n=>n.props.checked));
+ const toggle=async label=>{boxes().find(n=>n.props['aria-label']===label).props.onChange();await f.ui.settle(f.instance);};
+ f.nextStatus(s=>{s.preferences.shortcut={keyCode:0,modifiers:0,buttonIndex:4,label:'鼠标侧键 2'};s.preferences.voiceEnabled=true;s.preferences.configuration.model='latest-vision';});
+ await toggle('翻译');assert.deepEqual(f.state.preferences.enabledActions,['summarize','explain','reply']);assert.equal(f.state.preferences.defaultAction,'summarize');
+ assert.equal(f.state.preferences.shortcut.buttonIndex,4);assert(f.state.preferences.voiceEnabled);assert.equal(f.state.preferences.configuration.model,'latest-vision');assert.equal(f.state.preferences.configuration.imageInputConfirmed,false);
+ for(const label of ['总结','解释'])await toggle(label);
+ assert.deepEqual(f.state.preferences.enabledActions,['reply']);assert.equal(f.state.preferences.defaultAction,'reply');
+ const last=boxes().find(n=>n.props['aria-label']==='回复');assert(last.props.disabled);assert.match(content(f),/结合选中内容/);
+ // Also guard a stale handler if another view narrowed the list meanwhile.
+ const before=f.calls.filter(x=>x.op==='save').length;last.props.onChange();await f.ui.settle(f.instance);assert.equal(f.calls.filter(x=>x.op==='save').length,before);assert.match(content(f),/至少保留一个动作/);
+ await toggle('翻译');assert.deepEqual(f.state.preferences.enabledActions,['translate','reply']);assert.equal(f.state.preferences.defaultAction,'reply');
+ const group=f.find(n=>n.props?.['aria-label']==='默认框选动作');assert.deepEqual(walkAll(group,n=>n.type==='button').map(textOf),['翻译','回复']);
+ assert(!f.calls.some(x=>['capture','permission','test'].includes(x.op)));f.close();
+});
+test('action selection rechecks latest membership and never reenables a concurrently disabled action',async()=>{
+ const f=await fixture();f.nextStatus(s=>{s.preferences.enabledActions=['translate'];s.preferences.defaultAction='translate';});
+ await f.click('回复');assert.equal(f.state.preferences.defaultAction,'translate');assert.deepEqual(f.state.preferences.enabledActions,['translate']);assert(!f.calls.some(x=>x.op==='save'));assert.match(content(f),/此动作已关闭/);f.close();
+});
+test('Smart Selection exposes four actions without retired identification controls or search requests',async()=>{
+ const f=await fixture();
+ assert(!/寻物|搜索 API Key|资料来源/.test(content(f)));
+ assert.equal(walkAll(f.instance.tree,n=>n.props?.id==='identify-search-provider').length,0);
+ assert.equal(walkAll(f.instance.tree,n=>n.props?.id==='identify-search-key').length,0);
+ await f.click('回复');assert.equal(f.state.preferences.defaultAction,'reply');
+ assert(!f.calls.some(x=>['identifySearch','capture','permission','test'].includes(x.op)));
+ f.close();
+});
+test('stale selection lists cannot restore the removed action',async()=>{
+ const {enabledSelectionActions}=await import('../ui/src/selection-actions.ts');
+ assert.deepEqual(enabledSelectionActions(['identify','explain','translate','identify'],'identify'),['translate','explain']);
+ assert.deepEqual(enabledSelectionActions(['identify'],'identify'),['translate']);
+ assert.deepEqual(enabledSelectionActions([],'reply'),['reply']);
 });

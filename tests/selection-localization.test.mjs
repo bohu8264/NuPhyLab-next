@@ -44,7 +44,7 @@ test('all selection pages render English across ready, first-run, permission and
   {ready:false,needsRelaunch:true,microphoneState:'denied',speechRecognitionState:'restricted'},
   {ready:false,setupState:'secureInput',issue:'当前输入受到系统保护，结束安全输入后可重新检查。'},
   {ready:false,setupState:'monitorPaused',shortcutRegistered:false},
-  {ready:false,supported:false,issue:'框选提问需要 macOS 14 或更新版本；键盘功能可继续使用。'},
+  {ready:false,supported:false,issue:'智能框选需要 macOS 14 或更新版本；键盘功能可继续使用。'},
  ]){
   const f=await fixture(patch,component);englishOnly(f.instance.tree);f.close();
  }
@@ -101,4 +101,10 @@ test('Reply action and its explanation are fully localized and can be selected i
  const f=await fixture();await f.click('Reply');englishOnly(f.instance.tree);
  assert.equal(f.state.preferences.defaultAction,'reply');assert.match(textOf(f.instance.tree),/Draft a reply from the selection and your spoken requirements/);
  f.ui.document.documentElement.lang='zh-CN';f.instance.render();assert.match(textOf(f.instance.tree),/回复/);assert.equal(f.state.preferences.defaultAction,'reply');f.close();
+});
+
+test('Smart Selection renders four English actions and no retired controls',async()=>{
+ const f=await fixture();await f.click('Reply');englishOnly(f.instance.tree);assert.equal(f.state.preferences.defaultAction,'reply');
+ assert.match(textOf(f.instance.tree),/Enable Smart Selection/);assert.match(textOf(f.instance.tree),/Enabled actions/);assert(!/Identify|Enhanced identification|Reference source/.test(textOf(f.instance.tree)));
+ const item=walkAll(f.instance.tree,n=>n.type==='input'&&n.props?.['aria-label']==='Explain')[0];item.props.onChange();await f.ui.settle(f.instance);englishOnly(f.instance.tree);assert(!f.state.preferences.enabledActions.includes('explain'));f.close();
 });

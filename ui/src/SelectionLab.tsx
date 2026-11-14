@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { providers } from './selection-providers';
 import { translationLanguages, type TranslationLanguage } from './selection-languages';
+import { selectionActions, enabledSelectionActions, type SelectionActionID } from './selection-actions';
 import { t, useLanguage } from './i18n';
 import { ArrowUpRight, Check, ChevronRight, CircleHelp, KeyRound, RotateCcw, ScanLine, Search, ShieldCheck } from 'lucide-react';
 import { Button } from './primitives';
@@ -25,7 +26,8 @@ type Preferences = {
     };
     configuration: Configuration;
     voiceEnabled: boolean;
-    defaultAction: 'translate' | 'summarize' | 'explain' | 'reply';
+    defaultAction: SelectionActionID;
+    enabledActions?: SelectionActionID[];
     translationLanguage?: TranslationLanguage;
 };
 type Status = {
@@ -103,7 +105,7 @@ function selectionReadiness(status: Status | null) {
     if (!status)
         return { label: '正在读取状态', detail: '正在检查框选状态。' };
     if (status.supported === false)
-        return { label: '当前系统不支持', detail: '框选提问需要 macOS 14 或更新版本。' };
+        return { label: '当前系统不支持', detail: '智能框选需要 macOS 14 或更新版本。' };
     if (!status.preferences.enabled)
         return { label: '已关闭', detail: '开启后可使用快捷键框选。' };
     if (status.setupState === 'recording')
@@ -133,6 +135,7 @@ export function SelectionLab() {
     const { status, setStatus, error } = useSelectionStatus();
     const [issue, setIssue] = useState(''), [busy, setBusy] = useState(false), [recording, setRecording] = useState(false);
     const prefs = status?.preferences ?? defaults, provider = providers.find(x => x.id === prefs.configuration.provider);
+    const enabledActions = enabledSelectionActions(prefs.enabledActions, prefs.defaultAction);
     const unavailable = status?.supported === false, configured = !!status && configuredForSelection(status);
     const missingBase = !!status && needsBasePermissions(status), missingVoice = !!status && needsVoicePermissions(status);
     const readiness = selectionReadiness(status);
@@ -154,6 +157,25 @@ export function SelectionLab() {
         finally {
             setBusy(false);
         }
+    }
+    async function changeAction(id: SelectionActionID, toggle = false) {
+        setBusy(true); setIssue('');
+        try {
+            const latest: Status = await native('status');
+            const current = enabledSelectionActions(latest.preferences.enabledActions, latest.preferences.defaultAction);
+            let enabled = current;
+            if (toggle) {
+                if (current.includes(id) && current.length === 1) {
+                    setStatus(latest); setIssue('至少保留一个动作。'); return;
+                }
+                enabled = enabledSelectionActions(current.includes(id) ? current.filter(item => item !== id) : [...current, id]);
+            } else if (!current.includes(id)) {
+                setStatus(latest); setIssue('此动作已关闭，请先勾选。'); return;
+            }
+            const defaultAction = toggle ? (enabled.includes(latest.preferences.defaultAction) ? latest.preferences.defaultAction : enabled[0]) : id;
+            setStatus(await native('save', { preferences: { ...latest.preferences, enabledActions: enabled, defaultAction } }));
+        } catch (e) { setIssue((e as Error).message); }
+        finally { setBusy(false); }
     }
     async function saveImageConsent(imageInputConfirmed: boolean) {
         setBusy(true);
@@ -190,11 +212,11 @@ export function SelectionLab() {
             setBusy(false);
         }
     }
-    return <section className="selection-lab selection-formal" aria-label={t("框选提问设置")}>
+    return <section className="selection-lab selection-formal" aria-label={t("智能框选设置")}>
   <div className="sl-settings-card">
    <div className="sl-enable-row">
-    <div className="sl-row-copy"><h2>{t("启用框选提问")}</h2><p>{t("按下快捷键，拖动框选，松开即答。")}</p></div>
-    <Switch label={t("开启框选提问")} checked={prefs.enabled} disabled={!status || unavailable || busy} onChange={enabled => void save({ enabled })}/>
+    <div className="sl-row-copy"><h2>{t("启用智能框选")}</h2><p>{t("按下快捷键，拖动框选，松开即答。")}</p></div>
+    <Switch label={t("开启智能框选")} checked={prefs.enabled} disabled={!status || unavailable || busy} onChange={enabled => void save({ enabled })}/>
    </div>
    <div className="sl-preferences">
     <div className="sl-preference-row"><div className="sl-row-copy"><h3>{t("快捷键")}</h3><p>{t(recording ? '按下键盘快捷键或鼠标侧键，松开保存；Esc 取消。' : '点击后按键盘快捷键或鼠标侧键')}</p></div>
@@ -210,8 +232,11 @@ export function SelectionLab() {
     } }}>{t(recording ? '等待键盘或侧键…' : prefs.shortcut.label)}</button>
     </div>
     {t(status?.shortcutNotice && <p className="sl-binding-alert" role="status">{t(status.shortcutNotice)}</p>)}
-    <div className="sl-preference-row"><div className="sl-row-copy"><h3>{t("松开后")}</h3><p>{t(prefs.defaultAction === 'reply' ? "结合选中内容和口述要求生成回复" : "框选时可用滚轮切换")}</p></div>
-     <div className="sl-actions" role="group" aria-label={t("默认框选动作")}>{t(([['translate', '翻译'], ['summarize', '总结'], ['explain', '解释'], ['reply', '回复']] as const).map(([value, label]) => <button key={value} aria-pressed={prefs.defaultAction === value} disabled={!status || unavailable || busy} onClick={() => void save({ defaultAction: value })}>{t(label)}</button>))}</div>
+    <div className="sl-preference-row sl-enabled-actions-row"><div className="sl-row-copy"><h3>{t("启用的动作")}</h3><p>{t("勾选想用的动作，滚轮只切换已勾选项。至少保留一个。")}</p></div>
+     <div className="sl-enabled-actions" role="group" aria-label={t("启用的框选动作")}>{selectionActions.map(([value, label]) => <label key={value} className={enabledActions.includes(value) ? 'selected' : ''}><input type="checkbox" checked={enabledActions.includes(value)} aria-label={t(label)} disabled={!status || unavailable || busy || enabledActions.length === 1 && enabledActions.includes(value)} onChange={() => void changeAction(value, true)}/><span className="sl-action-mark" aria-hidden="true">{enabledActions.includes(value) && <Check size={10} strokeWidth={2.5}/>}</span><span>{t(label)}</span></label>)}</div>
+    </div>
+    <div className="sl-preference-row sl-default-action-row"><div className="sl-row-copy"><h3>{t("松开后")}</h3><p>{t(prefs.defaultAction === 'reply' ? "结合选中内容和口述要求生成回复" : "框选时可用滚轮切换")}</p></div>
+     <div className="sl-actions" role="group" aria-label={t("默认框选动作")}>{selectionActions.filter(([value]) => enabledActions.includes(value)).map(([value, label]) => <button key={value} aria-pressed={prefs.defaultAction === value} disabled={!status || unavailable || busy} onClick={() => void changeAction(value)}>{t(label)}</button>)}</div>
     </div>
     <div className="sl-preference-row sl-translation-row"><div className="sl-row-copy"><label htmlFor="selection-translation-language">{t("翻译为")}</label><p>{t("保存后，后续翻译默认使用此语言。")}</p></div><select id="selection-translation-language" aria-label={t("翻译目标语言")} value={prefs.translationLanguage ?? 'zh-CN'} disabled={!status || unavailable || busy} onChange={event => void save({ translationLanguage: event.target.value as TranslationLanguage })}>{translationLanguages.map(item => <option key={item.id} value={item.id}>{item.id === "zh-CN" ? item.label : t(item.label)}</option>)}</select></div>
     <div className="sl-preference-row"><div className="sl-row-copy"><h3>{t("按住说话")}</h3><p>{t("按住时说出问题，语音在本机转写。")}</p></div><Switch label={t("开启按住说话")} checked={prefs.voiceEnabled} disabled={!status || unavailable || busy} onChange={voiceEnabled => void save({ voiceEnabled })}/></div>
@@ -264,7 +289,7 @@ export function SelectionPermissionSettings() {
   <div className="lab-settings-intro"><h2>{t("Mac 权限")}</h2><p>{t("键盘快捷操作需要辅助功能与输入监控；框选时还需要屏幕录制。按需开启语音权限。")}</p></div>
   <div className="sl-permission-readiness"><div><h3>{t("框选状态")}<span role="status">{t(error && !status ? '状态读取失败' : readiness.label)}</span></h3><p>{t(readiness.detail)}</p></div><Button kind="ghost" icon={<RotateCcw size={14}/>} busy={busy === 'refresh'} disabled={!!busy} onClick={() => void perform('refresh')}>{t("重新检查")}</Button></div>
   <div className="lab-setting-panel lab-permissions-panel">{t(entries.map(({ id, title, detail }) => <div className="lab-setting-row lab-permission-row" key={id}><div><h3>{t(title)}</h3><p>{t(detail)}</p></div><div className="lab-permission-action"><span className={'lab-permission-status ' + (status?.[id] ? 'ready' : '')}><i />{t(!status ? '状态未知' : status[id] ? '已允许' : (id === 'microphone' ? status.microphoneState : id === 'speechRecognition' ? status.speechRecognitionState : '') === 'denied' ? '已拒绝' : (id === 'microphone' ? status.microphoneState : id === 'speechRecognition' ? status.speechRecognitionState : '') === 'restricted' ? '受系统限制' : '尚未允许')}</span>{t(!status?.[id] && <Button icon={<ArrowUpRight size={16}/>} busy={busy === id} disabled={!!busy || !status} onClick={() => void perform(id)}>{t("前往授权")}</Button>)}</div></div>))}</div>
-  <p className="lab-settings-note">{t("麦克风也可用于声音律动。框选功能的麦克风与语音识别用于“按住说话”；关闭语音后仍可自动翻译。框选提问无需系统声音权限。系统声音律动会在灯光创作中开始采集时单独请求。")}</p>
+  <p className="lab-settings-note">{t("麦克风也可用于声音律动。框选功能的麦克风与语音识别用于“按住说话”；关闭语音后仍可自动翻译。智能框选无需系统声音权限。系统声音律动会在灯光创作中开始采集时单独请求。")}</p>
   {t(status && status.supported !== false && needsVoicePermissions(status) && <div className="lab-permission-footer"><span>{t("语音权限未完整开启，文字框选不需要这两项权限。")}</span><Button kind="ghost" disabled={!!busy} onClick={() => void perform('disableVoice')}>{t("关闭语音，继续文字框选")}</Button></div>)}
   {t(status && status.preferences.enabled && !configuredForSelection(status) && <div className="lab-permission-footer"><span>{t("模型服务尚未配置。")}</span><Button kind="ghost" onClick={openSettings}>{t("前往模型设置")}</Button></div>)}
   <div className="lab-permission-footer"><details className="lab-settings-help"><summary><CircleHelp size={15}/>{t("授权帮助")}</summary><p>{t("点击“前往授权”，在系统设置中开启“NuPhy Lab”。返回后会自动检查。权限“已允许”不代表框选已可用，请同时查看上方框选状态。如果系统要求重新打开，可使用下方按钮完成授权。")}</p></details></div>
@@ -426,7 +451,7 @@ export function SelectionAPISettings() {
         }
     }
     return <section className="selection-api-settings models-settings" aria-label={t("模型与 API 设置")}>
-  <header className="models-heading"><h2>{t("模型与 API")}</h2><p>{t("连接自己的模型服务，用于框选提问。")}</p></header>
+  <header className="models-heading"><h2>{t("模型与 API")}</h2><p>{t("连接自己的模型服务，用于智能框选。")}</p></header>
   <div className="models-card" aria-busy={working}>
    <fieldset disabled={!status || working}>
     <div className="models-field">

@@ -16,7 +16,7 @@ final class DragConvertController {
     private var selectionTriggerConflict:Bool { selectionReservedTrigger() == selectedTrigger.rawValue }
     private var triggerConflict:Bool { aiTriggerConflict || selectionTriggerConflict }
     private var triggerIssue:String {
-        if selectionTriggerConflict { return "该按键已用于框选提问，请选择其他触发键 / This key is used by Ask about a selection. Choose another trigger key." }
+        if selectionTriggerConflict { return "该按键已用于智能框选，请选择其他触发键 / This key is used by Smart Selection. Choose another trigger key." }
         if aiTriggerConflict { return "该按键已被 AI 模式占用，请选择其他按键 / This key is assigned to AI mode. Choose another key." }
         if inputPermissionNeeded { return "此触发键需要输入监控权限，授权后会自动生效 / This trigger needs Input Monitoring. It takes effect automatically after permission is granted." }
         return ""
@@ -142,7 +142,7 @@ final class DragConvertController {
                 guard let object = body["preferences"] as? [String: Any] else { throw DragConvertError.invalidSettings }
                 var next = try JSONDecoder().decode(DragConvertPreferences.self, from: JSONSerialization.data(withJSONObject: object)).validated()
                 if next.enabled, (next.trigger != preferences.trigger || !preferences.enabled), selectionReservedTrigger() == next.trigger {
-                    reply(nil, english ? "This key is used by Ask about a selection. Choose another trigger key." : "该按键已用于框选提问，请选择其他触发键。"); return
+                    reply(nil, english ? "This key is used by Smart Selection. Choose another trigger key." : "该按键已用于智能框选，请选择其他触发键。"); return
                 }
                 if next.trigger != preferences.trigger, let code=DragTrigger(next.trigger)?.keyCode, reservedKeyCodes().contains(UInt32(code)) {
                     reply(nil, english ? "This key is assigned to AI mode. Choose another key." : "该按键已被 AI 模式占用，请选择其他按键。"); return

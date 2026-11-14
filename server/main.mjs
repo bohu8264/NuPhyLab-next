@@ -1350,9 +1350,10 @@ async function command(req) {
     case "importScenes":
       return store.importScenes(req.scenes);
     case "settings": {
+      if (req.settings && Object.hasOwn(req.settings,"sidebarFeatures") && Object.keys(req.settings).length!==1) throw new Error("请单独保存侧栏设置");
       // Local visual preferences must not release held keys, rewrite RGB,
       // reset animation timing, or change hardware mappings.
-      const visualKeys = ["airTopRightModule"];
+      const visualKeys = ["airTopRightModule", "sidebarFeatures"];
       if (req.settings && typeof req.settings === "object" && !Array.isArray(req.settings) &&
           Object.keys(req.settings).length > 0 && Object.keys(req.settings).every(key => visualKeys.includes(key)))
         return store.settings(req.settings);
@@ -1920,6 +1921,7 @@ const server = http.createServer(async (req, res) => {
         } catch {
           throw new Error("数据不是有效的 JSON");
         }
+        if(value?.op==='settings'&&value.settings&&Object.hasOwn(value.settings,'sidebarFeatures')&&Object.keys(value.settings).length!==1)throw new Error("请单独保存侧栏设置");
         if(value?.op==='codexKey'&&verifyNativeKey(value))value[verifiedNativeGesture]=true;
         const captured = captureTaskRequest(value);
         const result = await serialized(() => command(captured));

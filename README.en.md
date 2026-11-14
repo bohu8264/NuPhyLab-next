@@ -6,6 +6,14 @@ NuPhy Lab is a macOS lighting studio for **NuPhy AIR65 / AIR75 / AIR100 V3, NODE
 
 It includes drawing, animation, key-triggered effects, games, audio-reactive lighting, a local artwork library, and Codex / Claude Code task shortcuts and status lights.
 
+## Feature Center and Library
+
+For new users, the sidebar starts with Lighting Studio, Library and AI Assistant. Upgrading keeps entries for tools already used or enabled; you can remove them at any time. Open **Feature Center** to add Lighting Games, Typing Sounds, Music Mode, Smart Selection, Drag Convert or Keyboard Pocket. The three default entries can also be removed. Feature Center, Device and Settings always remain available. Removing an entry only hides it; content, preferences and feature switches stay as they are.
+
+**Library** brings lighting and music together, with All, Lighting and Music filters. Music Mode opens this same library. Editing and saving updates the original work. If its editor is not in the sidebar, choose **Add Music Mode & edit** or **Add Lighting Studio & edit**. Music works support preview, duplication, renaming, project export and recovery from Recently deleted. Export WAV audio from the music editor.
+
+[Feature Center and unified Library guide](docs/FEATURE_CENTER.md)
+
 ## Download and install
 
 **[Download the latest macOS installer](https://github.com/bohu8264/NuPhyLab-next/releases/latest/download/NuPhyLab-macOS-AppleSilicon.dmg)**
@@ -30,13 +38,13 @@ Enable automatic backlighting in **Settings → Lighting and sleep** to turn Lab
 
 ## Typing Sounds
 
-Open **Typing Sounds** below **Lighting Games** in the sidebar. Choose from 18 sounds: three each in Marbly, Creamy, Woody, Soft, Tactile and Retro. Preview and save favorites, and adjust master volume, release strength, natural variation, and separate levels for Space, Return, Backspace, left/right Shift, Tab and Caps Lock.
+Add **Typing Sounds** in **Feature Center**, then open it from the sidebar. Choose from 18 sounds: three each in Marbly, Creamy, Woody, Soft, Tactile and Retro. Preview and save favorites, and adjust master volume, release strength, natural variation, and separate levels for Space, Return, Backspace, left/right Shift, Tab and Caps Lock.
 
 The feature starts off. Enable it to play sounds while typing in other apps. All sounds are bundled and need no download or API. Previews need no Input Monitoring permission; typing playback does. Typing Sounds does not record text or upload input. [Usage and sound credits](docs/TYPING_SOUNDS.md)
 
 ## Performance
 
-Open **Labs → Performance** to turn your computer keyboard into an instrument: six sounds, eight drum pads, a 16-step sequencer, and eight assignable clip slots. The library includes 18 original presets and 36 clips. Choose a slot before choosing its clip, then make the arrangement your own.
+Open **Feature Center → Add Music Mode** to turn your computer keyboard into an instrument: six sounds, eight drum pads, a 16-step sequencer, and eight assignable clip slots. The library includes 18 original presets and 36 clips. Choose a slot before choosing its clip, then make the arrangement your own.
 
 Recordings and edits autosave locally. Duplicate, rename or restore deleted works, and export projects or WAV audio. Sounds are bundled; no API or microphone permission is needed. Performance keys work only while this window is in front. Switching apps releases held notes; minimizing or sleeping stops playback. Loops and previews may continue after an ordinary app switch; press Esc or Stop to end them. [Usage, sound credits and limitations](docs/PERFORMANCE.md)
 
@@ -57,12 +65,14 @@ Enable Codex mode in AI Assistant to use the default command keys:
 
 F8 and F9 require a current approval request. F12 requires the chat composer to be focused. Command assignments can be changed in AI Assistant.
 
-## Labs: Ask about a selection
+## Smart Selection
+
+Enable any of Translate, Summarize, Explain and Reply; scrolling skips disabled actions. Results appear in the answer panel.
 
 Selection requires **macOS 14 or later**. Keyboard features continue to support macOS 13.5.
 
 1. Open **Settings → Models & API**, choose a service and model, and save your own API key. Choose from model presets, load account models where supported, or enter a custom model ID and compatible endpoint.
-2. Enable **Labs → Ask about a selection** and grant Accessibility, Input Monitoring and Screen Recording access. The app checks permissions and the actual shortcut listener.
+2. Enable **Feature Center → Add Smart Selection** and grant Accessibility, Input Monitoring and Screen Recording access. The app checks permissions and the actual shortcut listener.
 3. Hold the shortcut, drag over a region and release to run the default action. Scroll during selection to switch between translation, summary, explanation and reply. The default shortcut is **Option–Shift–Q** and can be changed.
 4. Choose one of 16 targets under **Translate to**, including Chinese, English, Japanese and Korean. You can also change the target in the answer panel. The choice is saved independently of the interface language.
 
@@ -74,7 +84,17 @@ For spoken questions, enable **Hold to speak** and allow Microphone and Speech R
 
 Selected text, questions and any enabled images needed for the selected action are sent to your configured model service. API keys stay in the local Keychain. Selection and voice are disabled by default for new users.
 
-[Full setup and usage](docs/SELECTION.md) · [Models, images and permissions](docs/SELECTION_R2.md) · [Interface and translation languages](docs/SELECTION_LANGUAGES.md) · [What's new in 1.2.46](docs/RELEASE_1.2.46.md)
+[Full setup and usage](docs/SELECTION.md) · [Models, images and permissions](docs/SELECTION_R2.md) · [Interface and translation languages](docs/SELECTION_LANGUAGES.md) · [What's new in 1.2.47](docs/RELEASE_1.2.47.md)
+
+## Keyboard Pocket
+
+Enable **Feature Center → Add Keyboard Pocket** to store text, images, links or files in nine slots. Contents and undo history stay on this Mac; no API is needed. Click a store, retrieve or slot shortcut, then press and release your chosen keys to save it.
+
+Hold a store or retrieve prefix to unfold the preview from the notch, or the top center on displays without one. Release to dismiss. You can also turn previews off and use a prefix plus a slot key directly.
+
+Folder slots offer **Copy ZIP** for pasting into chat apps, preserving Chinese filenames. Shortcut retrieval of folders into Feishu also prepares a local ZIP. Originals remain unchanged. Feishu may send pasted attachments directly and controls whether confirmation appears; Lab never clicks Send.
+
+The feature starts off, and automatic copying and pasting require Accessibility access. File slots reference originals. If an older slot lacks saved access, reselect its original files when prompted. Moving or deleting originals, or using an app without file-paste support, may prevent retrieval. [Full guide](docs/KEYBOARD_POCKET.md)
 
 ## Updates and compatibility
 
@@ -105,6 +125,7 @@ The native build downloads a pinned, checksum-verified Sparkle framework. Run `n
 
 ## Drag Convert
 
-Enable **Labs → Drag Convert**, drag files from Finder, press Shift (or hold it before dragging), then release over a menu option. Shift is the default trigger. Choose a single modifier, letter, number, arrow or another supported key on the page. Processing stays on your Mac. Originals are kept and duplicate output names are numbered. Progress, cancellation and the last 20 batches stay on the page, without an extra result window. No API or model download is required.
+Enable **Feature Center → Add Drag Convert**, drag files from Finder, press Shift (or hold it before dragging), then release over a menu option. Shift is the default trigger. Choose a single modifier, letter, number, arrow or another supported key on the page. Processing stays on your Mac. Originals are kept and duplicate output names are numbered. Progress, cancellation and the last 20 batches stay on the page, without an extra result window. No API or model download is required.
 
 [Features and formats](docs/DRAG_CONVERT.md)
+

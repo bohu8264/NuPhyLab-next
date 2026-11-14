@@ -13,7 +13,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {useCodexKeys} from './codexKeys';
 import {
   CircleAlert,
-  FlaskConical,
+  LayoutGrid,
   ChevronDown,
   ScanLine,
   SquareTerminal,
@@ -30,7 +30,11 @@ import {AudioPanel} from "./AudioPanel";
 import {AudioPendingNotice} from './AudioPendingNotice';
 import { NativeLighting } from "./NativeLighting";
 import { Studio } from "./Studio";
-import { Library } from "./Library";
+import { UnifiedLibrary, type LibraryFilter } from './UnifiedLibrary';
+import { FeatureCenter,features } from './FeatureCenter';
+import { sidebarFeatures,type FeatureId } from '../../shared/sidebar-features.mjs';
+import type { MusicEntry } from './music/MusicLab';
+import {prepareMusicLibraryAction} from './music/persistence';
 import { Codex } from "./Codex";
 import { ClaudeCode } from "./ClaudeCode";
 import { agentSource } from "./AgentSourceSwitch";
@@ -52,8 +56,9 @@ import { blankColors, DEFAULT_ANIMATION } from "./types";
 import type { Scene, StudioMode } from "./types";
 import {useLanguage, setLanguage} from "./i18n";
 import {DragConvertLab} from './DragConvertLab';
+import {KeyboardPocketLab} from './KeyboardPocketLab';
 
-type Page = "drag-convert" | "music" | "typing-sounds" | "selection-question" | "studio" | "library" | "codex" | "device" | "settings" | "game" | "audio" | "offline";
+type Page = "features" | "keyboard-pocket" | "drag-convert" | "music" | "typing-sounds" | "selection-question" | "studio" | "library" | "codex" | "device" | "settings" | "game" | "audio" | "offline";
 const cloneScene = (scene: Scene): Scene => JSON.parse(JSON.stringify(scene));
 const modeForScene = (scene: Scene): StudioMode =>
   scene.trigger ? "trigger" : scene.animation.effect === "static" ? "paint" : "animation";
@@ -73,7 +78,7 @@ export default function App() {
     const navigate=(event:Event)=>{
       const target=(event as CustomEvent<string>).detail;
       if(target === "ai" || target === "lighting" || target === "permissions" || target === "updates" || target === "about" || target === "general") {setSettingsTab(target);setPage("settings");}
-      else if(target === "drag-convert"){setPage(target);setLabExpanded(true);}
+      else if(target === "drag-convert" || target === "keyboard-pocket"){setPage(target);}
       else if(target === "device" || target === "library")setPage(target);
     };
     window.addEventListener("nuphylab:navigate",navigate);
@@ -81,8 +86,13 @@ export default function App() {
   },[]);
   const [studioMode, setStudioMode] = useState<StudioMode>("paint");
   const [focusCodexColors,setFocusCodexColors] = useState(false);
-  const [labExpanded,setLabExpanded] = useState(false);
-  const [page, setPage] = useState<Page>("studio"),
+  const [libraryFilter,setLibraryFilter] = useState<LibraryFilter>('all');
+  const [librarySource,setLibrarySource] = useState<'saved'|'presets'>('saved');
+  const [musicEntry,setMusicEntry] = useState<MusicEntry|null>(null);
+  const [featureBusy,setFeatureBusy] = useState(false);
+  const featureLock=useRef(false),initialNavigation=useRef(false),navigationEpoch=useRef(0);
+  function setPage(next:Page){navigationEpoch.current++;commitPage(next);}
+  const [page, commitPage] = useState<Page>("studio"),
     [draft, setDraft] = useState<Scene>({
       name: "一颗小心意",
       colors: blankColors(),
@@ -122,6 +132,24 @@ export default function App() {
     [],
   );
   const { state, layout, serviceError, command, readState, refresh, exiting } = useAirApi(notify);
+  const addedFeatures=sidebarFeatures(state?.settings.sidebarFeatures);
+  const persistFeatures=async(next:FeatureId[])=>{
+    if(featureLock.current||!state||exiting||serviceError)return false;
+    featureLock.current=true;setFeatureBusy(true);
+    try{await command({op:'settings',settings:{sidebarFeatures:next}},{silent:true});return true;}
+    catch(error){notify(language==='en'?'Could not save your sidebar. Please try again.':'侧栏设置未能保存，请重试。');return false;}
+    finally{featureLock.current=false;setFeatureBusy(false);}
+  };
+  const ensureFeature=async(id:FeatureId)=>addedFeatures.includes(id)||await persistFeatures([...addedFeatures,id]);
+  const toggleFeature=async(id:FeatureId)=>{
+    const epoch=navigationEpoch.current;
+    const next=addedFeatures.includes(id)?addedFeatures.filter(value=>value!==id):[...addedFeatures,id];
+    if(await persistFeatures(next)){if(epoch===navigationEpoch.current&&(page===id||id==='studio'&&['audio','offline'].includes(page)))setPage('features');}
+  };
+  const editMusic=async(entry:MusicEntry)=>{const epoch=++navigationEpoch.current;try{await prepareMusicLibraryAction();if(epoch!==navigationEpoch.current)return;if(await ensureFeature('music')&&epoch===navigationEpoch.current){setMusicEntry(entry);setPage('music');}}catch(error){notify(language==='en'?'Save your current music project before opening another work.':'请先完成当前演奏的保存，再打开其他作品。');}};
+  const loadFromLibrary=async(scene:Scene,create=false)=>{const epoch=++navigationEpoch.current;if(await ensureFeature('studio')&&epoch===navigationEpoch.current)load(scene,{create});};
+  const browseMusic=()=>{setLibraryFilter('music');setLibrarySource('saved');setPage('library');};
+  useEffect(()=>{if(state&&!initialNavigation.current){initialNavigation.current=true;if(navigationEpoch.current===0&&!sidebarFeatures(state.settings.sidebarFeatures).includes('studio'))setPage('features');}},[state]);
   const modelId = isKeyboardModel(state?.device.modelId) ? state.device.modelId : getLayoutModel();
   const nativeOnly = nativeLightingOnly(state);
   const connectionDisplay=presentConnectionDisplay(deriveConnectionDisplay({state,serviceError,canvasModelId:layout.length ? modelId : null,keyRecoveryProblem:keyRecoveryProblem(state)}));
@@ -228,6 +256,7 @@ export default function App() {
     libraryPlayRequest.current=null;setPendingLibraryPlay(null);setLibraryPlayBusy(false);
   };
   const adoptLibraryPlay = async (request:LibraryPlayRequest) => {
+    const epoch=navigationEpoch.current;
     if(libraryPlayRequest.current?.id!==request.id || request.generation!==libraryPlayGeneration.current
       || request.context!==latestLibraryContext.current.context || transitionLock.current)return;
     transitionLock.current=request.id;setDraftTransitionBusy(true);
@@ -235,6 +264,7 @@ export default function App() {
       if(!request.restoreKey&&state&&(state.playback.mode!=='idle'||state.game.status!=='idle'||state.device.armed))await command({op:'stop'},{silent:true});
       if(libraryPlayRequest.current?.id!==request.id || request.generation!==libraryPlayGeneration.current
         || request.context!==latestLibraryContext.current.context)return;
+      if(epoch!==navigationEpoch.current){finishLibraryPlay(request.id);return;}
       if(request.restoreKey){blockedDraftKeys.current.delete(request.restoreKey);setDraftStorageIssue(null);}
       untouchedNewDraft.current=request.action==='new'&&!request.restoreKey
         ?{model:modelId,signature:sceneSignature(request.scene)}:null;
@@ -302,29 +332,18 @@ export default function App() {
   };
   const creative = ["studio", "audio", "offline"].includes(page);
   useEffect(()=>{window.scrollTo(0,0);},[page]);
-  const pageTitle = page === 'drag-convert' ? (language === 'en' ? 'Drag Convert' : '拖拽转换') : page === "music" ? "演奏模式" : page === "typing-sounds" ? "模拟声浪" : page === "selection-question" ? "框选提问" : creative ? "灯光创作" : page === "library" ? "作品库" : page === "codex" ? "AI 助手" : page === "game" ? "灯光游戏" : page === "settings" ? "设置" : "设备";
+  const pageTitle = page === 'features' ? (language==='en'?'Feature Center':'功能中心') : page === 'keyboard-pocket' ? '键盘口袋' : page === 'drag-convert' ? (language === 'en' ? 'Drag Convert' : '拖拽转换') : page === "music" ? "演奏模式" : page === "typing-sounds" ? "模拟声浪" : page === "selection-question" ? "智能框选" : creative ? "灯光创作" : page === "library" ? "作品库" : page === "codex" ? "AI 助手" : page === "game" ? "灯光游戏" : page === "settings" ? "设置" : "设备";
   return (
     <KeyboardModuleContext.Provider value={state?.settings.airTopRightModule === "keycap" ? "keycap" : "rotary"}>
     <div className="app-shell lab-v5" data-page={page} data-native={Boolean((window as Window & {webkit?:unknown}).webkit)}>
       <aside className="sidebar">
         <div className="window-lights" aria-hidden="true"><i/><i/><i/></div>
         <div className="brand"><img className="brand-symbol" src="/nuphy-studio.png" alt="" width={32} height={32}/><span>NuPhy Lab</span></div>
-        <nav aria-label={tr("主导航")}>
-          {([
-            ["studio", "灯光创作", Lightbulb],
-            ["library", "作品库", Folder],
-            ["codex", "AI 助手", SquareTerminal],
-            ["game", "灯光游戏", Gamepad2],
-            ["typing-sounds", "模拟声浪", AudioLines],
-          ] as const).map(([id, label, Icon]) => <button key={id} aria-label={tr(label)} title={tr(label)} className={(id === "studio" ? creative : page === id) ? "active" : ""} aria-current={(id === "studio" ? creative : page === id) ? "page" : undefined} onClick={()=>setPage(id)}><Icon size={18} strokeWidth={1.5}/><span>{tr(label)}</span></button>)}
-          <button className={'lab-nav-parent '+(['selection-question','music','drag-convert'].includes(page)?'contains-active':'')} aria-label={tr('实验室')} aria-expanded={labExpanded} aria-controls="lab-feature-navigation" onClick={()=>setLabExpanded(value=>!value)}><FlaskConical size={18} strokeWidth={1.5}/><span>{tr('实验室')}</span><ChevronDown className="lab-nav-chevron" size={13}/></button>
-          <div id="lab-feature-navigation" className="lab-subnav" hidden={!labExpanded}>
-            <button className={page==='music'?'active':''} aria-current={page==='music'?'page':undefined} aria-label={tr("演奏模式")} title={tr("演奏模式")} onClick={()=>setPage('music')}><AudioLines size={16} strokeWidth={1.5}/><span>{tr("演奏模式")}</span></button>
-            <button className={page==='selection-question'?'active':''} aria-current={page==='selection-question'?'page':undefined} aria-label={tr("框选提问")} title={tr("框选提问")} onClick={()=>setPage('selection-question')}><ScanLine size={16} strokeWidth={1.5}/><span>{tr("框选提问")}</span></button>
-            <button className={page==='drag-convert'?'active':''} aria-current={page==='drag-convert'?'page':undefined} aria-label={language==='en'?'Drag Convert':'拖拽转换'} title={language==='en'?'Drag Convert':'拖拽转换'} onClick={()=>setPage('drag-convert')}><Folder size={16} strokeWidth={1.5}/><span>{language==='en'?'Drag Convert':'拖拽转换'}</span></button>
-          </div>
+        <nav className="feature-sidebar-nav" aria-label={tr("主导航")}>
+          {addedFeatures.map(id=>{const feature=features.find(item=>item.id===id)!;const Icon=feature.icon;const active=id==='studio'?creative:page===id;const label=language==='en'?feature.en:feature.zh;return <button key={id} aria-label={label} title={label} className={active?'active':''} aria-current={active?'page':undefined} onClick={()=>{if(id==='music')setMusicEntry(null);if(id==='library'){setLibraryFilter('all');setLibrarySource('saved');}setPage(id);}}><Icon size={18} strokeWidth={1.5}/><span>{label}</span></button>;})}
         </nav>
         <div className="sidebar-bottom">
+          <nav aria-label={language==='en'?'Feature Center':'功能中心'}><button title={language==='en'?'Feature Center':'功能中心'} aria-label={language==='en'?'Feature Center':'功能中心'} className={'feature-center-link '+(page==='features'?'active':'')} aria-current={page==='features'?'page':undefined} onClick={()=>setPage('features')}><LayoutGrid size={18} strokeWidth={1.5}/><span>{language==='en'?'Feature Center':'功能中心'}</span></button></nav>
           <div className="sidebar-output sidebar-output-v7" role="status" data-connection-state={connectionDisplay.stateId}><span>{connectionCopy({zh:'键盘输出',en:'Keyboard output'})}</span><strong title={connectionSidebar(connectionDisplay)}>{connectionSidebar(connectionDisplay)}</strong></div>
           <nav aria-label={tr("设备与设置")}>
             <button aria-label={tr("设备")} title={tr("设备")} className={page === "device" ? "active" : ""} aria-current={page === "device" ? "page" : undefined} onClick={()=>setPage("device")}><Keyboard size={18} strokeWidth={1.5}/><span>{tr("设备")}</span></button>
@@ -359,7 +378,7 @@ export default function App() {
               draft={draft}
               setDraft={setStudioDraft}
               onSave={openSave}
-              onBrowsePresets={() => setPage("library")}
+              onBrowsePresets={() => {setLibraryFilter("lighting");setLibrarySource("presets");setPage("library");}}
               onNavigateDevice={() => setPage("device")}
               onEditCodexColors={()=>{setFocusCodexColors(true);setPage("codex");}}
               notify={notify}
@@ -367,22 +386,23 @@ export default function App() {
           ))}{tr(" ")}
           {page === "audio" && !nativeOnly && <AudioPanel state={state} layout={layout} command={command}/>}
           {tr(page === "library" && (
-            <Library
+            <UnifiedLibrary
+              filter={libraryFilter} onFilter={setLibraryFilter} initialSource={librarySource}
+              lightingAdded={addedFeatures.includes('studio')} musicAdded={addedFeatures.includes('music')}
+              onMusicEdit={editMusic} onBrowse={()=>{navigationEpoch.current++;}}
               layout={layout}
               state={state}
               display={connectionDisplay}
               serviceError={serviceError}
-              transitionBusy={libraryPlayBusy || saveBusy || exiting}
+              transitionBusy={libraryPlayBusy || saveBusy || featureBusy || exiting}
               command={command}
-              onLoad={load}
+              onLoad={scene=>{void loadFromLibrary(scene);}}
               onPlay={scene=>{void playLibraryScene(scene);}}
-              onNew={() =>
-                load({
+              onNew={() => {void loadFromLibrary({
                   name: "未命名作品",
                   colors: blankColors(),
                   animation: { ...DEFAULT_ANIMATION },
-                },{create:true})
-              }
+                },true);}}
               notify={notify}
             />
           ))}{tr(" ")}
@@ -400,10 +420,12 @@ export default function App() {
               onOffline={()=>setPage(nativeOnly ? "offline" : "studio")}
             />
           ))}
-          {page === "music" && <MusicLab/>}
+          {page === "features" && <FeatureCenter added={addedFeatures} busy={featureBusy||!state||!!serviceError||exiting} onToggle={id=>void toggleFeature(id)} onOpen={id=>{if(id==='music')setMusicEntry(null);setPage(id);}}/>}
+          {page === "music" && <MusicLab entry={musicEntry} onLibrary={browseMusic}/>}
           {page === "typing-sounds" && <TypingSounds/>}
           {page === 'drag-convert' && <DragConvertLab/>}
           {page === "selection-question" && <SelectionLab/>}
+          {page === "keyboard-pocket" && <KeyboardPocketLab/>}
           {page === "settings" && <Settings state={state} command={command} display={connectionDisplay} onNavigateStudio={()=>setPage("studio")} initialTab={settingsTab}/>}
         </div>
       </main>

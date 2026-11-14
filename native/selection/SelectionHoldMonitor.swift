@@ -8,6 +8,15 @@ import IOKit.hid
 
 public enum IntentMonitorFailure: Error { case createFailed, sourceFailed, timeout, userInput, healthDisabled }
 
+enum SelectionSyntheticInput {
+    // Shared event protocol with PocketHotkeys.ownEventMarker and the Pocket
+    // command sender. These are transfers, never physical Selection gestures.
+    static let pocketTransferMarker:Int64 = 0x4E504B54
+    static func isPocketTransfer(_ event:CGEvent?) -> Bool {
+        event?.getIntegerValueField(.eventSourceUserData) == pocketTransferMarker
+    }
+}
+
 /// Owns exactly one explicitly configured hold input. Does not draw overlays,
 /// read text, capture screens, record audio, or send requests by itself.
 /// If Lab already routes the same hardware events, use IntentInputBridge there
@@ -263,6 +272,7 @@ final class IntentBindingReceiver {
             onFault?(type == .tapDisabledByTimeout ? .timeout : .userInput)
             return false
         }
+        guard !SelectionSyntheticInput.isPocketTransfer(event) else{return false}
         let allowed = enabled && !failed && safetyAllowed
         let flags = SelectionHoldMonitor.modifiers(event.flags)
         if type.rawValue == 14 { return receiveAuxiliary(event, allowed: allowed) }

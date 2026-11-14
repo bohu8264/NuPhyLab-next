@@ -112,14 +112,20 @@ struct LabSideButtonRecorder {
 
 enum LabAction:String,Codable,CaseIterable {case translate,summarize,explain,reply
  var title:String{switch self{case .translate:return "翻译";case .summarize:return "总结";case .explain:return "解释";case .reply:return "回复"}}
+ var keepsSpokenIntent:Bool{self == .reply}
  func title(in language:AppLanguage)->String{LabText.text(title,language:language)}
- func submissionID(instruction:String)->String{self == .reply || instruction.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty ? rawValue:"ask"}
+ func submissionID(instruction:String)->String{keepsSpokenIntent || instruction.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty ? rawValue:"ask"}
  func selectionAction(translationTarget:String,instruction:String="")->SelectionAction {
   let base:SelectionAction
   switch self{case .translate:base = .translate(targetLanguage:translationTarget);case .summarize:base = .summarize;case .explain:base = .explain;case .reply:base = .reply(instruction:"")}
   return base.applyingInstruction(instruction)
  }
- func stepped(_ direction:Int)->LabAction{let all=Self.allCases;return all[((all.firstIndex(of:self) ?? 0)+direction+all.count)%all.count]}
+ func stepped(_ direction:Int,among enabled:[LabAction]=Self.allCases)->LabAction{
+  let all=Self.allCases.filter{enabled.contains($0)}
+  guard !all.isEmpty else{return self}
+  guard let index=all.firstIndex(of:self) else{return direction<0 ? all[all.count-1]:all[0]}
+  return all[(index+direction%all.count+all.count)%all.count]
+ }
 }
 struct LabModifierRecorder {
  var accumulated:UInt32=0
@@ -130,14 +136,24 @@ struct LabModifierRecorder {
 }
 struct LabPreferences:Codable {
  var enabled=false;var shortcut=LabShortcut();var configuration=AIConfiguration();var voiceEnabled=false;var defaultAction=LabAction.translate
+ var enabledActions=LabAction.allCases
+ var availableActions:[LabAction]{let ordered=LabAction.allCases.filter{enabledActions.contains($0)};return ordered.isEmpty ? [defaultAction]:ordered}
  var translationLanguage=LabTranslationLanguage.simplifiedChinese
  var translationAction:SelectionAction{.translate(targetLanguage:translationLanguage.englishName)}
  func prompt(for work:SelectionWork,language:AppLanguage)throws->AIRequestPrompt {
   try work.prompt(outputLanguage:language == .en ? "English":"Simplified Chinese",translationTargetLanguage:translationLanguage.englishName)
  }
- enum CodingKeys:String,CodingKey{case enabled,shortcut,configuration,voiceEnabled,defaultAction,translationLanguage}
+ enum CodingKeys:String,CodingKey{case enabled,shortcut,configuration,voiceEnabled,defaultAction,translationLanguage,enabledActions}
  init(){}
- init(from decoder:Decoder)throws{let c=try decoder.container(keyedBy:CodingKeys.self);enabled=try c.decodeIfPresent(Bool.self,forKey:.enabled) ?? false;shortcut=try c.decodeIfPresent(LabShortcut.self,forKey:.shortcut) ?? LabShortcut();configuration=try c.decodeIfPresent(AIConfiguration.self,forKey:.configuration) ?? AIConfiguration();voiceEnabled=try c.decodeIfPresent(Bool.self,forKey:.voiceEnabled) ?? false;defaultAction=try c.decodeIfPresent(LabAction.self,forKey:.defaultAction) ?? .translate;translationLanguage=try c.decodeIfPresent(LabTranslationLanguage.self,forKey:.translationLanguage) ?? .simplifiedChinese}
+ init(from decoder:Decoder)throws{
+  let c=try decoder.container(keyedBy:CodingKeys.self)
+  enabled=try c.decodeIfPresent(Bool.self,forKey:.enabled) ?? false;shortcut=try c.decodeIfPresent(LabShortcut.self,forKey:.shortcut) ?? LabShortcut();configuration=try c.decodeIfPresent(AIConfiguration.self,forKey:.configuration) ?? AIConfiguration();voiceEnabled=try c.decodeIfPresent(Bool.self,forKey:.voiceEnabled) ?? false
+  defaultAction=LabAction(rawValue:try c.decodeIfPresent(String.self,forKey:.defaultAction) ?? "translate") ?? .translate
+  translationLanguage=try c.decodeIfPresent(LabTranslationLanguage.self,forKey:.translationLanguage) ?? .simplifiedChinese
+  if let saved=try c.decodeIfPresent([String].self,forKey:.enabledActions){enabledActions=LabAction.allCases.filter{saved.contains($0.rawValue)}}
+  enabledActions=availableActions
+  if !enabledActions.contains(defaultAction){defaultAction=enabledActions[0]}
+ }
 }
 /// Gates submission on an actual region and the last held input. A shortcut tap
 /// arms mouse selection; a release during drag waits for the mouse release.
@@ -166,8 +182,8 @@ struct LabWheelState {
  @Published var hasCameraHousing=false;@Published var contentWidth:CGFloat=340;@Published var maximumContentWidth:CGFloat=10000;@Published var expanded=false;@Published var contentOverflow=false
  var isCompact:Bool{busy && answer.isEmpty && issue.isEmpty && missingPermissions.isEmpty && !showQuestion}
  var readingWidth:CGFloat{LabAnswerSizing.width(expanded:expanded,available:maximumContentWidth)}
- var modeTitle:String{action == .reply || (question.isEmpty && !showQuestion) ? action.title(in:language):t("提问")}
- var questionAction:String{action == .reply ? "reply":"ask"}
+ var modeTitle:String{action.keepsSpokenIntent || (question.isEmpty && !showQuestion) ? action.title(in:language):t("提问")}
+ var questionAction:String{action.keepsSpokenIntent ? action.rawValue:"ask"}
  var questionPlaceholder:String{t(action == .reply ? "希望怎么回复…":"继续提问…")}
  var questionLabel:String{t(action == .reply ? "调整回复":"继续提问")}
  var submitLabel:String{t(action == .reply ? "生成回复":"发送问题")}
@@ -176,6 +192,7 @@ struct LabWheelState {
  var chooseTranslationLanguage:((LabTranslationLanguage)->Void)?
  var beginTyping:(()->Void)?;var expansion:(()->Void)?
  @Published var action=LabAction.translate;@Published var missingPermissions:[String]=[];@Published var showQuestion=false
+ @Published var availableActions=LabAction.allCases
  var disableVoice:(()->Void)?;var submit:((String)->Void)?;var cancel:(()->Void)?;var close:(()->Void)?;var reselect:(()->Void)?;var settings:(()->Void)?;var permission:((String)->Void)?;var size:((LabAnswerMeasurement)->Void)?;var switchAction:((LabAction)->Void)?
 }
 final class SelectionOverlayWindow:NSPanel{override var canBecomeKey:Bool{true};override var canBecomeMain:Bool{false}}
@@ -229,7 +246,7 @@ final class SelectionOverlayView:NSView{
   }
   if let context=NSGraphicsContext.current?.cgContext{context.addPath(LabNotchStyle.bodyPath(in:box,camera:cameraWidth>0,flipped:false));context.fillPath()}
   guard reveal>0.7 else{return}
-  let title=(action == .reply || speech.isEmpty ? action.title(in:language):LabText.text("提问",language:language)) as NSString
+  let title=(action.keepsSpokenIntent || speech.isEmpty ? action.title(in:language):LabText.text("提问",language:language)) as NSString
   let attrs:[NSAttributedString.Key:Any]=[.font:NSFont.systemFont(ofSize:12,weight:.medium),.foregroundColor:NSColor.white.withAlphaComponent(0.88)]
   let size=title.size(withAttributes:attrs)
   title.draw(at:NSPoint(x:box.midX-size.width/2,y:box.midY-size.height/2),withAttributes:attrs)

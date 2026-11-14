@@ -15,7 +15,7 @@ async function fixture(catalog=[preset()],scenes=[]){
   const commands=[],loads=[],plays=[],frames=new Map(),listeners=new Set();let now=1000,nextFrame=1,prevented=0;
   const Keyboard='FixtureKeyboard';
   const env=createVMEnvironment({
-    './i18n':{t:value=>value,dateLocale:()=> 'zh-CN'},
+    './i18n':{t:value=>value,useLanguage:()=> 'zh-CN',dateLocale:()=> 'zh-CN'},
     'lucide-react':new Proxy({},{get:(_target,key)=>'Icon:'+String(key)}),
     './api':{exportScenes(){throw Error('Unexpected export');}},
     './Keyboard':{Keyboard,lightingPeak:()=>255},

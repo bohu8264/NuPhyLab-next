@@ -58,7 +58,7 @@ struct SelectionAnswerView:View {
     if permissions {Text(title).font(.system(size:12,weight:.medium)).foregroundStyle(AnswerPalette.secondary)}
     else {
      Menu {
-      ForEach(LabAction.allCases,id:\.self){action in Button(action.title(in:state.language)){state.switchAction?(action)}.disabled(!hasSelection)}
+      ForEach(state.availableActions,id:\.self){action in Button(action.title(in:state.language)){state.switchAction?(action)}.disabled(!hasSelection)}
       Divider()
       Button(state.t("重新框选"),systemImage:"viewfinder"){state.reselect?()}
       Button(state.t("模型与 API 设置"),systemImage:"gearshape"){state.settings?()}

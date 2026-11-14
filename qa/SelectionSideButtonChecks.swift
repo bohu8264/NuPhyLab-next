@@ -60,6 +60,28 @@ func selectionSideButtonChecks(_ check:(Bool,String)->Void) throws {
  // Production receiver: paired consumption, unrelated input, disable while
  // held, final location even when the main queue coalesces pending movement.
  #if DEBUG
+ for code:UInt16 in [8,9] {
+  let transferReceiver=IntentBindingReceiver();transferReceiver.testSafetyAllowed=true
+  transferReceiver.enabled=true;transferReceiver.binding = .keyboard(keyCode:code,modifiers:.command)
+  var transferEvents=[IntentPressEvent]();transferReceiver.onPress={transferEvents.append($0)}
+  func key(_ down:Bool,tagged:Bool)->CGEvent {
+   let event=CGEvent(keyboardEventSource:nil,virtualKey:code,keyDown:down)!
+   event.flags = .maskCommand
+   if tagged{event.setIntegerValueField(.eventSourceUserData,value:0x4E504B54)}
+   return event
+  }
+  for down in [true,false] {
+   let event=key(down,tagged:true)
+   check(!transferReceiver.receive(down ? .keyDown:.keyUp,event:event),"tagged Pocket Cmd-C/V passes Selection tap")
+   check(SelectionSyntheticInput.isPocketTransfer(NSEvent(cgEvent:event)?.cgEvent),"local NSEvent path retains transfer marker")
+  }
+  check(transferEvents.isEmpty && !transferReceiver.hasOwnedInput,"synthetic transfer never starts or owns Selection")
+  check(transferReceiver.receive(.keyDown,event:key(true,tagged:false)),"physical Cmd-C/V still starts configured Selection")
+  check(transferEvents.count==1 && transferEvents[0].edge == .began,"one physical begin remains")
+  check(!transferReceiver.receive(.keyUp,event:key(false,tagged:true)) && transferReceiver.hasOwnedInput,"synthetic up cannot retire a held physical gesture")
+  check(transferReceiver.receive(.keyUp,event:key(false,tagged:false)),"physical release drains its own Selection press")
+  check(transferEvents.count==2 && transferEvents[1].edge == .released,"physical gesture completes normally after synthetic transfer")
+ }
  let receiver=IntentBindingReceiver();receiver.testSafetyAllowed=true;receiver.enabled=true;receiver.binding=LabShortcut.mouseButton(3).binding
  var events:[IntentPressEvent]=[];receiver.onPress={events.append($0)}
  func deliver(_ type:CGEventType,_ button:Int,_ time:Double,_ x:Double=120,_ y:Double=80)->Bool {

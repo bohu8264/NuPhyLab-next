@@ -49,7 +49,7 @@ test('returning from System Settings refreshes the permission snapshot and read 
  f.fail();await f.focus();assert.match(textOf(f.instance.tree),/状态未知/);assert.match(textOf(f.instance.tree),/权限检查暂不可用/);f.close();
 });
 test('macOS 13 feature gate disables selection entry without blocking keyboard UI',async()=>{
- const f=await fixture({supported:false,issue:'框选提问需要 macOS 14 或更新版本；键盘功能可继续使用。'});
+ const f=await fixture({supported:false,issue:'智能框选需要 macOS 14 或更新版本；键盘功能可继续使用。'});
  assert.match(textOf(f.instance.tree),/键盘功能可继续使用/);
- const enable=walkAll(f.instance.tree,n=>n.props?.label==='开启框选提问')[0];assert.equal(enable.props.disabled,true);f.close();
+ const enable=walkAll(f.instance.tree,n=>n.props?.label==='开启智能框选')[0];assert.equal(enable.props.disabled,true);f.close();
 });

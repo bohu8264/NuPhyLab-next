@@ -1,3 +1,5 @@
+import {DEFAULT_SIDEBAR_FEATURES,validateSidebarFeatures} from '../shared/sidebar-features.mjs';
+import {migrateSidebarFeatures} from './sidebar-migration.mjs';
 import {DEFAULT_AMBIENT_LIGHTING,validateAmbientLighting} from '../shared/ambient-lighting.mjs';
 import {getCanvasCount,isKeyboardModel} from '../shared/keyboard-models.mjs';
 import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
@@ -122,6 +124,7 @@ export const defaultSettings = {
   codexTaskKeys: [...DEFAULT_TASK_KEYS],
   codexCommandKeys: [...DEFAULT_COMMAND_KEYS],
   language: "zh-CN",
+  sidebarFeatures: [...DEFAULT_SIDEBAR_FEATURES],
   airTopRightModule: "rotary",
   lightDurationMs: DEFAULT_LIGHT_TIME_MS,
   lightIdleMs: DEFAULT_LIGHT_TIME_MS,
@@ -158,7 +161,9 @@ export function validateSettings(input, previous = defaultSettings) {
     throw new Error("设置格式无效");
   const s = { airTopRightModule: defaultSettings.airTopRightModule, ...previous };
   for (const [k, v] of Object.entries(input)) {
-    if (k === "ambientLighting") {
+    if (k === "sidebarFeatures") {
+      s[k] = validateSidebarFeatures(v);
+    } else if (k === "ambientLighting") {
       s[k] = validateAmbientLighting(v,previous.ambientLighting);
     } else if (k === "outputColorProfile") {
       const profile = validateOutputColorProfile(v);
@@ -249,6 +254,7 @@ export class Store {
   constructor(dir) {
     this.dir = dir;
     this.file = path.join(dir, "library.json");
+    this.sidebarFile = path.join(dir, "sidebar-features.json");
     this.data = {
       version: 1,
       scenes: [],
@@ -304,7 +310,18 @@ export class Store {
         this.readOnly = true;
       }
     }
+    // Keep navigation separate so older Lab versions can still read the works.
+    // Native tools and music may exist even when library.json has never existed.
+    let sidebar = await migrateSidebarFeatures(this.dir, this.data);
+    try { sidebar = validateSidebarFeatures(JSON.parse(await readFile(this.sidebarFile, "utf8"))); }
+    catch (error) { if (error.code !== "ENOENT") this.warning = "侧栏偏好读取失败，已有内容已保留。"; }
+    this.data.settings.sidebarFeatures = sidebar;
     return this;
+  }
+  async saveSidebar(features) {
+    const tmp = this.sidebarFile + ".tmp";
+    await writeFile(tmp, JSON.stringify(features), { mode: 0o600 });
+    await rename(tmp, this.sidebarFile);
   }
   async commit(next) {
     if (this.readOnly)
@@ -312,7 +329,8 @@ export class Store {
         "原作品库格式异常，已保留原文件。请在设备页面查看存储位置并备份后修复。",
       );
     const tmp = this.file + ".tmp";
-    await writeFile(tmp, JSON.stringify(next, null, 2), { mode: 0o600 });
+    const { sidebarFeatures, ...settings } = next.settings;
+    await writeFile(tmp, JSON.stringify({ ...next, settings }, null, 2), { mode: 0o600 });
     await rename(tmp, this.file);
     this.data = next;
   }
@@ -355,8 +373,11 @@ export class Store {
     return { count: imported.length };
   }
   async settings(patch) {
+    if (Object.hasOwn(patch, "sidebarFeatures") && Object.keys(patch).length !== 1) throw new Error("请单独保存侧栏设置");
     const settings = validateSettings(patch, this.data.settings);
-    await this.commit({ ...this.data, settings });
+    if (Object.hasOwn(patch, "sidebarFeatures")) await this.saveSidebar(settings.sidebarFeatures);
+    if (Object.keys(patch).every(key => key === "sidebarFeatures")) this.data = { ...this.data, settings };
+    else await this.commit({ ...this.data, settings });
     return settings;
   }
   async bestScore(score, type = "snake") {
