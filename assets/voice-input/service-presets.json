@@ -1,0 +1,66 @@
+[
+  {
+    "id": "openai",
+    "name": "OpenAI",
+    "description": "录音时实时识别，说完后自动整理。",
+    "summary": "实时语音识别 · Sol 语句整理",
+    "settings": {
+      "asrProvider": "openai",
+      "asrEndpoint": "https://api.openai.com/v1/audio/transcriptions",
+      "asrModel": "gpt-transcribe",
+      "asrMode": "realtime",
+      "realtimeModel": "gpt-live-transcribe",
+      "cleanupEndpoint": "https://api.openai.com/v1/responses",
+      "cleanupModel": "gpt-6.1-sol",
+      "cleanupProtocol": "responses",
+      "cleanupServiceTier": "default",
+      "sharedKey": true
+    }
+  },
+  {
+    "id": "deepseek",
+    "name": "DeepSeek",
+    "description": "录音结束后识别并整理，使用国内服务。",
+    "summary": "DeepSeek 语音识别 · Flash 语句整理",
+    "settings": {
+      "asrProvider": "deepseek",
+      "asrEndpoint": "https://api.deepseek.com/v1/tools/asr",
+      "asrModel": "",
+      "asrMode": "file",
+      "realtimeModel": "gpt-live-transcribe",
+      "cleanupEndpoint": "https://api.deepseek.com/chat/completions",
+      "cleanupModel": "deepseek-flash",
+      "cleanupProtocol": "chat",
+      "cleanupServiceTier": "default",
+      "sharedKey": true
+    }
+  },
+  {
+    "id": "alibaba",
+    "name": "阿里云百炼",
+    "description": "一把百炼 API Key，完成语音识别与语句整理。",
+    "summary": "千问语音识别 · 千问 Flash 语句整理",
+    "regions": {
+      "cn": {
+        "name": "中国大陆（北京）",
+        "endpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+      },
+      "intl": {
+        "name": "国际（新加坡）",
+        "endpoint": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions"
+      }
+    },
+    "settings": {
+      "asrProvider": "alibaba",
+      "asrEndpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "asrModel": "qwen3-asr-flash",
+      "asrMode": "file",
+      "realtimeModel": "gpt-live-transcribe",
+      "cleanupEndpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "cleanupModel": "qwen3.8-flash",
+      "cleanupProtocol": "chat",
+      "cleanupServiceTier": "default",
+      "sharedKey": true
+    }
+  }
+]

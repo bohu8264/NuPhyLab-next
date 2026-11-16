@@ -70,12 +70,12 @@ export async function appDraftFixture(options={}){
     if(name==='./connection-copy-v7')return{presentConnectionDisplay:v=>v,connectionCopy:v=>v.zh,connectionHeader:()=>'',connectionSidebar:()=>''};
     if(name==='./primitives')return{Button:component('Button'),Modal:component('Modal'),run:promise=>{void promise.catch(()=>{});}};
     if(name==='../../shared/sidebar-features.mjs')return sidebarFeatures;
-    if(name==='./FeatureCenter')return {FeatureCenter:component('FeatureCenter'),features:sidebarFeatures.FEATURE_IDS.map((id,index)=>({id,zh:['灯光创作','作品库','AI 助手','灯光游戏','模拟声浪','演奏模式','智能框选','拖拽转换','键盘口袋'][index],en:id,icon:component('feature-icon')}))};
+    if(name==='./FeatureCenter')return {FeatureCenter:component('FeatureCenter'),features:sidebarFeatures.FEATURE_IDS.map((id,index)=>({id,zh:['灯光创作','作品库','AI 助手','灯光游戏','模拟声浪','演奏模式','智能框选','拖拽转换','键盘口袋','语音输入'][index],en:id,icon:component('feature-icon')}))};
     if(name==='./UnifiedLibrary')return {UnifiedLibrary:component('Library')};
     if(name==='./KeyboardPocketLab')return {KeyboardPocketLab:component('KeyboardPocketLab')};
     if(name==='./music/persistence')return{prepareMusicLibraryAction:async()=>{}};
     if(name==='./music/MusicLab')return {MusicLab:component('MusicLab')};
-    const child=name.match(/^\.\/(FeedbackToast|AudioPanel|AudioPendingNotice|NativeLighting|Studio|Library|Codex|ClaudeCode|Device|Settings|SelectionLab|TypingSounds|DragConvertLab|StartupGuide)$/)?.[1];
+    const child=name.match(/^\.\/(FeedbackToast|AudioPanel|AudioPendingNotice|NativeLighting|Studio|Library|Codex|ClaudeCode|Device|Settings|SelectionLab|TypingSounds|DragConvertLab|VoiceInput|StartupGuide)$/)?.[1];
     if(child)return{[child]:component(child)};
     throw Error('Unexpected App import '+name);
   };

@@ -1,0 +1,17 @@
+{
+  "version": "1.2.48",
+  "zh-CN": [
+    "新增语音输入：在功能中心添加后，可用快捷键录音、整理文字并填入选定输入框；支持 Esc 取消和麦克风选择。",
+    "支持 OpenAI、DeepSeek、阿里云百炼和自定义兼容服务，语音识别与文字整理可分别配置。",
+    "个人词库支持逐条添加、回车添加和删除，操作后自动保存。",
+    "内置新的默认整理规则，兼顾口述原意、语气、数字关系、观点归属和自然排版。",
+    "整理提示词可完整编辑、保存和恢复默认；已保存的自定义规则在升级后继续保留。"
+  ],
+  "en": [
+    "Add Voice Input through Feature Center: record with a shortcut, refine the transcript and insert it into the selected text field, with microphone selection and Esc to cancel.",
+    "Configure OpenAI, DeepSeek, Alibaba Cloud Model Studio or compatible custom services; speech recognition and text refinement can use separate providers.",
+    "Add personal dictionary entries with the Add button or Enter, and delete them individually. Changes save automatically.",
+    "Include new default refinement instructions for preserving meaning, tone, numerical relationships and attributed opinions while choosing natural formatting.",
+    "Edit, save or restore the complete refinement instructions. Upgrades preserve saved custom rules."
+  ]
+}

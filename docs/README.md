@@ -13,6 +13,7 @@
 - [拖拽转换与自定义触发键 / Drag Convert and custom trigger keys](DRAG_CONVERT.md)
 - [演奏模式与作品 / Performance and saved works](PERFORMANCE.md)
 - [智能框选与回复 / Smart Selection and Reply](SELECTION.md)
+- [语音输入、词库与整理提示词 / Voice Input, dictionary and refinement instructions](VOICE_INPUT.md)
 - [键盘口袋与文件取用 / Keyboard Pocket and file retrieval](KEYBOARD_POCKET.md)
 - [自动感光背光 / Automatic backlight](AMBIENT_BACKLIGHT.md)
 - [模型、图片与权限 / Models, images and permissions](SELECTION_R2.md)
@@ -28,6 +29,8 @@
 - [第三方声明 / Third-party notices](../THIRD_PARTY_NOTICES.md)
 
 ## 分版记录 / Version history
+
+- [1.2.48 发行说明 / Release notes](RELEASE_1.2.48.md)
 
 - [1.2.47 发行说明 / Release notes](RELEASE_1.2.47.md)
 
@@ -45,3 +48,4 @@
 - [1.2.15 发行说明 / Release notes](RELEASE_1.2.15.md)
 - [1.2.14 发行说明 / Release notes](RELEASE_1.2.14.md)
 - [所有发行版 / All releases](https://github.com/bohu8264/NuPhyLab-next/releases)
+

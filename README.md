@@ -8,13 +8,13 @@ A macOS lighting studio for **NuPhy AIR65 / AIR75 / AIR100 V3, NODE75 / NODE100 
 
 ## 功能中心与作品库
 
-新用户的侧栏默认显示灯光创作、作品库和 AI 助手。升级时会保留已使用或已开启的功能入口，之后可以自行移除。打开 **功能中心**，按需添加灯光游戏、模拟声浪、演奏模式、智能框选、拖拽转换和键盘口袋；默认的三项也可以移除。功能中心、设备和设置始终保留。移除只隐藏入口，已有内容、偏好和功能开关保持原样。
+新用户的侧栏默认显示灯光创作、作品库和 AI 助手。升级时会保留已使用或已开启的功能入口，之后可以自行移除。打开 **功能中心**，按需添加灯光游戏、模拟声浪、演奏模式、智能框选、拖拽转换、键盘口袋和语音输入；默认的三项也可以移除。功能中心、设备和设置始终保留。移除只隐藏入口，已有内容、偏好和功能开关保持原样。
 
 **作品库** 统一展示灯光和演奏作品，支持全部、灯光和演奏筛选。演奏模式中的作品库按钮进入同一个库；编辑并保存会更新原作品。编辑器尚未添加时，可直接选择“添加演奏模式并编辑”或“添加灯光创作并编辑”。演奏作品支持试听、复制、改名、工程导出及最近删除恢复；WAV 音频在演奏编辑页导出。
 
 ## Feature Center and Library
 
-For new users, the sidebar starts with Lighting Studio, Library and AI Assistant. Upgrading keeps entries for tools already used or enabled; you can remove them at any time. Open **Feature Center** to add Lighting Games, Typing Sounds, Music Mode, Smart Selection, Drag Convert or Keyboard Pocket. The three default entries can also be removed. Feature Center, Device and Settings always remain available. Removing an entry only hides it; content, preferences and feature switches stay as they are.
+For new users, the sidebar starts with Lighting Studio, Library and AI Assistant. Upgrading keeps entries for tools already used or enabled; you can remove them at any time. Open **Feature Center** to add Lighting Games, Typing Sounds, Music Mode, Smart Selection, Drag Convert, Keyboard Pocket or Voice Input. The three default entries can also be removed. Feature Center, Device and Settings always remain available. Removing an entry only hides it; content, preferences and feature switches stay as they are.
 
 **Library** brings lighting and music together, with All, Lighting and Music filters. Music Mode opens this same library. Editing and saving updates the original work. If its editor is not in the sidebar, choose **Add Music Mode & edit** or **Add Lighting Studio & edit**. Music works support preview, duplication, renaming, project export and recovery from Recently deleted. Export WAV audio from the music editor.
 
@@ -148,7 +148,13 @@ Choose **Reply**, select the other person’s message, and optionally say your p
 
 Selected text and questions are sent to your configured model service. Images are included only when enabled and needed for the selected action. API keys are stored in the local Keychain.
 
-[设置与使用 / Setup and usage](docs/SELECTION.md) · [界面与翻译语言 / Interface and translation languages](docs/SELECTION_LANGUAGES.md) · [1.2.47 更新说明 / What's new in 1.2.47](docs/RELEASE_1.2.47.md)
+[设置与使用 / Setup and usage](docs/SELECTION.md) · [界面与翻译语言 / Interface and translation languages](docs/SELECTION_LANGUAGES.md) · [1.2.48 更新说明 / What's new in 1.2.48](docs/RELEASE_1.2.48.md)
+
+## 语音输入 / Voice Input
+
+在 **功能中心** 添加 **语音输入**，配置自己的语音识别和文字整理服务，开启后按一次快捷键说话，选好输入框后再按一次完成输入。默认右 Option，可点击录制其他按键。支持麦克风选择、可逐条添加删除的词库、可编辑保存的整理提示词、Esc 取消及保留未插入的文字。[使用说明](docs/VOICE_INPUT.md)
+
+Add **Voice Input** in **Feature Center**, configure your speech and text services, then enable it. Press the shortcut to speak, select a text field, and press again to finish. The default is right Option; click to record a different shortcut. Select a microphone, add or delete dictionary entries, customize and save refinement instructions, cancel with Esc, and retain text if insertion is unavailable. [User guide](docs/VOICE_INPUT.md)
 
 ## 键盘口袋 / Keyboard Pocket
 

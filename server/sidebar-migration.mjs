@@ -8,6 +8,7 @@ export async function migrateSidebarFeatures(dir, data) {
   const selected = new Set(DEFAULT_SIDEBAR_FEATURES);
   if (data.bestScore > 0 || Object.values(data.gameBestScores ?? {}).some(value => value > 0)) selected.add('game');
   const checks = [
+    ['voice-input','voice-input/settings.json', () => true],
     ['typing-sounds','typing-sound-preferences.json', value => value.enabled === true],
     ['selection-question','selection-preferences.json', value => value.enabled === true],
     ['drag-convert','drag-convert.json', value => value.enabled === true],

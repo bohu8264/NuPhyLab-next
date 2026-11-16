@@ -43,6 +43,7 @@ await mkdir(path.join(contents,'Frameworks'),{recursive:true});
 await writeFile(path.join(resources,'update-metadata.json'),JSON.stringify({version,releaseNotesVersion:updateNotes.version,releaseNotesSHA256:updateNotes.sha256},null,2)+'\n');
 // ditto preserves Sparkle's versioned symlinks and executable permissions.
 execFileSync('/usr/bin/ditto',[path.join(root,'vendor/sparkle/Sparkle.framework'),path.join(contents,'Frameworks/Sparkle.framework')]);
+await cp(path.join(root,"assets/voice-input"),path.join(resources,"voice-input"),{recursive:true});
 await cp(path.join(root,"assets/typing-sounds"),path.join(resources,"typing-sounds"),{recursive:true});
 await cp(path.join(root,"assets/drag-convert-licenses"),path.join(resources,"drag-convert-licenses"),{recursive:true});
 // "hooks" carries the Claude Code hook scripts the app installs on request.
@@ -108,7 +109,7 @@ await writeFile(
 <key>SUVerifyUpdateBeforeExtraction</key><true/>
 <key>SURequireSignedFeed</key><true/>
 <key>LSMinimumSystemVersion</key><string>13.5</string><key>NSHighResolutionCapable</key><true/>
-<key>NSMicrophoneUsageDescription</key><string>用于麦克风律动，以及主动启用“按住说话”后的本机语音转写；录音不保存或上传。</string>
+<key>NSMicrophoneUsageDescription</key><string>用于你主动开始的语音输入、智能框选语音及麦克风律动。语音输入录音发送至你配置的识别服务，临时录音处理后删除；其他声音在本机处理。</string>
 <key>NSAudioCaptureUsageDescription</key><string>将电脑播放的声音转换为键盘律动灯效。声音仅在本机分析，不保存或上传。</string>
 <key>NSSpeechRecognitionUsageDescription</key><string>将你按住时说出的问题在本机转成文字，文字仅在提交框选问题后发送至你配置的模型服务。</string>
 <key>NSScreenCaptureUsageDescription</key><string>仅在主动框选时截取选定区域，供本机文字识别；提交后按你的设置发送文字或图片至模型服务。</string>
@@ -116,6 +117,14 @@ await writeFile(
 <key>NSInputMonitoringUsageDescription</key><string>仅在启用按键触发、全局快捷键或模拟声浪后监听按键，保留正常输入，不记录输入内容。</string>
 </dict></plist>`,
 );
+// Permission prompts follow the system language, independently of the page language.
+for (const [locale,microphone] of Object.entries({
+  en:'Records only when you start Voice Input, Smart Selection speech or microphone lighting. Voice Input sends audio to your configured speech service and deletes temporary recordings after processing. Other audio is processed locally.',
+  'zh-Hans':'用于你主动开始的语音输入、智能框选语音及麦克风律动。语音输入录音发送至你配置的识别服务，临时录音处理后删除；其他声音在本机处理。'
+})) {
+  const folder=path.join(resources,locale+'.lproj');await mkdir(folder,{recursive:true});
+  await writeFile(path.join(folder,'InfoPlist.strings'),'"NSMicrophoneUsageDescription" = '+JSON.stringify(microphone)+';\n');
+}
 // Record how this bundle was signed. An ad-hoc signature has no stable code
 // identity, so macOS silently stops honouring an existing permission grant
 // after a rebuild; the app has to be able to say that out loud.
