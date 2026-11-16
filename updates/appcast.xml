@@ -6,43 +6,37 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>NuPhy Lab</title>
         <item>
-            <title>1.2.47</title>
-            <pubDate>Sat, 14 Nov 2026 16:59:24 +0800</pubDate>
+            <title>1.2.48</title>
+            <pubDate>Mon, 16 Nov 2026 19:13:06 +0800</pubDate>
             <link>https://github.com/bohu8264/NuPhyLab-next</link>
-            <sparkle:version>1.2.47</sparkle:version>
-            <sparkle:shortVersionString>1.2.47</sparkle:shortVersionString>
+            <sparkle:version>1.2.48</sparkle:version>
+            <sparkle:shortVersionString>1.2.48</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.5</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <description sparkle:format="plain-text"><![CDATA[NUPHY-RELEASE-NOTES 1
-version:1.2.47
+version:1.2.48
 [zh-CN]
-NuPhy Lab 1.2.47
+NuPhy Lab 1.2.48
 
-• 新增功能中心，自行添加或移除侧栏入口；升级保留已使用的工具，移除入口不删除内容和设置。
-• 统一灯光与演奏作品库，支持全部、灯光、演奏筛选；可直接添加所需编辑工具，继续编辑原作品。
-• 新增键盘口袋：用九个本地槽位收纳和取用文字、图片、链接与文件，支持撤销和独立快捷键设置。
-• 快捷键可点击后按键录制；口袋预览从屏幕顶部刘海区域展开，支持关闭预览后直接取用。
-• 改进文件粘贴与访问恢复；文件夹可复制为 ZIP，保留中文文件名，便于粘贴到聊天软件。
-• 修复连续按下、松开快捷键时口袋浮窗偶尔不出现的问题。
-• 改进口袋取用时切换应用的取消保护，以及与智能框选和 Fn 按键的冲突处理。
-• 框选提问更名为智能框选，翻译、总结、解释、回复可自行勾选，滚轮只切换已启用的动作。
+• 新增语音输入：在功能中心添加后，可用快捷键录音、整理文字并填入选定输入框；支持 Esc 取消和麦克风选择。
+• 支持 OpenAI、DeepSeek、阿里云百炼和自定义兼容服务，语音识别与文字整理可分别配置。
+• 个人词库支持逐条添加、回车添加和删除，操作后自动保存。
+• 内置新的默认整理规则，兼顾口述原意、语气、数字关系、观点归属和自然排版。
+• 整理提示词可完整编辑、保存和恢复默认；已保存的自定义规则在升级后继续保留。
 [en]
-NuPhy Lab 1.2.47
+NuPhy Lab 1.2.48
 
-• Add Feature Center to customize sidebar entries. Upgrades keep previously used tools; removing an entry preserves its content and settings.
-• Bring lighting and music into one Library with All, Lighting and Music filters. Add the needed editor and continue editing the original work.
-• Add Keyboard Pocket: store and retrieve text, images, links and files in nine local slots, with Undo and separate shortcut settings.
-• Record shortcuts by clicking and pressing keys. Pocket previews unfold from the screen notch; direct retrieval also works with previews off.
-• Improve file pasting and access recovery. Copy folders as ZIP archives with Chinese filenames preserved for pasting into chat apps.
-• Fix Pocket previews occasionally failing to appear after repeated shortcut presses and releases.
-• Improve cancellation when switching apps during Pocket retrieval, and handle conflicts with Smart Selection and Fn keys.
-• Rename Ask about a selection to Smart Selection. Choose which Translate, Summarize, Explain and Reply actions to enable; scrolling skips disabled actions.
+• Add Voice Input through Feature Center: record with a shortcut, refine the transcript and insert it into the selected text field, with microphone selection and Esc to cancel.
+• Configure OpenAI, DeepSeek, Alibaba Cloud Model Studio or compatible custom services; speech recognition and text refinement can use separate providers.
+• Add personal dictionary entries with the Add button or Enter, and delete them individually. Changes save automatically.
+• Include new default refinement instructions for preserving meaning, tone, numerical relationships and attributed opinions while choosing natural formatting.
+• Edit, save or restore the complete refinement instructions. Upgrades preserve saved custom rules.
 ]]></description>
-            <enclosure url="https://github.com/bohu8264/NuPhyLab-next/releases/download/v1.2.47/NuPhyLab-1.2.47-macOS-AppleSilicon.dmg" length="51923505" type="application/octet-stream" sparkle:edSignature="YEdN8GsAMjohiEh6Xgkkusc536NSKbmLcWWNUrYboH8ZF+nkZKdHsD6XCtPWiZr5MfMAjQn0jS7RDykX7BksDA=="/>
+            <enclosure url="https://github.com/bohu8264/NuPhyLab-next/releases/download/v1.2.48/NuPhyLab-1.2.48-macOS-AppleSilicon.dmg" length="51362652" type="application/octet-stream" sparkle:edSignature="W8Zf9F25kXf7dfxzxO0hotIOwV5efaGYnqjXboZyJcXEeRtiJlibqUVFqttszpfLqEoysdBT9R3aGIik3ePgDg=="/>
         </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: LXttBty+XPJZit64AMHRLZm9rNSHo03OfnoQWvT6PHGfv0INOhkdaFeEc0su5Hgy+fP06e8V9VBoYcuPdfTqBg==
-length: 3448
+edSignature: IOY8cKS2tcn5phxMwAccGODSaWOJrbZQkiLYxyrq1/9Jf8xdQ2hSsguuU5VhfvEM5GySS/yyA91RedD9L+ueAQ==
+length: 2691
 -->
