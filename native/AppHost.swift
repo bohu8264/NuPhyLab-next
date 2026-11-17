@@ -639,15 +639,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     func pocketOperationAllowed(acceptingDrop:Bool=false,recordingShortcut:Bool=false)->Bool {
         !terminating && !applicationQuitPending && !preparingUpdate && !updateInstallCommitted && !updateAbortRecoveryRequested && !permissionRelaunchPending && !musicFlushInProgress && !musicExportActive && !keySessionSuspended && !capturingKey && !selectionShortcutRecording && !pocketShortcutRecording && (recordingShortcut || !(editingField && NSApp.isActive)) && !voiceInput.isBusy && !musicActive && musicCaptureReasons.subtracting(["keyboardPocket"]).isEmpty && !selectionLab.isBusy && !dragConvert.busy && (acceptingDrop || !dragConvert.isFileDragActive) && !IsSecureEventInputEnabled() && worker?.isRunning == true
     }
-    lazy var voiceInput = VoiceInputController(directory:dataDirectory.appendingPathComponent("voice-input"),migrateFrom:FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/NuPhy Voice Input Lab"))
+    lazy var voiceInput = VoiceInputController(directory:dataDirectory.appendingPathComponent("voice-input"),migrateFrom:FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/NuPhy Voice Input Lab"),featureAdded:false)
     var voiceShortcutRecording=false
     var voiceOperationAllowed:Bool {
         !terminating && !applicationQuitPending && !preparingUpdate && !updateInstallCommitted && !updateAbortRecoveryRequested && !permissionRelaunchPending && !musicFlushInProgress && !musicExportActive && !keySessionSuspended && !capturingKey && !selectionShortcutRecording && !pocketShortcutRecording && !selectionLab.isBusy && !pocket.isBusy && !pocket.isInteracting && !dragConvert.busy && !dragConvert.isFileDragActive && musicCaptureReasons.subtracting(["voiceInput"]).isEmpty && !IsSecureEventInputEnabled() && worker?.isRunning == true
     }
-    lazy var pocket = PocketController(directory:dataDirectory.appendingPathComponent("keyboard-pocket"))
-    lazy var dragConvert = DragConvertController(directory: dataDirectory)
-    lazy var typingSounds = TypingSoundController(directory: dataDirectory)
-    lazy var selectionLab: any SelectionFeature = SelectionFeatureFactory.make(directory: dataDirectory)
+    lazy var pocket = PocketController(directory:dataDirectory.appendingPathComponent("keyboard-pocket"),featureAdded:false)
+    lazy var dragConvert = DragConvertController(directory: dataDirectory,featureAdded:false)
+    lazy var typingSounds = TypingSoundController(directory: dataDirectory,featureAdded:false)
+    lazy var selectionLab: any SelectionFeature = SelectionFeatureFactory.make(directory: dataDirectory,featureAdded:false)
     let windowFrameName = "AirStudio.CompactWindow.v1"
     let dataDirectory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Air Studio")
     var workerLogURL: URL { dataDirectory.appendingPathComponent("Logs/worker.log") }
@@ -747,6 +747,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }
         web=PocketHostWebView(frame:.zero,configuration:config);web.navigationDelegate=self;web.uiDelegate=self
         pocket.attach(web:web,window:window);pocket.resume()
+        selectionLab.shortcutSaveIssue = { [weak self] binding in
+            guard let self,self.voiceInput.enabled,let settings=self.voiceInput.store?.settings else{return nil}
+            return VoiceConflictPolicy.mouseConflict(VoiceConflictPolicy.binding(settings),binding) ? "此鼠标侧键已用于语音输入，请更换其中一个快捷键。":nil
+        }
         voiceInput.canStart = { [weak self] in self?.voiceOperationAllowed ?? false }
         voiceInput.canRecordShortcut = { [weak self] in self?.voiceOperationAllowed ?? false }
         voiceInput.operationIssue = { [weak self] in
@@ -1323,7 +1327,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     func musicPlayAllowed(recoverDictation:Bool=false,requireForeground:Bool=false)->Bool{
         if recoverDictation {musicCaptureReasons.remove("dictationUnconfirmed")}
         let foreground = (NSApp?.isActive ?? false) && window?.isKeyWindow == true && window?.isMiniaturized == false
-        return musicCaptureReasons.isEmpty && !terminating && !musicFlushInProgress && !preparingUpdate && !updateInstallCommitted && !updateAbortRecoveryRequested && (!requireForeground || foreground)
+        return addedFeatures.contains("music") && musicCaptureReasons.isEmpty && !terminating && !musicFlushInProgress && !preparingUpdate && !updateInstallCommitted && !updateAbortRecoveryRequested && (!requireForeground || foreground)
     }
     func stopMusic(suspend:Bool=false){
         if suspend {musicActive=false;refreshMusicPause()}
@@ -1357,10 +1361,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             self.reopenSavedMusicDocument(url)
         }
     }
+    private var addedFeatures=Set<String>()
+    private var featureAvailabilityReady=false
+    // Read committed preferences instead of trusting a page payload or an older
+    // in-flight state poll. Native listeners stay gated until startup migration completes.
+    @discardableResult func syncFeatureAvailability(fallback:Any?=nil)->Bool {
+        let file=dataDirectory.appendingPathComponent("sidebar-features.json")
+        let saved=(try? Data(contentsOf:file)).flatMap{try? JSONSerialization.jsonObject(with:$0)}
+        let known:Set<String>=["studio","library","codex","game","typing-sounds","music","selection-question","drag-convert","keyboard-pocket","voice-input"]
+        func valid(_ value:Any?)->[String]? {
+            guard let values=value as? [String],Set(values).count==values.count,Set(values).isSubset(of:known) else{return nil};return values
+        }
+        guard let values=valid(saved) ?? valid(fallback) else{return false}
+        featureAvailabilityReady=true
+        let previous=addedFeatures;addedFeatures=Set(values)
+        selectionLab.setFeatureAdded(addedFeatures.contains("selection-question"))
+        dragConvert.setFeatureAdded(addedFeatures.contains("drag-convert"))
+        pocket.setFeatureAdded(addedFeatures.contains("keyboard-pocket"))
+        voiceInput.setFeatureAdded(addedFeatures.contains("voice-input"))
+        typingSounds.setFeatureAdded(addedFeatures.contains("typing-sounds"))
+        if previous.contains("music") && !addedFeatures.contains("music") {stopMusic(suspend:true)}
+        if !addedFeatures.contains("codex") {setHotkeysEnabled(false)}
+        return true
+    }
     func userContentController(_ userContentController:WKUserContentController,didReceive message:WKScriptMessage,replyHandler:@escaping(Any?,String?)->Void){
         guard message.frameInfo.isMainFrame,let url=message.frameInfo.request.url,
               ((url.host==baseURL?.host && url.port==baseURL?.port) || (["musicFile","musicControl"].contains(message.name) && url.host==musicDocumentOrigin?.host && url.port==musicDocumentOrigin?.port)),
               let body=message.body as? [String:Any] else{replyHandler(nil,"Invalid origin");return}
+        if message.name == "codexKeys",body["kind"] as? String == "prepareSidebarFeatures" {
+            guard syncFeatureAvailability(fallback:featureAvailabilityReady ? Array(addedFeatures):nil) else {replyHandler(nil,"Could not read feature settings");return}
+            replyHandler(true,nil);return
+        }
+        if message.name == "codexKeys",body["kind"] as? String == "sidebarFeaturesChanged" {
+            guard syncFeatureAvailability(fallback:featureAvailabilityReady ? Array(addedFeatures):nil) else {replyHandler(nil,"Could not read feature settings");return}
+            replyHandler(true,nil);return
+        }
         if message.name == "musicFile" {saveMusicFile(body,reply:replyHandler);return}
         if message.name == "musicControl" {
             guard registerMusicDocument(body) else{replyHandler(nil,"The performance document is not current");return}
@@ -1854,6 +1889,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                     #endif
                 }
                 if (response as? HTTPURLResponse)?.statusCode == 200 {
+                    self.syncFeatureAvailability(fallback:settings?["sidebarFeatures"])
                     self.ambientLight.sync(enabled:(settings?["ambientLighting"] as? [String:Any])?["enabled"] as? Bool == true)
                 }
                 self.applyKeyConfiguration(keys)
@@ -1867,7 +1903,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }
         hotkeyStateTask?.resume()
     }
-    func setHotkeysEnabled(_ enabled:Bool){
+    func setHotkeysEnabled(_ requested:Bool){
+        let enabled=requested && addedFeatures.contains("codex")
         pocket.refreshAuthorization()
         selectionLab.updateReservedKeys((enabled || (selectionShortcutRecording || pocketShortcutRecording) && configuredKeysEnabled) ? Set(keyConfiguration.map{$0.keyCode}) : (capturingKey ? Set(functionKeyCodes.keys):[]))
         if !enabled {cancelPhysicalHold()}

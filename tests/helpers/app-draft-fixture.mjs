@@ -60,7 +60,7 @@ export async function appDraftFixture(options={}){
     if(name==='../../shared/firmware-onboarding.mjs')return firmwareOnboarding;
     if(name==='./i18n')return{t:value=>value,useLanguage:()=>api.state.settings.language,setLanguage(){}};
     if(name==='./presets')return{presets:()=>[scene('Fallback preset',{colors:Array(84).fill('#234567')})]};
-    if(name==='./codexKeys')return{useCodexKeys(){}};
+    if(name==='./codexKeys')return{useCodexKeys(){},nativeCodexRequest:async()=>({available:false,result:null})};
     if(name==='./TriggerPanel')return{useTriggerKeys(){}};
     if(name==='./AgentSourceSwitch')return{agentSource:s=>s?.settings.agentSource==='claude'?'claude':'codex'};
     if(name==='./Keyboard')return{KeyboardModuleContext:{Provider:component('Provider')}};

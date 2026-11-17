@@ -28,15 +28,20 @@ enum VoiceFormalMigration {
 enum VoiceConflictPolicy {
     static func binding(_ value:VoiceSettings)->InputBinding {
         let code=UInt32(value.shortcutKeyCode)
-        let flags=VoiceHotkeyPolicy.modifiers[code]?.flag ?? value.shortcutModifiers
+        let flags=value.shortcutMouseButton == nil ? (VoiceHotkeyPolicy.modifiers[code]?.flag ?? value.shortcutModifiers) : value.activeShortcutModifiers
         var modifiers=InputModifiers()
         for (flag,modifier) in [(UInt64(1<<17),InputModifiers.shift),(1<<18,.control),(1<<19,.option),(1<<20,.command),(1<<23,.function)] {if flags & flag != 0 {modifiers.insert(modifier)}}
+        if let button=value.shortcutMouseButton {return .mouseButton(index:Int(button),modifiers:modifiers)}
         return VoiceHotkeyPolicy.modifierCodes.contains(code) ? .modifierChord(modifiers) : .keyboard(keyCode:value.shortcutKeyCode,modifiers:modifiers)
+    }
+    static func mouseConflict(_ voice:InputBinding,_ selection:InputBinding)->Bool {
+        voice.kind == .mouseButton && selection.kind == .mouseButton && voice.buttonIndex==selection.buttonIndex && voice.modifiers==selection.modifiers
     }
     static func issue(_ value:VoiceSettings,selection:InputBinding?,pocket:PocketSettings,reservedKeys:Set<UInt32>)->String? {
         let voice=binding(value)
         if voice.kind == .keyboard,voice.modifiers.isEmpty,reservedKeys.contains(UInt32(value.shortcutKeyCode)){return "此快捷键已用于 AI 助手，请更换语音输入快捷键。"}
         if let other=selection {
+            if mouseConflict(voice,other) {return "此快捷键已用于智能框选，请更换其中一个快捷键。"}
             if other.kind == .modifiers,!other.modifiers.isEmpty,other.modifiers.isSubset(of:voice.modifiers){return "此快捷键已用于智能框选，请更换其中一个快捷键。"}
             if other.kind == .keyboard,voice.kind == .keyboard,other.keyCode==voice.keyCode,other.matchesModifiers(voice.modifiers){return "此快捷键已用于智能框选，请更换其中一个快捷键。"}
         }

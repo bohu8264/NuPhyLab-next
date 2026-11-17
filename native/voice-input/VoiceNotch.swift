@@ -1,7 +1,7 @@
 import AppKit
 
 enum VoiceNotchPhase: String {
-    case starting, recording, transcribing, cleaning, success, error
+    case starting, recording, transcribing, cleaning, success, copied, error
     var isVisible: Bool { self != .success }
     var title: String {
         switch self {
@@ -9,6 +9,7 @@ enum VoiceNotchPhase: String {
         case .recording:return "正在聆听"
         case .transcribing,.cleaning:return "正在整理"
         case .success:return ""
+        case .copied:return "已复制 · ⌘V 粘贴"
         case .error:return "语音输入提示"
         }
     }
@@ -67,7 +68,7 @@ final class VoiceNotchView:NSView {
         let width=bounds.width-inset*2,y=capHeight
         let paragraph=NSMutableParagraphStyle();paragraph.lineBreakMode = .byTruncatingTail
         let title=VoiceL10n.text(phase == .error ? detail:phase.title)
-        (title as NSString).draw(in:NSRect(x:inset+18,y:y+13,width:width-(phase == .error ? 36:94),height:18),withAttributes:[.font:NSFont.systemFont(ofSize:12,weight:.medium),.foregroundColor:NSColor.white,.paragraphStyle:paragraph])
+        (title as NSString).draw(in:NSRect(x:inset+18,y:y+13,width:width-([.error,.copied].contains(phase) ? 36:94),height:18),withAttributes:[.font:NSFont.systemFont(ofSize:12,weight:.medium),.foregroundColor:NSColor.white,.paragraphStyle:paragraph])
         let waveX=phase == .starting ? inset+width/2-22 : inset+width-65
         if phase == .recording {
             for i in 0..<9 {
@@ -76,7 +77,7 @@ final class VoiceNotchView:NSView {
                 NSColor(white:0.9,alpha:1).setFill()
                 NSBezierPath(roundedRect:NSRect(x:waveX+CGFloat(i)*5,y:y+22-height/2,width:2.5,height:height),xRadius:1.25,yRadius:1.25).fill()
             }
-        } else if phase != .error {
+        } else if phase != .error && phase != .copied {
             for i in 0..<3 {
                 let alpha=0.25+0.65*(0.5+0.5*sin(phaseTime*5-Double(i)))
                 NSColor(white:1,alpha:alpha).setFill()

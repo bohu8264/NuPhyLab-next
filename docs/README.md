@@ -30,6 +30,8 @@
 
 ## 分版记录 / Version history
 
+- [1.2.49 发行说明 / Release notes](RELEASE_1.2.49.md)
+
 - [1.2.48 发行说明 / Release notes](RELEASE_1.2.48.md)
 
 - [1.2.47 发行说明 / Release notes](RELEASE_1.2.47.md)

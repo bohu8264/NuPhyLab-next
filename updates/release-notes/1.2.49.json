@@ -1,0 +1,15 @@
+{
+  "version": "1.2.49",
+  "zh-CN": [
+    "语音输入支持点击录制鼠标侧键，按一次开始，再按一次结束。",
+    "新增与智能框选侧键的冲突提示，保留原快捷键和语音设置。",
+    "语音未能插入输入框时自动复制结果，可直接粘贴。",
+    "移回功能中心会关闭功能及快捷键，重新添加保持关闭，保留原内容和配置。"
+  ],
+  "en": [
+    "Voice Input supports recording a mouse side button: click once to start and again to finish.",
+    "Conflicts with Smart Selection side buttons are explained while existing shortcuts and voice settings are preserved.",
+    "When speech cannot be inserted into a text field, the result is copied for manual pasting.",
+    "Removing a tool turns it and its shortcuts off. Re-adding keeps it off and preserves its content and preferences."
+  ]
+}

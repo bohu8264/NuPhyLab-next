@@ -218,6 +218,18 @@ final class HTTPFixture: @unchecked Sendable {
         check(try VoiceSettingsStore.submittedKeys(from:asrOnly,settings:separate)==["asr":"SYNTHETIC-ASR-KEY"],"independent ASR-only replacement tolerates unused cleanup origin")
         rejects("separate ASR requires its own key") {try VoiceSettingsStore.validateKeyRequirements(settings:separate,newKeys:["cleanup":"SYNTHETIC-NOT-A-KEY"],status:[:])}
         try VoiceSettingsStore.validateKeyRequirements(settings:separate,newKeys:["asr":"SYNTHETIC-NOT-A-KEY"],status:["hasCleanupKey":true]);passed+=1
+        var mouseSettings=VoiceSettings();mouseSettings.shortcutMouseButton=4
+        let mouseBytes=try JSONEncoder().encode(mouseSettings)
+        check(try JSONDecoder().decode(VoiceSettings.self,from:mouseBytes).validated()==mouseSettings,"mouse binding persists through real settings schema")
+        for index:UInt32 in [0,1,2,32,UInt32.max] {
+            mouseSettings.shortcutMouseButton=index
+            rejects("reserved/out-of-range mouse button") { _ = try mouseSettings.validated() }
+        }
+        mouseSettings.shortcutMouseButton=3;mouseSettings.shortcutModifiers=1<<20
+        check(try mouseSettings.validated()==mouseSettings,"modifier plus side accepted independently of remembered modifier key")
+        mouseSettings.shortcutModifiers=1<<23
+        rejects("Fn mouse chord unsupported") { _ = try mouseSettings.validated() }
+        check(try JSONDecoder().decode(VoiceSettings.self,from:Data("{}".utf8)).shortcutMouseButton==nil,"legacy preferences migrate as keyboard without writing settings")
         check(valid.shortcutKeyCode == 61, "formal right Option shortcut avoids AI F8")
         check(valid.shortcutModifiers == 0, "default unmodified F8")
         check(valid.asrMode == "realtime", "new settings realtime default")

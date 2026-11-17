@@ -24,12 +24,13 @@ test('legacy migration keeps active tools and saved music without rewriting thei
  await store.settings({sidebarFeatures:['library']});assert.deepEqual((await new Store(dir).load()).data.settings.sidebarFeatures,['library']);
  for(const [i,file] of Object.keys(files).entries())if(file!=='library.json')assert.deepEqual(await readFile(path.join(dir,file)),before[i]);
 });
-test('sidebar-only settings do not touch hardware, release AI keys, reset playback or modify works',async t=>{
+test('removing a running lighting feature stops output and preserves works; additions are inert',async t=>{
  const s=await fakeService(t,{freshLibrary:true,storedSettings:{sidebarFeatures:['studio','library','codex']}});await s.command({op:'preview',colors:Array(84).fill('#445566')});const before=await s.state(),ops=(await s.operations()).length;
  assert.equal((await s.command({op:'settings',settings:{sidebarFeatures:[]}})).ok,true);const after=await s.state();
- assert.deepEqual(after.playback,before.playback);assert.deepEqual(after.scenes,before.scenes);assert.deepEqual(after.colors,before.colors);assert.deepEqual(after.settings.sidebarFeatures,[]);
- const writes=(await s.operations()).slice(ops).filter(x=>!['status','input','pollInput','systemIdle','bluetoothDevices'].includes(x.op));assert.deepEqual(writes,[]);
- const start=(await s.operations()).length;const invalid=await s.command({op:'settings',settings:{sidebarFeatures:['music'],brightness:18}});assert.equal(invalid.ok,false);assert.deepEqual((await s.operations()).slice(start).filter(x=>!['status','input','pollInput','systemIdle','bluetoothDevices'].includes(x.op)),[]);assert.deepEqual((await s.state()).settings.sidebarFeatures,[]);
+ assert.equal(after.playback.mode,"idle");assert.equal(after.playback.playing,false);assert.deepEqual(after.scenes,before.scenes);assert.deepEqual(after.settings.sidebarFeatures,[]);
+ const writes=(await s.operations()).slice(ops).filter(x=>!['status','input','pollInput','systemIdle','bluetoothDevices'].includes(x.op));assert(writes.some(x=>x.op==="restore"));
+ const addStart=(await s.operations()).length;await s.command({op:"settings",settings:{sidebarFeatures:["studio","codex","music"]}});assert.equal((await s.state()).playback.mode,"idle");assert.deepEqual((await s.operations()).slice(addStart).filter(x=>!["status","input","pollInput","systemIdle","bluetoothDevices"].includes(x.op)),[]);
+ const start=(await s.operations()).length;const invalid=await s.command({op:'settings',settings:{sidebarFeatures:['music'],brightness:18}});assert.equal(invalid.ok,false);assert.deepEqual((await s.operations()).slice(start).filter(x=>!['status','input','pollInput','systemIdle','bluetoothDevices'].includes(x.op)),[]);assert.deepEqual((await s.state()).settings.sidebarFeatures,["studio","codex","music"]);
 });
 test('a native-only old profile keeps active entries without a lighting library',async t=>{
  const dir=await temp(t);await mkdir(path.join(dir,'music-works'));
@@ -50,4 +51,61 @@ test('App removes even default entries and reopens into Feature Center when no s
  assert.deepEqual(f.state.settings.sidebarFeatures,['library','codex']);assert(!f.button('灯光创作'));assert(f.child('FeatureCenter'));
  f.child('FeatureCenter').props.onToggle('music');await f.flush();assert(f.button('演奏模式'));f.unmount();
  const empty=await appDraftFixture({state:{settings:{sidebarFeatures:[]}}});assert(empty.child('FeatureCenter'));assert(empty.button('功能中心'));assert(empty.button('设备'));assert(empty.button('设置'));assert(!empty.button('作品库'));empty.unmount();
+});
+
+test('hidden AI modes are persistently off after removal, stale enables, re-add and legacy restart',async t=>{
+ const dir=await temp(t),store=await new Store(dir).load();
+ await store.settings({codexEnabled:true,claudeEnabled:true,brightness:47});
+ await store.settings({sidebarFeatures:['studio','library']});
+ assert.equal(store.data.settings.codexEnabled,false);assert.equal(store.data.settings.claudeEnabled,false);
+ await store.settings({codexEnabled:true});assert.equal(store.data.settings.codexEnabled,false);
+ await store.settings({sidebarFeatures:['studio','library','codex']});
+ const reopened=await new Store(dir).load();assert.equal(reopened.data.settings.codexEnabled,false);assert.equal(reopened.data.settings.claudeEnabled,false);assert.equal(reopened.data.settings.brightness,47);
+ await reopened.settings({codexEnabled:true});assert.equal(reopened.data.settings.codexEnabled,true);
+ await writeFile(path.join(dir,'sidebar-features.json'),'[]');
+ const upgraded=await new Store(dir).load();assert.equal(upgraded.data.settings.codexEnabled,false);
+ assert.equal(JSON.parse(await readFile(path.join(dir,'library.json'),'utf8')).settings.codexEnabled,false);
+});
+test('removing AI Assistant releases its F-key ownership and re-add does not restart it',async t=>{
+ const s=await fakeService(t,{storedSettings:{codexEnabled:true,sidebarFeatures:['studio','library','codex']}});
+ await s.command({op:'settings',settings:{sidebarFeatures:['studio','library']}});
+ const after=await s.state();assert.equal(after.settings.codexEnabled,false);assert.equal(after.settings.claudeEnabled,false);assert.notEqual(after.playback.mode,'agent');assert.equal(after.codex.keys.enabled,false);
+ await s.command({op:'settings',settings:{sidebarFeatures:['studio','library','codex']}});
+ const added=await s.state();assert.equal(added.settings.codexEnabled,false);assert.equal(added.codex.keys.enabled,false);
+});
+
+test('a partial sidebar/off write cannot resurrect AI when re-added',async t=>{
+ const dir=await temp(t),store=await new Store(dir).load();await store.settings({codexEnabled:true});
+ const commit=store.commit.bind(store);store.commit=async()=>{throw new Error('isolated disk failure');};
+ await assert.rejects(store.settings({sidebarFeatures:[]}),/disk failure/);
+ assert.equal(store.data.settings.codexEnabled,false);assert.deepEqual(JSON.parse(await readFile(path.join(dir,'sidebar-features.json'),'utf8')),[]);
+ await assert.rejects(store.settings({sidebarFeatures:['codex']}),/disk failure/);
+ assert.deepEqual(JSON.parse(await readFile(path.join(dir,'sidebar-features.json'),'utf8')),[]);
+ store.commit=commit;await store.settings({sidebarFeatures:['codex']});
+ assert.equal((await new Store(dir).load()).data.settings.codexEnabled,false);
+});
+
+test('startup retains a safe off runtime while an off-switch write is temporarily unavailable',async t=>{
+ const dir=await temp(t),store=await new Store(dir).load();await store.settings({codexEnabled:true});await writeFile(path.join(dir,'sidebar-features.json'),'[]');
+ const broken=new Store(dir);broken.commit=async()=>{throw new Error('disk unavailable')};await broken.load();
+ assert.equal(broken.data.settings.codexEnabled,false);assert(broken.warning);assert(broken.pendingFeatureOffCommit);
+ await assert.rejects(broken.settings({sidebarFeatures:['codex']}),/disk unavailable/);
+});
+test('native ON files must be durably off before a hidden tool can be added, including after restart',async t=>{
+ const dir=await temp(t);await writeFile(path.join(dir,'sidebar-features.json'),'[]');await writeFile(path.join(dir,'drag-convert.json'),JSON.stringify({enabled:true,trigger:'shift'}));
+ let store=await new Store(dir).load();await assert.rejects(store.settings({sidebarFeatures:['drag-convert']}),/尚未完成关闭/);
+ store=await new Store(dir).load();await assert.rejects(store.settings({sidebarFeatures:['drag-convert']}),/尚未完成关闭/);
+ await writeFile(path.join(dir,'drag-convert.json'),JSON.stringify({enabled:false,trigger:'shift'}));await store.settings({sidebarFeatures:['drag-convert']});assert.deepEqual(store.data.settings.sidebarFeatures,['drag-convert']);
+});
+test('delayed activation requests cannot restart removed lighting tools or games',async t=>{
+ const s=await fakeService(t,{storedSettings:{sidebarFeatures:['studio','library','codex','game']}});
+ await s.command({op:'settings',settings:{sidebarFeatures:['library']}});
+ for(const req of [{op:'nativeLighting',mode:1},{op:'audioStart'},{op:'gameStart',gameType:'snake'},{op:'play',colors:Array(84).fill('#334455'),animation:{effect:'static'}},{op:'preview',colors:Array(84).fill('#334455')}]) {
+  const result=await s.command(req);assert.equal(result.ok,false);assert.equal((await s.state()).playback.mode,'idle');
+ }
+});
+
+test('legacy native settings without enabled use the same off default when re-added',async t=>{
+ const dir=await temp(t);await mkdir(path.join(dir,'keyboard-pocket'));await writeFile(path.join(dir,'sidebar-features.json'),'[]');await writeFile(path.join(dir,'keyboard-pocket/settings.json'),JSON.stringify({previewEnabled:true}));
+ const store=await new Store(dir).load();await store.settings({sidebarFeatures:['keyboard-pocket']});assert.deepEqual(store.data.settings.sidebarFeatures,['keyboard-pocket']);
 });

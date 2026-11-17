@@ -65,6 +65,15 @@ final class TypingSoundEngine {
             check("untrusted dictation stop rejected",!TypingDictationCompletion.confirmed(value))
         }
         check("confirmed stop accepts idle and finishing",TypingDictationCompletion.confirmed(["released":true,"observedState":"idle"]) && TypingDictationCompletion.confirmed(["released":true,"observedState":"finishing"]))
+        _=call("save",["patch":["enabled":true,"volume":43]])
+        host.setFeatureAdded(false)
+        check("feature center stops sounds",call("status")["state"] as? String=="off")
+        _=call("save",["patch":["enabled":true]])
+        check("hidden feature rejects enable",(call("status")["preferences"] as? [String:Any])?["enabled"] as? Bool==false)
+        host.setPaused("inactive",active:true);host.setPaused("inactive",active:false);host.setFeatureAdded(true)
+        check("re-add and session recovery keep off",call("status")["state"] as? String=="off")
+        let disk=try JSONSerialization.jsonObject(with:Data(contentsOf:temp.appendingPathComponent("data/typing-sound-preferences.json"))) as! [String:Any]
+        check("off persisted, sound preferences retained",disk["enabled"] as? Bool==false && disk["volume"] as? Int==43)
         host.shutdown();check("final shutdown rejects messages",call("preview",["pack":"wood-bamboo"])["error"] as? String=="unavailable")
         print(String(data:try JSONSerialization.data(withJSONObject:["checks":checks,"passed":checks.allSatisfy{$0["passed"] as? Bool==true},"count":checks.count,"usesRealInputOrAudio":false],options:[.sortedKeys]),encoding:.utf8)!)
         if !checks.allSatisfy({$0["passed"] as? Bool==true}) {exit(1)}

@@ -8,3 +8,10 @@ export function validateSidebarFeatures(value) {
 export function sidebarFeatures(value) {
   try { return validateSidebarFeatures(value); } catch { return [...DEFAULT_SIDEBAR_FEATURES]; }
 }
+
+// Hiding AI Assistant also disables both integrations; re-adding only restores
+// the entry. All bindings and provider preferences remain unchanged.
+export function deactivateHiddenFeatures(settings) {
+  if (sidebarFeatures(settings.sidebarFeatures).includes('codex')) return settings;
+  return {...settings,codexEnabled:false,claudeEnabled:false};
+}

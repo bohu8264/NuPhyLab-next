@@ -8,7 +8,7 @@ It includes drawing, animation, key-triggered effects, games, audio-reactive lig
 
 ## Feature Center and Library
 
-For new users, the sidebar starts with Lighting Studio, Library and AI Assistant. Upgrading keeps entries for tools already used or enabled; you can remove them at any time. Open **Feature Center** to add Lighting Games, Typing Sounds, Music Mode, Smart Selection, Drag Convert or Keyboard Pocket. The three default entries can also be removed. Feature Center, Device and Settings always remain available. Removing an entry only hides it; content, preferences and feature switches stay as they are.
+For new users, the sidebar starts with Lighting Studio, Library and AI Assistant. Upgrading keeps entries for tools already used or enabled; you can remove them at any time. Open **Feature Center** to add Lighting Games, Typing Sounds, Music Mode, Smart Selection, Drag Convert or Keyboard Pocket. The three default entries can also be removed. Feature Center, Device and Settings always remain available. Removing a tool turns it and its shortcuts off while retaining its content and preferences. Re-add it, then enable it when needed.
 
 **Library** brings lighting and music together, with All, Lighting and Music filters. Music Mode opens this same library. Editing and saving updates the original work. If its editor is not in the sidebar, choose **Add Music Mode & edit** or **Add Lighting Studio & edit**. Music works support preview, duplication, renaming, project export and recovery from Recently deleted. Export WAV audio from the music editor.
 
@@ -84,11 +84,11 @@ For spoken questions, enable **Hold to speak** and allow Microphone and Speech R
 
 Selected text, questions and any enabled images needed for the selected action are sent to your configured model service. API keys stay in the local Keychain. Selection and voice are disabled by default for new users.
 
-[Full setup and usage](docs/SELECTION.md) · [Models, images and permissions](docs/SELECTION_R2.md) · [Interface and translation languages](docs/SELECTION_LANGUAGES.md) · [What's new in 1.2.48](docs/RELEASE_1.2.48.md)
+[Full setup and usage](docs/SELECTION.md) · [Models, images and permissions](docs/SELECTION_R2.md) · [Interface and translation languages](docs/SELECTION_LANGUAGES.md) · [What's new in 1.2.49](docs/RELEASE_1.2.49.md)
 
 ## Voice Input
 
-Add Voice Input in Feature Center, configure your speech and text services, then enable it. Press right Option to speak, select a text field and press again to finish; the shortcut is customizable. Choose a microphone, add or delete dictionary entries, and edit, save or restore the complete refinement instructions. Upgrades preserve custom rules. Audio goes to the configured speech service, and temporary recordings are deleted after processing. [Voice Input guide](docs/VOICE_INPUT.md)
+Add Voice Input in Feature Center, configure your speech and text services, then enable it. Press right Option to speak, select a text field and press again to finish; record different keys or a mouse side button if preferred. If no text field is found or insertion is unavailable, the result is copied for ⌘V pasting. Choose a microphone, add or delete dictionary entries, and edit, save or restore the complete refinement instructions. Upgrades preserve custom rules. Audio goes to the configured speech service, and temporary recordings are deleted after processing. [Voice Input guide](docs/VOICE_INPUT.md)
 
 ## Keyboard Pocket
 

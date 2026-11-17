@@ -25,13 +25,14 @@ enum LabKeychain {
 @MainActor final class SelectionLab:NSObject,NSWindowDelegate,SelectionFeature {
  let directory:URL;var showSettings:(()->Void)?;var requestRelaunch:(()->Bool)?;var recordingChanged:((Bool)->Void)?;var voiceActivityChanged:((Bool)->Void)?
  var fileDragActive:(()->Bool)?
+ var shortcutSaveIssue:((InputBinding)->String?)?
  private var language=AppLanguage.zh
  private var stopping=false
  private var keyboardReservedKeys=Set<UInt32>()
  private var shortcutConflict:Bool{preferences.shortcut.conflictsWithKeyboard(keyboardReservedKeys)}
  func updateReservedKeys(_ codes:Set<UInt32>){guard !stopping,codes != keyboardReservedKeys else{return};keyboardReservedKeys=codes;if shortcutConflict{cancel()};do{try register(preferences)}catch{registrationIssue=Self.friendly(error,language:language)}}
- var selectionReservedBinding:InputBinding? { preferences.enabled ? preferences.shortcut.binding : nil }
- var dragReservedTrigger:String? { preferences.enabled ? preferences.shortcut.dragReservation : nil }
+ var selectionReservedBinding:InputBinding? { (featureAdded && preferences.enabled) ? preferences.shortcut.binding : nil }
+ var dragReservedTrigger:String? { (featureAdded && preferences.enabled) ? preferences.shortcut.dragReservation : nil }
  var isBusy:Bool{recordingReply != nil || !overlays.isEmpty || task != nil || utilityTask != nil || voicePending}
  private var freshPermissions:LabPermissionSnapshot?;private var freshAt:TimeInterval=0;private var nextProbe:TimeInterval=0;private var permissionProbe:Process?
  private var observedLocalPermissions:LabPermissionSnapshot?
@@ -72,8 +73,10 @@ enum LabKeychain {
  private var selectionPermissions:Bool{LabPermissionSnapshot.current().missing(voice:false).isEmpty}
  private var voicePermissions:Bool{AVCaptureDevice.authorizationStatus(for:.audio) == .authorized && SFSpeechRecognizer.authorizationStatus() == .authorized}
  private var missing:[String]{LabPermissionSnapshot.current().missing(voice:preferences.voiceEnabled)}
- init(directory:URL){
-  self.directory=directory;super.init()
+ private var featureAdded=true
+ private var featureDisablePending=false
+ init(directory:URL,featureAdded:Bool=true){
+  self.directory=directory;self.featureAdded=featureAdded;super.init()
   if let data=try? Data(contentsOf:preferencesURL),let value=try? JSONDecoder().decode(LabPreferences.self,from:data){
    preferences=value
    if let saved=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any],
@@ -113,6 +116,17 @@ enum LabKeychain {
   let timer=Timer(timeInterval:0.5,repeats:true){[weak self] _ in MainActor.assumeIsolated{self?.pollPermissions()}};RunLoop.main.add(timer,forMode:.common);monitor=timer
   do{try register(preferences)}catch{registrationIssue=Self.friendly(error,language:language)}
  }
+ func setFeatureAdded(_ added:Bool){
+  let removed = !added && (featureAdded || preferences.enabled)
+  featureAdded=added
+  if removed {utilityTask?.cancel();utilityTask=nil}
+  if !added {
+   if preferences.enabled {featureDisablePending=true}
+   preferences.enabled=false
+   cancel();cancelShortcutRecording();input.stop()
+  }
+  if featureDisablePending {do{try persist(preferences);featureDisablePending=false}catch{registrationIssue=Self.friendly(error,language:language);featureAdded=false}}
+ }
  func updateLanguage(_ value:AppLanguage){
   guard language != value else{return}
   language=value;viewState.language=value;voice.language=value
@@ -130,7 +144,7 @@ enum LabKeychain {
  private func register(_ value:LabPreferences)throws {
   try value.shortcut.validate();input.stop();registrationIssue=""
   permissionSignature=String(describing:LabPermissionSnapshot.current()) + "/" + configurationIssue(value) + "/" + String(describing:keyboardReservedKeys.sorted())
-  guard !stopping,!externalShortcutRecording,value.enabled,recordingReply==nil else{return}
+  guard featureAdded,!stopping,!externalShortcutRecording,value.enabled,recordingReply==nil else{return}
   guard !value.shortcut.conflictsWithKeyboard(keyboardReservedKeys) else{throw LabIssue("此按键正用于 AI 键盘控制，框选快捷键已暂停。请选择其他按键或带修饰键的组合，或关闭 AI 模式。")}
   let configurationError=configurationIssue(value)
   guard configurationError.isEmpty else{registrationIssue=configurationError;return}
@@ -205,14 +219,14 @@ enum LabKeychain {
   case "disableVoice":disableVoice();reply(status(),nil)
   case "save":
    guard let raw=body["preferences"],let data=try? JSONSerialization.data(withJSONObject:raw) else{throw LabIssue("设置格式无效。")}
-   let next=try JSONDecoder().decode(LabPreferences.self,from:data);try next.shortcut.validate();let account=try next.configuration.credentialAccount()
+   var next=try JSONDecoder().decode(LabPreferences.self,from:data);if !featureAdded {next.enabled=false};try next.shortcut.validate();if next.enabled,let issue=shortcutSaveIssue?(next.shortcut.binding){throw LabIssue(issue)};let account=try next.configuration.credentialAccount()
    guard next.configuration.model.utf8.count<=256,!next.configuration.model.contains(where:{$0.isWhitespace}),(1...16384).contains(next.configuration.maximumOutputTokens) else{throw LabIssue("模型 ID 或输出上限无效。")}
    let newlyEnabled=(next.enabled && !preferences.enabled) || (next.voiceEnabled && !preferences.voiceEnabled);cancel();utilityTask?.cancel();do{try register(next)}catch{try? register(preferences);throw error}
    do{if let key=body["apiKey"] as? String,!key.isEmpty{try LabKeychain.write(key,account:account)};try persist(next)}catch{try? register(preferences);throw error}
    preferences=next;viewState.translationLanguage=next.translationLanguage;viewState.availableActions=next.availableActions;do{try register(next)}catch{registrationIssue=Self.friendly(error,language:language)};reply(status(),nil)
    if next.enabled && !configurationIssue(next).isEmpty{showSettings?()}
    else if next.enabled && newlyEnabled && !missing.isEmpty{showPermissionPanel()}
-  case "recordShortcut":beginShortcutRecording(reply:reply)
+  case "recordShortcut":guard featureAdded else{reply(status(),nil);return};beginShortcutRecording(reply:reply)
   case "cancelRecording":cancelShortcutRecording();reply(status(),nil)
   case "deleteKey":cancel();utilityTask?.cancel();try LabKeychain.delete(preferences.configuration.credentialAccount());reply(status(),nil)
   case "permission":guard let id=body["permission"] as? String,["accessibility","inputMonitoring","screenRecording","microphone","speechRecognition"].contains(id) else{throw LabIssue("权限类型无效。")};requestPermission(id);reply(status(),nil)
@@ -255,7 +269,7 @@ enum LabKeychain {
  func cancelShortcutRecording(){guard let reply=recordingReply else{return};recordingReply=nil;recordingTimer?.invalidate();recordingTimer=nil;recordedShortcut=nil;sideRecorder.cancel();recordingChanged?(false);try? register(preferences);reply(nil,LabText.text("已取消快捷键录制。",language:language))}
  private func finishShortcutRecording(_ shortcut:LabShortcut){guard let reply=recordingReply else{return};recordingReply=nil;recordingTimer?.invalidate();recordingTimer=nil;recordedShortcut=nil;sideRecorder.cancel()
   defer{recordingChanged?(false)}
-  do{try shortcut.validate();guard !shortcut.conflictsWithKeyboard(keyboardReservedKeys) else{throw LabIssue("此按键正在用于 AI 键盘控制，请选择其他按键或带修饰键的组合。")};var next=preferences;next.shortcut=shortcut;try register(next);try persist(next);preferences=next;reply(status(),nil)}catch{try? register(preferences);reply(nil,Self.friendly(error,language:language))}
+  do{try shortcut.validate();guard !shortcut.conflictsWithKeyboard(keyboardReservedKeys) else{throw LabIssue("此按键正在用于 AI 键盘控制，请选择其他按键或带修饰键的组合。")};if let issue=shortcutSaveIssue?(shortcut.binding){throw LabIssue(issue)};var next=preferences;next.shortcut=shortcut;try register(next);try persist(next);preferences=next;reply(status(),nil)}catch{try? register(preferences);reply(nil,Self.friendly(error,language:language))}
  }
  func consumeLocal(_ event:NSEvent)->Bool{
   if SelectionSyntheticInput.isPocketTransfer(event.cgEvent){return false}
@@ -268,7 +282,7 @@ enum LabKeychain {
    if event.type == .keyDown,!event.isARepeat{var flags=LabShortcut.modifiers(event.modifierFlags);if InputBinding.functionKeyCodes.contains(event.keyCode){flags &= ~(1<<23)};recordedShortcut=LabShortcut(keyCode:UInt32(event.keyCode),modifiers:flags,label:LabShortcut.label(code:event.keyCode,modifiers:flags))}
    if event.type == .keyUp,let shortcut=recordedShortcut,shortcut.keyCode==event.keyCode{finishShortcutRecording(shortcut)};return true
   }
-  guard preferences.enabled,!shortcutConflict,preferences.shortcut.buttonIndex==nil,preferences.shortcut.modifierOnly != true,UInt32(event.keyCode)==preferences.shortcut.keyCode else{return false}
+  guard featureAdded,preferences.enabled,!shortcutConflict,preferences.shortcut.buttonIndex==nil,preferences.shortcut.modifierOnly != true,UInt32(event.keyCode)==preferences.shortcut.keyCode else{return false}
   if event.type == .keyUp,hold.keyboard{shortcutReleased();return true}
   var flags=LabShortcut.modifiers(event.modifierFlags);if InputBinding.functionKeyCodes.contains(event.keyCode){flags &= ~(1<<23)}
   guard event.type == .keyDown,flags==preferences.shortcut.modifiers else{return false};if !event.isARepeat{shortcutBegan()};return true
@@ -306,7 +320,7 @@ enum LabKeychain {
  private func shortcutReleased(){if hold.releaseKeyboard(){commitSelection()};overlayFeedback()}
  private func startFromShortcut(held:Bool=false){
   guard !externalShortcutRecording,fileDragActive?() != true else{return}
-  guard preferences.enabled,!held || !shortcutConflict else{return};guard configurationIssue(preferences).isEmpty else{cancel();showSettings?();return};guard !IsSecureEventInputEnabled() else{return};guard missing.isEmpty else{showPermissionPanel();return}
+  guard featureAdded,preferences.enabled,!held || !shortcutConflict else{return};guard configurationIssue(preferences).isEmpty else{cancel();showSettings?();return};guard !IsSecureEventInputEnabled() else{return};guard missing.isEmpty else{showPermissionPanel();return}
   cancel();hold.keyboard=held;pendingAction=preferences.defaultAction;viewState.action=pendingAction
   for screen in NSScreen.screens {
    let window=SelectionOverlayWindow(contentRect:screen.frame,styleMask:[.borderless,.nonactivatingPanel],backing:.buffered,defer:false)
@@ -353,7 +367,7 @@ enum LabKeychain {
  }
  private func switchAction(_ action:LabAction){guard captureReady,preferences.availableActions.contains(action) else{return};voice.cancel();voiceToken=nil;voicePending=false;viewState.action=action;viewState.question="";viewState.showQuestion=false;speechFailed=false;cancelRequest();viewState.issue="";modeTask?.cancel();let token=generation;modeTask=Task{try? await Task.sleep(for:.milliseconds(280));guard !Task.isCancelled,self.generation==token else{return};self.send(action.rawValue)}}
  private func send(_ action:String){
-  guard !viewState.busy,preferences.enabled,captureReady else{return}
+  guard featureAdded,!viewState.busy,preferences.enabled,captureReady else{return}
   if action=="extract"{viewState.answer=viewState.text;viewState.issue="";return}
   let chosen:SelectionAction
   if let mode=LabAction(rawValue:action){chosen=mode.selectionAction(translationTarget:preferences.translationLanguage.englishName,instruction:mode.keepsSpokenIntent ? viewState.question:"")}

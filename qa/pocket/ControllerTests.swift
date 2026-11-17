@@ -40,6 +40,17 @@ import WebKit
         let before=controller.settings.slotKeyCodes
         check(send("settings",["values":["slotKeyCodes":[18,18,20,21,23,22,26,28,25]]]) != nil,"duplicate keys rejected")
         check(controller.settings.slotKeyCodes==before,"invalid update preserves settings")
+        let savedSlots=controller.store.slots.compactMap{$0?.id},savedKeys=controller.settings.slotKeyCodes
+        controller.setFeatureAdded(false)
+        check(!controller.settings.enabled && !controller.hotkeyReady,"feature center removal disables pocket")
+        controller.resume();check(!controller.hotkeyReady,"resume keeps hidden pocket off")
+        _=send("settings",["values":["enabled":true]])
+        check(!controller.settings.enabled,"hidden page cannot enable pocket")
+        let persisted=try JSONDecoder().decode(PocketSettings.self,from:Data(contentsOf:base.appendingPathComponent("valid/settings.json")))
+        check(!persisted.enabled && persisted.slotKeyCodes==savedKeys,"off and original keys survive restart")
+        controller.setFeatureAdded(true);check(!controller.settings.enabled,"re-add stays off")
+        check(controller.store.slots.compactMap{$0?.id}==savedSlots,"removal retains slots")
+        _=send("settings",["values":["enabled":true]])
         controller.conflictIssue={_ in "fixture conflict"}
         check(send("settings",["values":["enabled":true]])=="fixture conflict","conflict rejected")
         controller.conflictIssue={_ in nil}

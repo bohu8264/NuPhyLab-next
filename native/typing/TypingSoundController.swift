@@ -23,6 +23,8 @@ import IOKit.hid
     private var audioReady = false
     private var previewing = false
     private var stopped = false
+    private var featureAdded=true
+    private var featureDisablePending=false
     private var issue = ""
     private var nextRetry = 0.0
     private var failures = 0
@@ -32,10 +34,10 @@ import IOKit.hid
     private let secureInput: ()->Bool
     var inputMonitoring: Bool { inputAccess() }
 
-    init(directory: URL, resources: URL = Bundle.main.resourceURL!, automaticallyObserve: Bool = true,
+    init(directory: URL, resources: URL = Bundle.main.resourceURL!, automaticallyObserve: Bool = true, featureAdded: Bool = true,
          inputAccess: @escaping ()->Bool = { IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted },
          secureInput: @escaping ()->Bool = { IsSecureEventInputEnabled() }) {
-        self.inputAccess=inputAccess;self.secureInput=secureInput
+        self.inputAccess=inputAccess;self.secureInput=secureInput;self.featureAdded=featureAdded
         root=resources.appendingPathComponent("typing-sounds")
         file=directory.appendingPathComponent("typing-sound-preferences.json")
         do {
@@ -91,6 +93,19 @@ import IOKit.hid
         ["preferences":preferences.dictionary,"state":state,"reason":reason,"inputMonitoring":inputMonitoring,
          "previewing":previewing,"catalog":catalogJSON,"issue":issue]
     }
+    func setFeatureAdded(_ added:Bool) {
+        let changed=featureAdded != added;featureAdded=added
+        if !added {
+            if preferences.enabled {featureDisablePending=true}
+            preferences.enabled=false
+            if changed || tap != nil || preparing || audioReady || previewing {interrupt()}
+        }
+        if featureDisablePending {
+            do {try JSONEncoder().encode(preferences).write(to:file,options:.atomic);featureDisablePending=false}
+            catch {issue="configuration";featureAdded=false}
+        }
+        if featureAdded && changed {reconcile()}
+    }
     func setPaused(_ source: String, active: Bool) {
         let before=suspended
         if active { suspended.insert(source) } else { suspended.remove(source) }
@@ -107,7 +122,7 @@ import IOKit.hid
         if lastPermission != permission { lastPermission=permission;failures=0;nextRetry=0 }
         let secure=secureInput()
         if secure != protectedInput { protectedInput=secure;interrupt();if !secure { failures=0;nextRetry=0 } }
-        guard preferences.enabled else { return }
+        guard featureAdded, preferences.enabled else { return }
         guard !protectedInput,suspended.isEmpty else {
             if tap != nil || preparing || audioReady || previewing { interrupt() };return
         }
@@ -189,7 +204,8 @@ import IOKit.hid
         case "save":
             do {
                 guard let patch=body["patch"] as? [String:Any],let catalog else { throw TypingSoundError.invalidSettings }
-                let next=try preferences.patch(patch,ids:Set(catalog.packs.map(\.id)))
+                var next=try preferences.patch(patch,ids:Set(catalog.packs.map(\.id)))
+                if !featureAdded {next.enabled=false}
                 try FileManager.default.createDirectory(at:file.deletingLastPathComponent(),withIntermediateDirectories:true)
                 try JSONEncoder().encode(next).write(to:file,options:.atomic)
                 try FileManager.default.setAttributes([.posixPermissions:0o600],ofItemAtPath:file.path)
@@ -205,7 +221,7 @@ import IOKit.hid
             failures=0;nextRetry=0;reconcile();reply(snapshot(),nil)
         case "refresh": failures=0;nextRetry=0;issue="";reconcile();reply(snapshot(),nil)
         case "preview":
-            guard suspended.isEmpty,!secureInput(),let id=body["pack"] as? String,
+            guard featureAdded,suspended.isEmpty,!secureInput(),let id=body["pack"] as? String,
                   let pack=catalog?.packs.first(where:{$0.id==id}) else { reply(nil,"unavailable");return }
             let groups:[TypingKeyGroup]
             if let raw=body["group"] { guard let name=raw as? String,let group=TypingKeyGroup(rawValue:name) else {reply(nil,"settings");return};groups=[group] }

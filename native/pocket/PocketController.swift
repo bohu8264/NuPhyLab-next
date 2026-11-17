@@ -55,11 +55,13 @@ import Carbon
     var activityChanged: ((Bool) -> Void)?
     var isInteracting: Bool { recording != nil || panel.isVisible || activeAlert != nil || fileDialog != nil }
     var isBusy: Bool { recording != nil || transferPending || pending != nil || activeAlert != nil || fileDialog != nil }
-    private var available: Bool { settings.enabled && !suspended && !closed && loadIssue.isEmpty && conflictIssue(settings) == nil }
+    private var featureAdded=true
+    private var featureDisablePending=false
+    private var available: Bool { featureAdded && settings.enabled && !suspended && !closed && loadIssue.isEmpty && conflictIssue(settings) == nil }
     private var operational: Bool { recording == nil && available && canActivate() }
 
-    init(directory: URL, allowSystemInteraction: Bool = true) {
-        root = directory; isQA = !allowSystemInteraction
+    init(directory: URL, allowSystemInteraction: Bool = true, featureAdded: Bool = true) {
+        root = directory; isQA = !allowSystemInteraction; self.featureAdded=featureAdded
         shortcutRecorder = PocketShortcutRecorder(allowSystemInteraction:allowSystemInteraction,
             ownsForeground:{ !allowSystemInteraction || NSWorkspace.shared.frontmostApplication?.processIdentifier == ProcessInfo.processInfo.processIdentifier })
         super.init()
@@ -102,6 +104,16 @@ import Carbon
         }
     }
     func updateLanguage(english: Bool) { self.english = english; PocketL10n.english = english;panel.updateLanguage(english:english); emit() }
+    func setFeatureAdded(_ added:Bool) {
+        featureAdded=added
+        if !added {
+            if settings.enabled {featureDisablePending=true}
+            settings.enabled=false
+            cancelShortcutRecording();cancelTransfers();hotkeys.stop();hotkeyReady=false;registration="";stopObserver()
+        }
+        if featureDisablePending {do{try saveSettings();featureDisablePending=false}catch{report(error);featureAdded=false}}
+        refreshAuthorization()
+    }
     func suspend() {
         cancelShortcutRecording()
         guard !suspended else { return }; suspended = true
@@ -209,7 +221,7 @@ import Carbon
         do {
             switch op {
             case "settings":
-                var next=settings;next.apply(body["values"] as? [String:Any] ?? [:]);try next.validate()
+                var next=settings;next.apply(body["values"] as? [String:Any] ?? [:]);if !featureAdded {next.enabled=false};try next.validate()
                 if next.enabled,let issue=conflictIssue(next) {reply(nil,issue);return}
                 let previous=settings;settings=next
                 do {try saveSettings()}catch{settings=previous;throw error}
@@ -236,7 +248,7 @@ import Carbon
               kind != "slot" || (0..<9).contains(body["index"] as? Int ?? -1) else {
             reply(nil,english ? "Open Keyboard Pocket settings to record a shortcut." : "请在键盘口袋页面录制快捷键。");return
         }
-        guard !closed,!suspended,store != nil,loadIssue.isEmpty,canRecordShortcut() else {
+        guard featureAdded,!closed,!suspended,store != nil,loadIssue.isEmpty,canRecordShortcut() else {
             reply(nil,english ? "Finish the current operation before recording." : "请完成当前操作后再录制快捷键。");return
         }
         cancelShortcutRecording();cancelTransfers();hotkeys.stop();hotkeyReady=false;registration="";stopObserver()

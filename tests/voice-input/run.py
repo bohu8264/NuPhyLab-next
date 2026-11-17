@@ -5,7 +5,7 @@ p=argparse.ArgumentParser();p.add_argument('--output',required=True);p.add_argum
 base=sorted((root/'native/voice-input').glob('*.swift'))
 base=[str(x) for x in base if x.name not in ['VoiceInputController.swift','VoiceFormalIntegration.swift']]
 extra=['native/voice-input/VoiceFormalIntegration.swift','native/selection/InputModifiers.swift','native/selection/InputBinding.swift','native/pocket/PocketSettings.swift','native/pocket/PocketL10n.swift','native/pocket/PocketConflictPolicy.swift']
-tests=a.only or ['APITests','HotkeyTests','NativePolicyTests','AudioPreparationTests','CaptureStartupTests','AudioPipelineTests','LongAudioTests','ControllerTests']
+tests=a.only or ['APITests','HotkeyTests','NativePolicyTests','AudioPreparationTests','CaptureStartupTests','AudioPipelineTests','LongAudioTests','ControllerTests','ClipboardTests']
 def run(name):
  sources=base+([str(root/x) for x in extra]+[str(root/'native/voice-input/VoiceInputController.swift')] if name=='ControllerTests' else [])
  cmd=['swiftc','-swift-version','5','-O']

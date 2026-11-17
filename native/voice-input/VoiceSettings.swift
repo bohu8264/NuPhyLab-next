@@ -27,6 +27,9 @@ struct VoiceSettings: Codable, Equatable {
     var sharedKey = true
     var shortcutKeyCode: UInt16 = 61
     var shortcutModifiers: UInt64 = 0
+    var shortcutMouseButton: UInt32? = nil
+    var shortcutMouseModifiers: UInt64? = nil
+    var activeShortcutModifiers:UInt64 {shortcutMouseButton == nil ? shortcutModifiers:(shortcutMouseModifiers ?? shortcutModifiers)}
     var dictionary: [String] = []
     var customCleanupPrompt: String? = nil
     var allowLegacyCredentials = false
@@ -128,11 +131,12 @@ struct VoiceSettings: Codable, Equatable {
             }
         }
         let modifierKeys: Set<UInt16> = [54,55,56,58,59,60,61,62,63]
-        guard value.shortcutKeyCode < 128,
-              ![53,57].contains(value.shortcutKeyCode),
-              value.shortcutModifiers & ~UInt64(0x1E0000) == 0,
-              !modifierKeys.contains(value.shortcutKeyCode) || value.shortcutModifiers == 0 else {
-            throw VoiceConfigurationError.invalid("请选择普通按键、组合键，或单独的左/右修饰键；Esc 和 Caps Lock 保留。")
+        let mouseValid=value.shortcutMouseButton.map{(3...31).contains($0)} ?? false
+        let keyboardValid=value.shortcutKeyCode < 128 && ![53,57].contains(value.shortcutKeyCode) &&
+            (!modifierKeys.contains(value.shortcutKeyCode) || value.shortcutModifiers == 0)
+        guard value.activeShortcutModifiers & ~UInt64(0x1E0000) == 0,
+              value.shortcutMouseButton == nil ? keyboardValid : mouseValid else {
+            throw VoiceConfigurationError.invalid("请选择键盘按键、组合键或鼠标侧键；鼠标左键、右键、中键、Esc 和 Caps Lock 保留。")
         }
         guard value.dictionary.count <= 100 else {
             throw VoiceConfigurationError.invalid("语音输入词库最多 100 个词条。")
@@ -155,7 +159,7 @@ struct VoiceSettings: Codable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case asrEndpoint, asrModel, asrProvider, asrMode, realtimeModel, speculativeCleanup, cleanupEndpoint, cleanupModel, cleanupProtocol
-        case cleanupServiceTier, sharedKey, shortcutKeyCode, shortcutModifiers, dictionary, microphoneUID, allowLegacyCredentials, customCleanupPrompt
+        case cleanupServiceTier, sharedKey, shortcutKeyCode, shortcutModifiers, shortcutMouseButton, shortcutMouseModifiers, dictionary, microphoneUID, allowLegacyCredentials, customCleanupPrompt
     }
     init() {}
     init(from decoder: Decoder) throws {
@@ -174,6 +178,8 @@ struct VoiceSettings: Codable, Equatable {
         sharedKey = try c.decodeIfPresent(Bool.self, forKey: .sharedKey) ?? sharedKey
         shortcutKeyCode = try c.decodeIfPresent(UInt16.self, forKey: .shortcutKeyCode) ?? shortcutKeyCode
         shortcutModifiers = try c.decodeIfPresent(UInt64.self, forKey: .shortcutModifiers) ?? shortcutModifiers
+        shortcutMouseButton = try c.decodeIfPresent(UInt32.self, forKey: .shortcutMouseButton)
+        shortcutMouseModifiers = try c.decodeIfPresent(UInt64.self, forKey: .shortcutMouseModifiers)
         dictionary = try c.decodeIfPresent([String].self, forKey: .dictionary) ?? dictionary
         customCleanupPrompt = try c.decodeIfPresent(String.self, forKey: .customCleanupPrompt)
         microphoneUID = try c.decodeIfPresent(String.self, forKey: .microphoneUID) ?? ""

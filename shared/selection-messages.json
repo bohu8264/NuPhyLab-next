@@ -264,5 +264,6 @@
   "启用的框选动作": "Enabled selection actions",
   "勾选想用的动作，滚轮只切换已勾选项。至少保留一个。": "Choose the actions to include when scrolling. Keep at least one enabled.",
   "至少保留一个动作。": "Keep at least one action enabled.",
-  "此动作已关闭，请先勾选。": "This action is disabled. Enable it first."
+  "此动作已关闭，请先勾选。": "This action is disabled. Enable it first.",
+  "此鼠标侧键已用于语音输入，请更换其中一个快捷键。": "This mouse side button is used by Voice Input. Change one of the shortcuts."
 }

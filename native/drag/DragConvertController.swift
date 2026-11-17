@@ -28,6 +28,8 @@ final class DragConvertController {
     private let file: URL
     private let historyFile: URL
     private var suspended=false
+    private var featureAdded=true
+    private var featureDisablePending=false
     private let observeDrags:Bool
     private var job: DragJobControl?
     private var currentAction = ""
@@ -43,8 +45,8 @@ final class DragConvertController {
     private var loadIssue = ""
     var isFileDragActive: Bool { watcher.isFileDragActive || panel.isAwaitingDrop }
     var isInteracting: Bool { panel.isVisible }
-    init(directory: URL, observeDrags:Bool=true) {
-        self.observeDrags=observeDrags
+    init(directory: URL, observeDrags:Bool=true, featureAdded:Bool=true) {
+        self.observeDrags=observeDrags;self.featureAdded=featureAdded
         file = directory.appendingPathComponent("drag-convert.json")
         historyFile = directory.appendingPathComponent("drag-convert-history.json")
         if let data = try? Data(contentsOf: historyFile), data.count <= 2_000_000,
@@ -71,11 +73,11 @@ final class DragConvertController {
         watcher.cancelled = { [weak self] in self?.panel.hideImmediately() }
         panel.onDrop = { [weak self] format, urls in self?.submit(format, urls: urls) ?? false }
         panel.visibilityChanged = { [weak self] active in self?.activityChanged?(active) }
-        if preferences.enabled && observeDrags { watcher.start() }
+        if featureAdded && preferences.enabled && observeDrags { watcher.start() }
     }
     func updateLanguage(english: Bool) { self.english = english }
     private func showWheel() -> Bool {
-        guard preferences.enabled, !suspended, !inputPermissionNeeded, !triggerConflict, canPresent(), !busy else { watcher.ignoreCurrentDrag(); return false }
+        guard featureAdded, preferences.enabled, !suspended, !inputPermissionNeeded, !triggerConflict, canPresent(), !busy else { watcher.ignoreCurrentDrag(); return false }
         let board = NSPasteboard(name: .drag)
         let urls = (board.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
         guard !urls.isEmpty else { return false }
@@ -86,7 +88,7 @@ final class DragConvertController {
         return true
     }
     private func submit(_ format: DragFormat, urls: [URL]) -> Bool {
-        guard preferences.enabled, !suspended, !inputPermissionNeeded, !triggerConflict, canPresent(), !busy, DragFileKind.actions(for: urls).contains(format) else { return false }
+        guard featureAdded, preferences.enabled, !suspended, !inputPermissionNeeded, !triggerConflict, canPresent(), !busy, DragFileKind.actions(for: urls).contains(format) else { return false }
         watcher.ignoreCurrentDrag(); busy = true; completed = 0; results = []
         let groups = format.combinesInputs ? [urls] : urls.map { [$0] }
         total = groups.count; currentAction = format.rawValue
@@ -141,6 +143,7 @@ final class DragConvertController {
             do {
                 guard let object = body["preferences"] as? [String: Any] else { throw DragConvertError.invalidSettings }
                 var next = try JSONDecoder().decode(DragConvertPreferences.self, from: JSONSerialization.data(withJSONObject: object)).validated()
+                if !featureAdded {next.enabled=false}
                 if next.enabled, (next.trigger != preferences.trigger || !preferences.enabled), selectionReservedTrigger() == next.trigger {
                     reply(nil, english ? "This key is used by Smart Selection. Choose another trigger key." : "该按键已用于智能框选，请选择其他触发键。"); return
                 }
@@ -184,9 +187,19 @@ final class DragConvertController {
         try JSONEncoder().encode(next).write(to: file, options: .atomic)
         preferences = next; loadIssue = ""
         watcher.stop()
-        if next.enabled && !suspended && observeDrags { watcher.start() }
+        if featureAdded && next.enabled && !suspended && observeDrags { watcher.start() }
+    }
+    func setFeatureAdded(_ added:Bool) {
+        featureAdded=added
+        if !added {
+            if preferences.enabled {featureDisablePending=true}
+            preferences.enabled=false
+            job?.cancel();watcher.stop();panel.hideImmediately()
+        }
+        if featureDisablePending {do{try save(preferences);featureDisablePending=false}catch{loadIssue=error.localizedDescription;featureAdded=false}}
+        if featureAdded && preferences.enabled && !suspended && observeDrags {watcher.start()}
     }
     func suspend() { suspended=true; watcher.stop(); panel.hideImmediately() }
-    func resume() { suspended=false; if preferences.enabled && observeDrags { watcher.start() } }
+    func resume() { suspended=false; if featureAdded && preferences.enabled && observeDrags { watcher.start() } }
     func shutdown() { suspend() }
 }

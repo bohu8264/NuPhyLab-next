@@ -1,4 +1,5 @@
-import {DEFAULT_SIDEBAR_FEATURES,validateSidebarFeatures} from '../shared/sidebar-features.mjs';
+import {DEFAULT_SIDEBAR_FEATURES,validateSidebarFeatures,deactivateHiddenFeatures} from '../shared/sidebar-features.mjs';
+import {assertNativeFeaturesOffBeforeAdding} from './sidebar-runtime.mjs';
 import {migrateSidebarFeatures} from './sidebar-migration.mjs';
 import {DEFAULT_AMBIENT_LIGHTING,validateAmbientLighting} from '../shared/ambient-lighting.mjs';
 import {getCanvasCount,isKeyboardModel} from '../shared/keyboard-models.mjs';
@@ -316,6 +317,13 @@ export class Store {
     try { sidebar = validateSidebarFeatures(JSON.parse(await readFile(this.sidebarFile, "utf8"))); }
     catch (error) { if (error.code !== "ENOENT") this.warning = "侧栏偏好读取失败，已有内容已保留。"; }
     this.data.settings.sidebarFeatures = sidebar;
+    const settings=deactivateHiddenFeatures(this.data.settings);
+    if (settings.codexEnabled !== this.data.settings.codexEnabled || settings.claudeEnabled !== this.data.settings.claudeEnabled) {
+      this.data={...this.data,settings};
+      this.pendingFeatureOffCommit=true;
+      try {await this.commit(this.data);this.pendingFeatureOffCommit=false;}
+      catch {this.warning="功能已关闭，但关闭状态暂未保存；请检查存储权限后重试。";}
+    }
     return this;
   }
   async saveSidebar(features) {
@@ -374,10 +382,21 @@ export class Store {
   }
   async settings(patch) {
     if (Object.hasOwn(patch, "sidebarFeatures") && Object.keys(patch).length !== 1) throw new Error("请单独保存侧栏设置");
-    const settings = validateSettings(patch, this.data.settings);
-    if (Object.hasOwn(patch, "sidebarFeatures")) await this.saveSidebar(settings.sidebarFeatures);
-    if (Object.keys(patch).every(key => key === "sidebarFeatures")) this.data = { ...this.data, settings };
-    else await this.commit({ ...this.data, settings });
+    if (this.pendingFeatureOffCommit) {await this.commit(this.data);this.pendingFeatureOffCommit=false;}
+    const settings = deactivateHiddenFeatures(validateSettings(patch, this.data.settings));
+    if (Object.hasOwn(patch,"sidebarFeatures")) await assertNativeFeaturesOffBeforeAdding(this.dir,this.data.settings.sidebarFeatures,settings.sidebarFeatures);
+    const nativeSwitchChanged=settings.codexEnabled!==this.data.settings.codexEnabled || settings.claudeEnabled!==this.data.settings.claudeEnabled;
+    if (Object.hasOwn(patch, "sidebarFeatures")) {
+      await this.saveSidebar(settings.sidebarFeatures);
+      // The sidebar file is committed. Gate runtime immediately even if the
+      // second (library) write fails; startup reconciles the off switches again.
+      this.data={...this.data,settings};
+    }
+    if (Object.keys(patch).every(key => key === "sidebarFeatures") && !nativeSwitchChanged) this.data = { ...this.data, settings };
+    else {
+      try {await this.commit({ ...this.data, settings });}
+      catch(error) {if (Object.hasOwn(patch,"sidebarFeatures") && nativeSwitchChanged) this.pendingFeatureOffCommit=true;throw error;}
+    }
     return settings;
   }
   async bestScore(score, type = "snake") {

@@ -89,10 +89,12 @@ enum SelectionPermissionProbe {
     var recordingChanged: ((Bool) -> Void)? { get set }
     var voiceActivityChanged: ((Bool) -> Void)? { get set }
     var fileDragActive: (() -> Bool)? { get set }
+    var shortcutSaveIssue: ((InputBinding) -> String?)? { get set }
     var isBusy: Bool { get }
     var dragReservedTrigger: String? { get }
     var selectionReservedBinding: InputBinding? { get }
     func updateLanguage(_ language: AppLanguage)
+    func setFeatureAdded(_ added:Bool)
     func updateReservedKeys(_ codes: Set<UInt32>)
     func handle(_ body: [String:Any], reply: @escaping (Any?, String?) -> Void)
     func consumeLocal(_ event: NSEvent) -> Bool
@@ -102,11 +104,11 @@ enum SelectionPermissionProbe {
     func refreshAuthorization()
     func shutdown()
 }
-extension SelectionFeature { func setExternalShortcutRecording(_ active:Bool) {} ; var selectionReservedBinding:InputBinding? {nil}; var dragReservedTrigger:String? {nil}; func cancel() { cancel(animatePanel: false) } }
+extension SelectionFeature { func setFeatureAdded(_ added:Bool) {} ; func setExternalShortcutRecording(_ active:Bool) {} ; var selectionReservedBinding:InputBinding? {nil}; var dragReservedTrigger:String? {nil}; func cancel() { cancel(animatePanel: false) } }
 
 @MainActor enum SelectionFeatureFactory {
-    static func make(directory: URL) -> any SelectionFeature {
-        if #available(macOS 14, *) { return SelectionLab(directory: directory) }
+    static func make(directory: URL, featureAdded:Bool=true) -> any SelectionFeature {
+        if #available(macOS 14, *) { return SelectionLab(directory: directory, featureAdded:featureAdded) }
         return UnavailableSelectionFeature()
     }
 }
@@ -117,6 +119,7 @@ extension SelectionFeature { func setExternalShortcutRecording(_ active:Bool) {}
     func updateLanguage(_ language:AppLanguage){self.language=language}
     var showSettings: (() -> Void)?
     var fileDragActive: (() -> Bool)?
+    var shortcutSaveIssue: ((InputBinding) -> String?)?
     var requestRelaunch: (() -> Bool)?
     var recordingChanged: ((Bool) -> Void)?
     var voiceActivityChanged: ((Bool) -> Void)?

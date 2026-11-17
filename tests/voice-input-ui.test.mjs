@@ -77,3 +77,17 @@ test('dictionary and prompt controls lock during recording and use English label
  const f=await voiceFixture({language:'en'});assert(f.button('Add'));assert(f.button('Restore default'));assert(f.button('Save instructions'));await f.emit({phase:'recording'});
  assert(f.field('New dictionary entry').props.disabled);assert(f.field('Refinement instructions text').props.disabled);assert(f.button('Delete entry NuPhy').props.disabled);f.unmount();
 });
+
+test('mouse shortcut recording exposes guidance, updates label and preserves unsaved prompt',async()=>{
+ const f=await voiceFixture();await f.change('整理提示词内容','Keep my draft');assert(f.text(f.nodes()).includes('鼠标侧键'));
+ await f.click('右 Option');assert(f.button('请按键或侧键 · Esc 取消'));
+ await f.emit({shortcutRecording:false,shortcutSaved:true,shortcutLabel:'鼠标侧键 1',settings:{...f.state.settings,shortcutMouseButton:3}});
+ assert(f.button('鼠标侧键 1'));assert.equal(f.field('整理提示词内容').props.value,'Keep my draft');
+ await f.emit({shortcutSaved:false,message:'此快捷键已用于智能框选，请更换其中一个快捷键。'});
+ assert(f.button('鼠标侧键 1'));assert(f.text(f.nodes()).includes('智能框选'));f.unmount();
+});
+test('English mouse shortcut instructions and recorder cancellation',async()=>{
+ const f=await voiceFixture({language:'en'});assert(f.text(f.nodes()).includes('mouse side button'));
+ await f.click('右 Option');assert(f.button('Press a key or side button · Esc cancels'));await f.click('Press a key or side button · Esc cancels');
+ assert(!f.state.shortcutRecording);assert.equal(f.requests.at(-1).action,'cancelShortcut');f.unmount();
+});

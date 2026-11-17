@@ -17,11 +17,13 @@ struct VoiceTarget {
 }
 
 enum VoiceInsertionResult {
-    case verified, dispatched, manual(String)
+    case verified, dispatched, copied, manual(String)
+    var copiedToClipboard:Bool {if case .copied=self{return true};return false}
     var message: String {
         switch self {
         case .verified: return "已插入到原输入框。"
         case .dispatched: return "已发起插入，请在原输入框确认。"
+        case .copied: return "文字已复制到剪贴板，可按 ⌘V 粘贴。"
         case .manual(let reason): return reason
         }
     }
@@ -88,6 +90,8 @@ enum VoiceInsertionPolicy {
 }
 
 @MainActor final class VoiceInsertion {
+    private let clipboard: NSPasteboard
+    init(clipboard: NSPasteboard = .general) { self.clipboard = clipboard }
     private var currentToken: UUID?
     private var invalidationCode: String?
     private var workspaceObserver: NSObjectProtocol?
@@ -228,16 +232,32 @@ enum VoiceInsertionPolicy {
         return .unchanged
     }
     func insert(text: String, target: VoiceTarget?) async -> VoiceInsertionResult {
-        guard !text.isEmpty else { return finishManual("empty_result") }
-        guard let target else { return finishManual(diagnosticCode == "ready" ? "focus_unavailable" : diagnosticCode) }
-        let clipboard = NSPasteboard.general, clipboardBeforeWait = NSPasteboard.general.changeCount
+        guard !Task.isCancelled else { return finishManual("cancelled") }
+        guard !text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty else { return finishManual("empty_result") }
+        let initialClipboardCount=clipboard.changeCount
+        var copiedCount:Int?
+        func copyResult() -> Bool {
+            guard !Task.isCancelled,clipboard.changeCount==initialClipboardCount else{return false}
+            clipboard.clearContents()
+            guard clipboard.setString(text,forType:.string) else{return false}
+            copiedCount=clipboard.changeCount;return true
+        }
+        func fallback(_ code: String) -> VoiceInsertionResult {
+            let result=finishManual(code)
+            guard code != "cancelled",!Task.isCancelled else{return result}
+            // Copy only when insertion has finished failing, not during its wait.
+            // Preserve a newer user copy and leave the result available in the app.
+            if let copiedCount {return clipboard.changeCount==copiedCount ? .copied : result}
+            return copyResult() ? .copied : result
+        }
+        guard let target else { return fallback(diagnosticCode == "ready" ? "focus_unavailable" : diagnosticCode) }
         var ready = false, unavailableCode = "focus_unavailable"
         for _ in 0..<40 {
             if Task.isCancelled { return finishManual("cancelled") }
             switch validate(target) {
             case .changed(let code):
                 if ["application_changed","focus_changed","window_changed","selection_changed"].contains(code),invalidationCode == nil { unavailableCode=code }
-                else { return finishManual(code) }
+                else { return fallback(code) }
             case .unavailable(let code): unavailableCode = code
             case .unchanged:
                 if Self.keysReleased(triggerKeyCode: triggerCode) { ready = true }
@@ -246,16 +266,14 @@ enum VoiceInsertionPolicy {
             if ready { break }
             try? await Task.sleep(nanoseconds: 50_000_000)
         }
-        guard ready, !Task.isCancelled else { return finishManual(Task.isCancelled ? "cancelled" : unavailableCode) }
-        guard clipboard.changeCount == clipboardBeforeWait else { return finishManual("clipboard_changed") }
-        guard case .unchanged = validate(target), Self.keysReleased(triggerKeyCode: triggerCode) else { return finishManual("target_changed_before_paste") }
-        guard let source = CGEventSource(stateID: .privateState), let down = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: true), let up = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: false) else { return finishManual("event_unavailable") }
+        guard ready, !Task.isCancelled else { return fallback(Task.isCancelled ? "cancelled" : unavailableCode) }
+        guard clipboard.changeCount == initialClipboardCount else { return finishManual("clipboard_changed") }
+        guard case .unchanged = validate(target), Self.keysReleased(triggerKeyCode: triggerCode) else { return fallback("target_changed_before_paste") }
+        guard let source = CGEventSource(stateID: .privateState), let down = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: true), let up = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: false) else { return fallback("event_unavailable") }
         // Stop observation immediately before our own edit. Exactly one transport/attempt.
         stopObserving()
-        clipboard.clearContents()
-        guard clipboard.setString(text, forType: .string) else { return finishManual("clipboard_write_failed") }
-        let ownedCount = clipboard.changeCount
-        guard !Task.isCancelled, clipboard.changeCount == ownedCount, case .unchanged = validate(target), Self.keysReleased(triggerKeyCode: triggerCode) else { return finishManual("target_changed_after_copy") }
+        guard copyResult(),let ownedCount=copiedCount else{return finishManual(Task.isCancelled ? "cancelled":"clipboard_write_failed")}
+        guard !Task.isCancelled, case .unchanged = validate(target), Self.keysReleased(triggerKeyCode: triggerCode), clipboard.changeCount == ownedCount else { return fallback("target_changed_after_copy") }
         down.flags = .maskCommand; up.flags = .maskCommand
         down.setIntegerValueField(.eventSourceUserData, value: 0x4E565649); up.setIntegerValueField(.eventSourceUserData, value: 0x4E565649)
         // Match the normal macOS keyboard route (and the Lab Pocket implementation).

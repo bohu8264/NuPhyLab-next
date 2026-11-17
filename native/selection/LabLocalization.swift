@@ -81,6 +81,7 @@ enum LabText {
         "德语":"German",
         "快捷键":"Shortcut",
         "快捷键冲突":"Shortcut conflict",
+        "此鼠标侧键已用于语音输入，请更换其中一个快捷键。":"This mouse side button is used by Voice Input. Change one of the shortcuts.",
         "快捷键格式无效。":"Invalid shortcut format.",
         "快捷键监听暂未就绪，正在重新连接；也可点击重新检查。":"The shortcut listener is reconnecting. You can also click Check again.",
         "快捷键说明":"Shortcut details",

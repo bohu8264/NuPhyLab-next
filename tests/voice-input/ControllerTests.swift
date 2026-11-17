@@ -63,6 +63,71 @@ public enum AppLanguage {case zh,en}
   try check(!(controller.state()["message"] as? String ?? "").contains("设置"),"status localized in English")
   let text="用户的中文原文";controller.rawText=text;controller.cleanedText=text
   try check(controller.state()["rawText"] as? String==text,"transcripts never translated by UI localization")
+  controller.enabled=false;controller.qa=true
+  let savedBefore=controller.store.settings
+  controller.applyShortcut(code:0,modifiers:0,mouseButton:3)
+  try check(controller.shortcutSaveOutcome==true && controller.store.settings.shortcutMouseButton==3,"side shortcut saved by real controller")
+  let reopened=try VoiceSettingsStore(directory:root).settings
+  try check(reopened.shortcutMouseButton==3 && reopened.shortcutKeyCode==savedBefore.shortcutKeyCode,"side identity survives reopen without replacing old keyboard code")
+  var expected=savedBefore;expected.shortcutMouseButton=3;expected.shortcutMouseModifiers=0
+  try check(reopened==expected,"saving shortcut preserves every other preference")
+  controller.conflictIssue={VoiceConflictPolicy.issue($0,selection:.mouseButton(index:4),pocket:PocketSettings(),reservedKeys:[])}
+  controller.applyShortcut(code:0,modifiers:0,mouseButton:4)
+  try check(controller.shortcutSaveOutcome==false && controller.store.settings==expected,"occupied side button rejected without changing saved shortcut")
+  try check(controller.message.contains("智能框选"),"conflict names Smart Selection")
+  controller.applyShortcut(code:0,modifiers:0,mouseButton:2)
+  try check(controller.shortcutSaveOutcome==false && controller.store.settings==expected,"middle button rejected without changing data")
+  controller.applyShortcut(code:61,modifiers:0)
+  try check(controller.shortcutSaveOutcome==true && controller.store.settings==savedBefore,"keyboard shortcut clears previous mouse binding")
+  controller.applyShortcut(code:0,modifiers:1<<20,mouseButton:3)
+  let modifiedSide=try VoiceSettingsStore(directory:root).settings
+  try check(modifiedSide.shortcutModifiers==savedBefore.shortcutModifiers && modifiedSide.activeShortcutModifiers==1<<20,"mouse modifiers do not overwrite remembered keyboard chord")
+  var rollback=modifiedSide;rollback.shortcutMouseButton=nil;rollback.shortcutMouseModifiers=nil
+  try check(try rollback.validated()==savedBefore,"older app retains a valid keyboard fallback")
+  controller.applyShortcut(code:61,modifiers:0)
+  // Replay the exact controller polling path with a non-system event source.
+  // The production tap delegates to this same observer; no input is posted.
+  controller.applyShortcut(code:0,modifiers:0,mouseButton:3)
+  controller.qa=false;controller.enabled=true;controller.phase="idle"
+  controller.configureHotkey()
+  try check(controller.hotkeyReady,"initial listener ready")
+  let press=VoiceHotkeyEvent(kind:.mouseDown,keyCode:3,time:20)
+  try check(controller.hotkey.observeRuntime(press).consume,"runtime owns side down")
+  controller.operationIssue={"Smart Selection is selecting"}
+  controller.configureHotkey()
+  try check(!controller.hotkeyReady,"temporary conflict suspends availability")
+  try check(controller.hotkey.observeRuntime(.init(kind:.mouseUp,keyCode:3,time:21)) == .init(fire:false,consume:true),"controller polling retains and drains claimed release")
+  controller.operationIssue={nil};controller.configureHotkey()
+  try check(controller.hotkeyReady,"listener resumes after conflict")
+  _=controller.hotkey.observeRuntime(.init(kind:.mouseDown,keyCode:3,time:22))
+  controller.operationIssue={"Smart Selection is selecting"};controller.configureHotkey()
+  controller.operationIssue={nil};controller.configureHotkey()
+  try check(controller.hotkey.observeRuntime(.init(kind:.mouseUp,keyCode:3,time:23)) == .init(fire:false,consume:true),"resume before release cannot re-arm cancelled gesture")
+  _=controller.hotkey.observeRuntime(.init(kind:.mouseDown,keyCode:3,time:24))
+  controller.enabled=false;controller.configureHotkey()
+  try check(controller.hotkey.observeRuntime(.init(kind:.mouseUp,keyCode:3,time:25)) == .init(fire:false,consume:true),"disabled feature drains already-owned release")
+  try check(controller.hotkey.observeRuntime(.init(kind:.mouseDown,keyCode:3,time:26)) == .init(),"disabled feature leaves new mouse presses alone")
+  try check(controller.hotkey.observeRuntime(.init(kind:.mouseUp,keyCode:3,time:27)) == .init(),"disabled feature leaves matching release alone")
+  controller.qa=true;controller.applyShortcut(code:61,modifiers:0)
+  let keyboard=VoiceConflictPolicy.binding(controller.store.settings)
+  try check(keyboard.kind == .modifiers && keyboard.modifiers == .option,"legacy modifier identity retained")
+  for mods:InputModifiers in [[],.command,.control] {
+   let same=InputBinding.mouseButton(index:3,modifiers:mods)
+   try check(VoiceConflictPolicy.mouseConflict(same,same),"reciprocal same-side conflict")
+   try check(!VoiceConflictPolicy.mouseConflict(same,.mouseButton(index:4,modifiers:mods)),"different side button remains available")
+   try check(!VoiceConflictPolicy.mouseConflict(same,.keyboard(keyCode:3,modifiers:mods)),"keyboard index differs from mouse index")
+  }
+  try check(!VoiceConflictPolicy.mouseConflict(.mouseButton(index:3),.mouseButton(index:3,modifiers:.command)),"different exact mouse chords can coexist")
+  let settingsBeforeRemoval=try Data(contentsOf:root.appendingPathComponent("settings.json"))
+  controller.qa=false;controller.enabled=true;controller.phase="recording";controller.rawText="unfinished"
+  controller.setFeatureAdded(false)
+  try check(!controller.enabled && !controller.hotkeyReady && controller.phase=="idle","feature removal cancels recording and disables listener")
+  try check(try String(contentsOf:root.appendingPathComponent("enabled"),encoding:.utf8)=="false","off survives restart")
+  try check(try Data(contentsOf:root.appendingPathComponent("settings.json"))==settingsBeforeRemoval,"removal preserves shortcuts, vocabulary, prompt and service preferences byte-for-byte")
+  _=request(["action":"enabled","enabled":true]);try check(!controller.enabled,"stale hidden page cannot enable")
+  controller.resume();controller.configureHotkey();try check(!controller.hotkeyReady,"wake cannot revive a hidden shortcut")
+  controller.setFeatureAdded(true);try check(!controller.enabled && !controller.hotkeyReady,"re-add stays off")
+  _=request(["action":"enabled","enabled":true]);try check(controller.enabled,"explicit switch enables after re-add")
   controller.shutdown();try check(!FileManager.default.fileExists(atPath:root.appendingPathComponent("runtime.json").path),"shutdown removes own runtime")
   controller.shutdown();try check(controller.stopping,"shutdown idempotent")
   print("PASS \(count) formal controller lifecycle/result/localization checks; no microphone, event tap or API use")

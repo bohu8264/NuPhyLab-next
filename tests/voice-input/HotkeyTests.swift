@@ -273,6 +273,138 @@ import Foundation
         _ = esc.observe(event(.interrupted),enabled:true)
         check(esc.observe(event(.down,53),enabled:true).fire, "listener interruption clears Esc ownership")
 
+        // Side-button clicks use a separate input identity even when their index
+        // equals a keyboard key code. Every accepted press owns its release.
+        for button:UInt32 in 3...31 {
+            check(VoiceHotkeyPolicy.valid(keyCode:61,modifiers:0,mouseButton:button),"side button allowed \(button)")
+            var side=VoiceHotkeyState(keyCode:61,modifiers:0,mouseButton:button)
+            check(side.observe(event(.mouseUp,button)) == .init(),"orphan up cannot activate \(button)")
+            check(side.observe(event(.down,button)) == .init(),"same-index keyboard does not activate mouse \(button)")
+            check(side.observe(event(.mouseDown,button,0,2)) == .init(fire:false,consume:true),"side down waits for release \(button)")
+            check(side.observe(event(.mouse,button,0,2.1)) == .init(fire:false,consume:true),"side drag never repeats \(button)")
+            check(side.observe(event(.mouseDown,button,0,2)) == .init(fire:false,consume:true),"duplicate down does not repeat \(button)")
+            check(side.observe(event(.mouseUp,button,0,3)) == .init(fire:true,consume:true),"one complete click activates once \(button)")
+            check(side.observe(event(.mouseUp,button,0,3)) == .init(),"duplicate release does not toggle \(button)")
+            for time in 4...9 {
+                _=side.observe(event(.mouseDown,button,0,Double(time)))
+                check(side.observe(event(.mouseUp,button,0,Double(time)+0.1)).fire,"repeated clicks work \(button)/\(time)")
+            }
+            var recorder=VoiceShortcutCaptureState()
+            check(recorder.observe(event(.mouseUp,button)) == .pass,"recorder ignores unclaimed up \(button)")
+            check(recorder.observe(event(.mouseDown,button,0,1)) == .consume,"recorder owns down \(button)")
+            check(recorder.observe(event(.mouseUp,button,0,2)) == .complete(.init(keyCode:0,modifiers:0,mouseButton:button)),"recorder saves side identity on up \(button)")
+        }
+        for button:UInt32 in [0,1,2,32,999] {
+            check(!VoiceHotkeyPolicy.valid(keyCode:61,modifiers:0,mouseButton:button),"primary/invalid mouse reserved \(button)")
+            var capture=VoiceShortcutCaptureState()
+            check(capture.observe(event(.mouseDown,button)) == .pass,"primary mouse passes recorder \(button)")
+            check(capture.observe(event(.mouseUp,button)) == .pass,"primary mouse release never saves \(button)")
+        }
+        var side=VoiceHotkeyState(keyCode:61,modifiers:control,mouseButton:4)
+        check(side.observe(event(.mouseDown,4)) == .init(),"exact modifiers required")
+        _=side.observe(event(.mouseDown,4,control,2))
+        _=side.observe(event(.flags,59,0,2.1))
+        check(side.observe(event(.mouseUp,4,0,3)) == .init(fire:false,consume:true),"modifier release invalidates but drains button")
+        _=side.observe(event(.mouseDown,4,control,4))
+        check(side.observe(event(.mouseUp,4,control,5),allowed:false) == .init(fire:false,consume:true),"blocked interaction drains without activating")
+        _=side.observe(event(.mouseDown,4,control,6))
+        _=side.observe(event(.interrupted))
+        check(side.observe(event(.mouseUp,4,control,7)) == .init(),"interruption cannot activate stale click")
+        check(side.observe(event(.mouseDown,4,control,8,owned:true)) == .init(),"own synthetic mouse does not trigger")
+        _=side.observe(event(.mouseDown,4,control,9))
+        _=side.observe(event(.flags,59,0,9.1))
+        _=side.observe(event(.mouseDown,4,control,10))
+        check(side.observe(event(.mouseUp,4,control,11)) == .init(fire:false,consume:true),"fresh timestamp cannot re-arm invalid gesture")
+        _=side.observe(event(.mouseDown,4,control,12))
+        check(side.observe(event(.mouseUp,4,control,13)).fire,"fresh complete gesture recovers after cancelled release")
+        _=side.observe(event(.mouseDown,4,control,14))
+        check(side.observe(event(.mouseUp,4,control,13.5)) == .init(fire:false,consume:true),"out-of-order up cannot activate or clear ownership")
+        check(side.observe(event(.mouseUp,4,control,15)).fire,"actual release after stale up still works")
+        for keyboardFirst in [false,true] {
+            var mixed=VoiceShortcutCaptureState()
+            _=mixed.observe(event(keyboardFirst ? .down:.mouseDown,keyboardFirst ? 0:4,0,1))
+            _=mixed.observe(event(keyboardFirst ? .mouseDown:.down,keyboardFirst ? 4:0,0,2))
+            let first=mixed.observe(event(keyboardFirst ? .mouseUp:.up,keyboardFirst ? 4:0,0,3))
+            let last=mixed.observe(event(keyboardFirst ? .up:.mouseUp,keyboardFirst ? 0:4,0,4))
+            check(first == .consume && last == .invalid,"mixed keyboard and mouse gesture rejected in both orders")
+            _=mixed.observe(event(.mouseDown,3,0,5))
+            check(mixed.observe(event(.mouseUp,3,0,6)) == .complete(.init(keyCode:0,modifiers:0,mouseButton:3)),"recorder recovers after invalid mixed input")
+        }
+        var withModifier=VoiceShortcutCaptureState()
+        _=withModifier.observe(event(.flags,59,control,1))
+        _=withModifier.observe(event(.mouseDown,4,control,2))
+        check(withModifier.observe(event(.mouseUp,4,control,3)) == .complete(.init(keyCode:0,modifiers:control,mouseButton:4)),"modified side shortcut recorded")
+        var primaryHeld=VoiceShortcutCaptureState(initialMouseButtons:[0])
+        _=primaryHeld.observe(event(.mouseUp,0))
+        _=primaryHeld.observe(event(.mouseDown,4,0,2))
+        check(primaryHeld.observe(event(.mouseUp,4,0,3)) == .complete(.init(keyCode:0,modifiers:0,mouseButton:4)),"button used to open recorder is not recorded")
+        VoiceL10n.english=true
+        check(VoiceL10n.text(VoiceHotkey.label(keyCode:61,modifiers:0,mouseButton:4)) == "Mouse side button 2","side label is fully English")
+        VoiceL10n.english=false
+
+        for primary:UInt32 in [0,1,2] {
+            for primaryFirst in [false,true] {
+                for primaryReleasedFirst in [false,true] {
+                    var mixed=VoiceShortcutCaptureState()
+                    let first=primaryFirst ? primary:4,second=primaryFirst ? 4:primary
+                    check(mixed.observe(event(.mouseDown,first,0,1)) == (primaryFirst ? .pass:.consume),"mixed first down ownership")
+                    check(mixed.observe(event(.mouseDown,second,0,2)) == (primaryFirst ? .consume:.pass),"mixed second down ownership")
+                    check(mixed.observe(event(.mouse,primary,0,2.1)) == .pass,"primary drag always passes")
+                    check(mixed.observe(event(.mouse,4,0,2.2)) == .consume,"claimed side drag stays consumed")
+                    if primaryReleasedFirst {
+                        check(mixed.observe(event(.mouseUp,primary,0,3)) == .pass,"primary first release always passes")
+                        check(mixed.observe(event(.mouseUp,4,0,4)) == .invalid,"invalid side gesture never saves")
+                    } else {
+                        check(mixed.observe(event(.mouseUp,4,0,3)) == .consume,"side release drains while primary held")
+                        check(mixed.observe(event(.mouseUp,primary,0,4)) == .pass,"primary last release always passes")
+                    }
+                    _=mixed.observe(event(.mouseDown,3,0,5))
+                    check(mixed.observe(event(.mouseUp,3,0,6)) == .complete(.init(keyCode:0,modifiers:0,mouseButton:3)),"fresh recording works after primary mixed gesture")
+                }
+            }
+        }
+        let runtime=VoiceHotkey(listenToSystemEvents:false)
+        do {try runtime.register(keyCode:61,modifiers:0,mouseButton:4){}}catch{check(false,"isolated runtime binding")}
+        _=runtime.observeRuntime(event(.mouseDown,4,0,1))
+        check(runtime.observeRuntime(event(.mouseDown,0,0,2)) == .init(),"record button left press passes")
+        check(runtime.observeRuntime(event(.mouseUp,0,0,3)) == .init(),"record button left release passes")
+        runtime.transferRuntimeMouseOwnership()
+        var newRecorder=VoiceShortcutCaptureState(initialMouseButtons:[4])
+        let ownedRelease=event(.mouseUp,4,0,4)
+        check(runtime.consumePendingMouseRelease(ownedRelease),"runtime-to-recorder transfer drains existing side release")
+        check(newRecorder.observe(ownedRelease) == .pass,"preheld side never saves as a new shortcut")
+        check(runtime.observeRuntime(ownedRelease) == .init(),"transferred runtime cannot activate twice")
+        _=runtime.observeRuntime(event(.mouseDown,4,0,5))
+        do {try runtime.register(keyCode:61,modifiers:0){}}catch{check(false,"isolated runtime rebind")}
+        check(runtime.observeRuntime(event(.mouseUp,4,0,6)) == .init(fire:false,consume:true),"rebinding preserves old mouse release ownership")
+        runtime.suspendHandling();check(!runtime.isReady,"suspended listener reports unavailable")
+        runtime.unregister()
+        var staleModified=VoiceHotkeyState(keyCode:61,modifiers:0,mouseButton:4)
+        _=staleModified.observe(event(.mouseDown,4,0,10))
+        check(staleModified.observe(event(.mouseUp,4,command,9)) == .init(fire:false,consume:true),"stale modifiers cannot cancel current mouse click")
+        check(staleModified.observe(event(.mouseUp,4,0,11)).fire,"current release retains valid activation after stale event")
+        var staleCapture=VoiceShortcutCaptureState()
+        _=staleCapture.observe(event(.mouseDown,4,0,10))
+        check(staleCapture.observe(event(.mouseUp,4,command,9)) == .consume,"recorder ignores stale release before state mutation")
+        check(staleCapture.observe(event(.mouseUp,4,0,11)) == .complete(.init(keyCode:0,modifiers:0,mouseButton:4)),"recorder completes on actual release")
+        var staleDrain=VoiceMouseReleaseDrain();staleDrain.claim([4:10])
+        check(!staleDrain.isCurrent(event(.mouseUp,4,0,9)),"stale inherited release does not update physical snapshot")
+        check(staleDrain.consume(event(.mouseUp,4,0,9)),"stale inherited release remains consumed")
+        check(staleDrain.isCurrent(event(.mouseUp,4,0,11)),"actual inherited release can clear physical snapshot")
+        check(staleDrain.consume(event(.mouseUp,4,0,11)),"actual inherited release still owned after stale up")
+        check(!staleDrain.consume(event(.mouseUp,4,0,12)),"drain relinquishes ownership after actual up")
+        var cancelled=VoiceShortcutCaptureState()
+        _=cancelled.observe(event(.mouseDown,4,0,1))
+        var drain=VoiceMouseReleaseDrain();drain.claim(cancelled.takeClaimedMouseButtons())
+        check(cancelled.takeClaimedMouseButtons().isEmpty,"cancellation transfers ownership once")
+        check(!drain.consume(event(.mouseUp,0,0,2)),"cancelled recorder leaves primary mouse release alone")
+        check(drain.consume(event(.mouse,4,0,2)),"cancelled recorder drains owned drag")
+        check(drain.consume(event(.mouseUp,4,0,3)),"cancelled recorder drains owned up")
+        check(!drain.consume(event(.mouseUp,4,0,4)),"cancelled recorder releases ownership afterwards")
+        var preheldSide=VoiceShortcutCaptureState(initialMouseButtons:[4])
+        check(preheldSide.observe(event(.mouse,4,0,1)) == .pass,"preheld side drag not owned")
+        check(preheldSide.observe(event(.mouseUp,4,0,2)) == .pass,"preheld side up not swallowed or recorded")
+
         print("HotkeyTests: \(passed) passed, \(failed) failed (pure events; no system input or permission changes)")
         if failed > 0 { exit(1) }
     }

@@ -10,7 +10,7 @@ import './library-play-edit-v8.css';
 import { parseDraftRecord } from './draftPersistence';
 import { t as tr } from "./i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {useCodexKeys} from './codexKeys';
+import {useCodexKeys,nativeCodexRequest} from './codexKeys';
 import {
   CircleAlert,
   LayoutGrid,
@@ -137,7 +137,7 @@ export default function App() {
   const persistFeatures=async(next:FeatureId[])=>{
     if(featureLock.current||!state||exiting||serviceError)return false;
     featureLock.current=true;setFeatureBusy(true);
-    try{await command({op:'settings',settings:{sidebarFeatures:next}},{silent:true});return true;}
+    try{await nativeCodexRequest({kind:'prepareSidebarFeatures'});await command({op:'settings',settings:{sidebarFeatures:next}},{silent:true});await nativeCodexRequest({kind:'sidebarFeaturesChanged'});return true;}
     catch(error){notify(language==='en'?'Could not save your sidebar. Please try again.':'侧栏设置未能保存，请重试。');return false;}
     finally{featureLock.current=false;setFeatureBusy(false);}
   };
@@ -283,6 +283,7 @@ export default function App() {
     const id=crypto.randomUUID(),context=libraryPlayContext,generation=libraryPlayGeneration.current;
     directLibraryPlay.current=id;setLibraryPlayBusy(true);
     try {
+      if(!await ensureFeature('studio'))return;
       if(context!==latestLibraryContext.current.context||!latestLibraryContext.current.canPlay)return;
       const submitted=cloneScene(scene),appearance=applyArtworkAppearance(submitted.colors,submitted.animation);
       if(submitted.trigger){

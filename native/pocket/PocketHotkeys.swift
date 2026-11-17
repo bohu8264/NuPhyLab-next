@@ -39,6 +39,7 @@ struct PocketSlotMatcher {
     private var slots: [UInt16: Int] = [:]
     private var down = Set<UInt16>()
     private var claimed = Set<UInt16>()
+    var hasClaimedKeys:Bool {!claimed.isEmpty}
     private var passedPrefixKeys = Set<UInt16>()
     private var active: Prefix?
     private var shown: String?
@@ -138,6 +139,7 @@ struct PocketSlotMatcher {
                 swallowed=claimed.remove(keyCode) != nil
                 down.remove(keyCode);passedPrefixKeys.remove(keyCode)
             } else {
+                if event == .keyDown && !isRepeat {claimed.remove(keyCode)}
                 swallowed=event == .keyDown && claimed.contains(keyCode)
                 if event == .keyDown {
                     down.insert(keyCode)
@@ -249,6 +251,7 @@ final class PocketHotkeys: @unchecked Sendable {
     private var inputGeneration = 0
     private var reportedState = ""
     private var stopped = true
+    private var pendingSettings:PocketSettings?
 
     // Construction is inert. Only user-configured prefix/slot events are listened to.
     init() {}
@@ -256,6 +259,13 @@ final class PocketHotkeys: @unchecked Sendable {
     @discardableResult
     func configure(_ settings: PocketSettings) -> Bool {
         precondition(Thread.isMainThread)
+        if matcher.hasClaimedKeys,tap != nil {
+            generation += 1;stopped=true;pendingSettings=settings
+            dispatchPreview(matcher.cancelSession().preview)
+            setStatus("等待已按下的按键松开")
+            return false
+        }
+        pendingSettings=nil
         generation += 1
         dispatchPreview(.hide)
         do { try matcher.configure(settings) }
@@ -284,6 +294,7 @@ final class PocketHotkeys: @unchecked Sendable {
 
     func refreshPermissions() {
         precondition(Thread.isMainThread)
+        if stopped,matcher.hasClaimedKeys,let tap,CGEvent.tapIsEnabled(tap:tap) {return}
         guard !stopped, let settings, settings.enabled else { removeTap(); setStatus("快捷键已关闭"); return }
         guard AXIsProcessTrusted() else {
             removeTap()
@@ -321,8 +332,11 @@ final class PocketHotkeys: @unchecked Sendable {
         generation += 1
         stopped = true
         dispatchPreview(.hide)
-        _ = matcher.reset()
-        removeTap()
+        pendingSettings=nil
+        _ = matcher.cancelSession()
+        // Only drain releases/repeats already claimed before disabling. New
+        // downs pass through. Keep the live tap until the last release arrives.
+        if !matcher.hasClaimedKeys || tap == nil {removeTap()}
         permissionTimer?.invalidate(); permissionTimer = nil
         setStatus("快捷键已停止")
     }
@@ -357,7 +371,8 @@ final class PocketHotkeys: @unchecked Sendable {
             generation += 1
             dispatchPreview(matcher.handle(.interrupted).preview)
             dispatchUserInput(ProcessInfo.processInfo.systemUptime)
-            refreshPermissions()
+            let next=pendingSettings;pendingSettings=nil
+            if let next {_ = configure(next)} else {refreshPermissions()}
             return Unmanaged.passUnretained(event)
         }
         // The host tags its copy/paste events. Never consume or cancel them.
@@ -368,7 +383,7 @@ final class PocketHotkeys: @unchecked Sendable {
             inputGeneration += 1
             let trusted = AXIsProcessTrusted()
             let secure = IsSecureEventInputEnabled()
-            dispatchPreview(matcher.handle(.mouseDown, flags:event.flags, permitted:trusted, secureInput:secure, allowed:canActivate()).preview)
+            dispatchPreview(matcher.handle(.mouseDown, flags:event.flags, permitted:trusted, secureInput:secure, allowed:!stopped && canActivate()).preview)
             if !trusted || secure { refreshPermissions() }
             dispatchUserInput(Double(event.timestamp) / 1_000_000_000)
             return Unmanaged.passUnretained(event)
@@ -384,7 +399,12 @@ final class PocketHotkeys: @unchecked Sendable {
         let secure = IsSecureEventInputEnabled()
         let wasObserved = functionObserved
         let repeatKey = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
-        let decision = matcher.handle(kind, keyCode: UInt16(clamping: event.getIntegerValueField(.keyboardEventKeycode)), flags: event.flags, isRepeat: repeatKey, permitted: trusted, secureInput: secure, allowed:canActivate())
+        let decision = matcher.handle(kind, keyCode: UInt16(clamping: event.getIntegerValueField(.keyboardEventKeycode)), flags: event.flags, isRepeat: repeatKey, permitted: trusted, secureInput: secure, allowed:!stopped && canActivate())
+        if stopped && !matcher.hasClaimedKeys {
+            let next=pendingSettings;pendingSettings=nil
+            removeTap()
+            if let next {_ = configure(next)}
+        }
         if !trusted || secure || wasObserved != functionObserved { refreshPermissions() }
         let newUserInput = kind == .keyDown && !repeatKey && !decision.swallow
         if newUserInput { inputGeneration += 1 }

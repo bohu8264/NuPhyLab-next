@@ -2,10 +2,27 @@ import Foundation
 import AppKit
 import Carbon
 @main struct SelectionChecks {
- static func main() throws {
+ @MainActor static func main() throws {
   var count=0
   func check(_ value:Bool,_ name:String){count+=1;if !value{FileHandle.standardError.write(Data("FAILED check \(count): \(name)\n".utf8))};precondition(value,name)}
   func rejects(_ shortcut:LabShortcut,_ name:String){do{try shortcut.validate();check(false,name)}catch{check(true,name)}}
+  let lifecycleDir=FileManager.default.temporaryDirectory.appendingPathComponent("selection-lifecycle-"+UUID().uuidString)
+  try FileManager.default.createDirectory(at:lifecycleDir,withIntermediateDirectories:true)
+  defer {try? FileManager.default.removeItem(at:lifecycleDir)}
+  var lifecyclePrefs=LabPreferences();lifecyclePrefs.enabled=true
+  let lifecycleFile=lifecycleDir.appendingPathComponent("selection-preferences.json")
+  try JSONEncoder().encode(lifecyclePrefs).write(to:lifecycleFile)
+  let lifecycle=SelectionLab(directory:lifecycleDir,featureAdded:false)
+  check(lifecycle.selectionReservedBinding==nil,"hidden at startup cannot claim keys")
+  lifecycle.setFeatureAdded(false)
+  let hidden=try JSONDecoder().decode(LabPreferences.self,from:Data(contentsOf:lifecycleFile))
+  check(!hidden.enabled,"hidden persisted feature turns off")
+  check(hidden.shortcut==lifecyclePrefs.shortcut && hidden.configuration==lifecyclePrefs.configuration,"selection shortcut and provider retained")
+  let hiddenBytes=try Data(contentsOf:lifecycleFile)
+  lifecycle.setFeatureAdded(true);lifecycle.refreshAuthorization()
+  check(lifecycle.selectionReservedBinding==nil,"re-add and permission refresh leave selection off")
+  check(try Data(contentsOf:lifecycleFile)==hiddenBytes,"re-add does not rewrite preferences")
+  lifecycle.shutdown()
   try selectionSideButtonChecks(check)
   try selectionReplyChecks(check)
   try selectionActionMigrationChecks(check)

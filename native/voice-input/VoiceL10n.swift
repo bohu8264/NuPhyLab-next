@@ -3,6 +3,10 @@ import Foundation
 enum VoiceL10n {
     static var english=false
     static let messages:[String:String]=[
+        "已复制 · ⌘V 粘贴":"Copied · ⌘V to paste",
+        "文字已复制到剪贴板，可按 ⌘V 粘贴。":"Text copied to the clipboard. Press ⌘V to paste.",
+        "鼠标侧键 ":"Mouse side button ",
+        "请选择键盘按键、组合键或鼠标侧键；鼠标左键、右键、中键、Esc 和 Caps Lock 保留。":"Choose a keyboard shortcut or mouse side button. Left, right and middle mouse buttons, Esc and Caps Lock are reserved.",
         "无法读取默认整理提示词，请重新安装 NuPhy Lab。":"Default refinement instructions could not be loaded. Reinstall NuPhy Lab.",
         "整理提示词不能为空，可恢复默认后保存。":"Refinement instructions cannot be empty. Restore the default and save.",
         "整理提示词最多 16000 字，不能包含空字符。":"Refinement instructions support up to 16,000 characters, without null characters.",

@@ -39,6 +39,17 @@ final class TestDrag: NSObject, NSDraggingInfo {
         let file=URL(fileURLWithPath:CommandLine.arguments[2]).standardizedFileURL
         let visibleBefore=NSApp.windows.filter(\.isVisible).count
         let controller=DragConvertController(directory:root,observeDrags:false)
+        let hidden=DragConvertController(directory:root,observeDrags:false,featureAdded:false)
+        hidden.setFeatureAdded(false)
+        check(!hidden.preferences.enabled,"feature removal disables conversion")
+        var stale=prefs;stale.enabled=true
+        hidden.handle(["op":"settings","preferences":try JSONSerialization.jsonObject(with:JSONEncoder().encode(stale))]){_,error in check(error==nil,"hidden configuration saves safely")}
+        check(!hidden.preferences.enabled,"stale page cannot re-enable hidden conversion")
+        hidden.suspend();hidden.resume();hidden.setFeatureAdded(true)
+        check(!hidden.preferences.enabled,"re-add and wake keep conversion off")
+        let persisted=try JSONDecoder().decode(DragConvertPreferences.self,from:Data(contentsOf:root.appendingPathComponent("drag-convert.json")))
+        check(!persisted.enabled && persisted.trigger==prefs.trigger,"off persists with original shortcut")
+        hidden.shutdown()
         let panel=Mirror(reflecting:controller).children.first{$0.label == "panel"}!.value as! DragConvertPanel
         panel.wheel.configure(urls:[file],english:false)
         panel.wheel.activationPoint=DragWheelGeometry.center;panel.wheel.hasMovedFromActivation=false

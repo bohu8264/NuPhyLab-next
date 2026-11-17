@@ -257,8 +257,8 @@ function wakeCodexInteraction() {
 // One integration owns the task and command keys at a time; both keep their own
 // bindings, slots, colours and lighting settings while the other is inactive.
 const agentSource = () => (store.data.settings.agentSource === "claude" ? "claude" : "codex");
-const agentEnabled = () =>
-  agentSource() === "claude" ? store.data.settings.claudeEnabled === true : store.data.settings.codexEnabled === true;
+const agentEnabled = () => store.data.settings.sidebarFeatures.includes("codex") &&
+  (agentSource() === "claude" ? store.data.settings.claudeEnabled === true : store.data.settings.codexEnabled === true);
 function agentLightingPauseReason(source = agentSource()) {
   if (source !== agentSource()) return 'inactiveSource';
   if (!agentEnabled()) return 'off';
@@ -1069,6 +1069,10 @@ async function serialized(fn) {
   return result;
 }
 async function command(req) {
+  const feature = ['preview','play','triggerArm','audioStart','nativeLighting'].includes(req.op) ? 'studio'
+    : ['gameStart','gameRestart','gameSelect'].includes(req.op) ? 'game' : null;
+  if (feature && !store.data.settings.sidebarFeatures.includes(feature))
+    throw new Error('请先在功能中心添加此功能。 / Add this tool in Feature Center first.');
   if(applicationUpdating && req.op !== 'prepareAppUpdate') throw new Error('正在安装更新，请稍候。');
   if (['disconnect','stop','restore','pause','play','preview','nativeLighting','gameStart','gameRestart','gameSelect','gamePause','gameStop',
     'triggerArm','triggerStop','audioStart','audioStop','agentMode','confirmFunctionKeyRecovery','codexAdaptDriver','prepareFirmwareUpdate','prepareAppUpdate'].includes(req.op))
@@ -1351,9 +1355,37 @@ async function command(req) {
       return store.importScenes(req.scenes);
     case "settings": {
       if (req.settings && Object.hasOwn(req.settings,"sidebarFeatures") && Object.keys(req.settings).length!==1) throw new Error("请单独保存侧栏设置");
+      if (req.settings && Object.hasOwn(req.settings,"sidebarFeatures")) {
+        validateSettings(req.settings,store.data.settings);
+        const previous=store.data.settings.sidebarFeatures;
+        const removed=previous.filter(id=>!req.settings.sidebarFeatures.includes(id));
+        let failure;
+        try {await store.settings(req.settings);} catch(error) {failure=error;}
+        // Apply cleanup only for a committed sidebar, including a partially
+        // failed off-switch write. Unrelated additions leave output untouched.
+        if (JSON.stringify(store.data.settings.sidebarFeatures)===JSON.stringify(req.settings.sidebarFeatures)) {
+          if (removed.includes('codex')) {keyBindingEpoch++;try{await codexGestures.release();}catch(error){failure??=error;}codexPresses.reset();}
+          const ownsPlayback=removed.includes('codex') && playback.mode==='agent'
+            || removed.includes('game') && playback.mode==='game'
+            || removed.includes('studio') && ['static','animation','paused','audio','trigger','native'].includes(playback.mode);
+          if (removed.includes('studio')) {reconnectPlayback=null;suspendedScene=null;pendingSceneRestore=false;}
+          if (ownsPlayback) {try{await stop();}catch(error){failure??=error;}}
+          if (removed.includes('codex')) {
+            try {
+              if (hardware.state.armed && ['static','paused'].includes(playback.mode)) {
+                await restoreGameSide();lastFrame='';
+                await output(playback.mode==='paused'?renderAnimation(baseColors,animation,playback.elapsed??0):baseColors);
+              }
+            }catch(error){failure??=error;}
+            try {await syncKeyAdaptation();}catch(error){failure??=error;}
+          }
+        }
+        if (failure) throw failure;
+        return store.data.settings;
+      }
       // Local visual preferences must not release held keys, rewrite RGB,
       // reset animation timing, or change hardware mappings.
-      const visualKeys = ["airTopRightModule", "sidebarFeatures"];
+      const visualKeys = ["airTopRightModule"];
       if (req.settings && typeof req.settings === "object" && !Array.isArray(req.settings) &&
           Object.keys(req.settings).length > 0 && Object.keys(req.settings).every(key => visualKeys.includes(key)))
         return store.settings(req.settings);
