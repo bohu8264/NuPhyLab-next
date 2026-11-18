@@ -6,35 +6,41 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>NuPhy Lab</title>
         <item>
-            <title>1.2.49</title>
-            <pubDate>Tue, 17 Nov 2026 11:01:51 +0800</pubDate>
+            <title>1.2.50</title>
+            <pubDate>Wed, 18 Nov 2026 15:20:24 +0800</pubDate>
             <link>https://github.com/bohu8264/NuPhyLab-next</link>
-            <sparkle:version>1.2.49</sparkle:version>
-            <sparkle:shortVersionString>1.2.49</sparkle:shortVersionString>
+            <sparkle:version>1.2.50</sparkle:version>
+            <sparkle:shortVersionString>1.2.50</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.5</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <description sparkle:format="plain-text"><![CDATA[NUPHY-RELEASE-NOTES 1
-version:1.2.49
+version:1.2.50
 [zh-CN]
-NuPhy Lab 1.2.49
+NuPhy Lab 1.2.50
 
-• 语音输入支持点击录制鼠标侧键，按一次开始，再按一次结束。
-• 新增与智能框选侧键的冲突提示，保留原快捷键和语音设置。
-• 语音未能插入输入框时自动复制结果，可直接粘贴。
-• 移回功能中心会关闭功能及快捷键，重新添加保持关闭，保留原内容和配置。
+• Air75 V3 新增 USB 侧灯状态模式，可与背光模式切换。
+• 侧灯跟踪当前任务集合，仅在完整、新鲜的成功状态下显示全部完成。
+• 侧灯模式释放任务键，命令键可独立开关，原有映射与内容保留。
+• 支持 Air75 V3 官方 2.0.0.7 的 USB 灯控与功能键，并提供升级后临时 F4 键位的确认恢复。
+• 固件提醒仅建议已完成 Lab 兼容验证的版本；保留原设置，并提示配套接收器更新。
+• 新固件下，无法确认能原样恢复的主灯颜色或已有自定义灯效会先停止接管；侧灯仍可使用。
+• 功能中心新增 Dock 场景，可保存原始固定应用顺序，通过自定义快捷键切换场景。
 [en]
-NuPhy Lab 1.2.49
+NuPhy Lab 1.2.50
 
-• Voice Input supports recording a mouse side button: click once to start and again to finish.
-• Conflicts with Smart Selection side buttons are explained while existing shortcuts and voice settings are preserved.
-• When speech cannot be inserted into a text field, the result is copied for manual pasting.
-• Removing a tool turns it and its shortcuts off. Re-adding keeps it off and preserves its content and preferences.
+• Air75 V3 adds USB side-LED status mode alongside backlighting.
+• Side LEDs track the current task cohort; all-complete requires a fresh, complete set of successful results.
+• Side mode releases task keys and provides a separate command-key switch while preserving mappings and content.
+• Supports USB lighting and function keys on Air75 V3 firmware 2.0.0.7, with confirmed recovery of a temporary F4 assignment after upgrading.
+• Firmware prompts recommend only Lab-qualified releases, preserve current settings, and explain matching receiver updates.
+• On the new firmware, backlight control pauses before changing a main color or existing custom effect that cannot be restored exactly. Side lighting remains available.
+• Dock Scenes saves your original pinned apps and lets you switch between layouts with configurable shortcuts.
 ]]></description>
-            <enclosure url="https://github.com/bohu8264/NuPhyLab-next/releases/download/v1.2.49/NuPhyLab-1.2.49-macOS-AppleSilicon.dmg" length="52328160" type="application/octet-stream" sparkle:edSignature="S+eOt+Dgr5T4pgAYDmPylkc/Ut6PEZEo8Bql2tJ7XHm9gUn35V67h9OjKTEY0Ix4vPD4k6mu/lLMZ9vvqEv8DQ=="/>
+            <enclosure url="https://github.com/bohu8264/NuPhyLab-next/releases/download/v1.2.50/NuPhyLab-1.2.50-macOS-AppleSilicon.dmg" length="52291696" type="application/octet-stream" sparkle:edSignature="RIzN5tNd/0TI6takGsp4/u2qBhqsHJ+r5eKfzk8DU6SO26143w+imrgE22QIqtVgfbfGwjbhlRjB65bXQefiAg=="/>
         </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: mtRsvxJrh9PZ/A+eT8OCuRNoaOobsdvoQbohdJN+0zLmnofO+hoEqRvhl6sfLUysU5makxc8Y8UIQZF7WNN8Aw==
-length: 2167
+edSignature: F+T0LoHOB6Jy6RXy/Zm95yz1BzE1tQ2fg3Q8nF6u6/lA/Swq//VIHTpLyfZJPBtjIgQ0k1I6r1aCjss7TzusDQ==
+length: 2964
 -->
