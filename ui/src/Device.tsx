@@ -1,3 +1,4 @@
+import {FirmwareManagement} from './FirmwareManagement';
 import {blank,getLayoutModel} from '../../shared/layout.mjs';
 import {getKeyboardProfile,isKeyboardModel} from '../../shared/keyboard-models.mjs';
 import { useEffect, useRef, useState } from "react";
@@ -180,6 +181,7 @@ export function Device({ state, command, serviceError, layout = state?.layout ||
           <div className={`lab-device-status ${firmwareUnconfirmed?"":outdated ? "attention" : kick && device?.capabilities?.perKey ? "ready" : ""}`}><i/>{firmwareUnconfirmed?copy("上次状态","Last known state"):kick && device?.capabilities?.perKey && !outdated ? copy("逐键灯光可用", "Per-key lighting ready") : firmwareStatus}</div>
         </section>
         {profile && <section className="lab-kick-capabilities"><h3>{copy("灯光控制", "Lighting control")}</h3><p>{copy(`${layout.length} 个按键灯与 ${profile.sideCount} 个侧灯`, `${layout.length} key lights and ${profile.sideCount} side LEDs`)}<br/>{device?.modelId?.startsWith("node") ? copy("触摸条不参与逐键上色", "Touch bar is outside the per-key lighting canvas") : copy("旋钮不参与灯光上色", "Knob is outside the lighting canvas")}</p>{nativeOnly && <p>{copy("升级固件后可使用逐键创作。", "Update firmware to enable per-key creation.")}</p>}</section>}
+        {device?.modelId==='air75-v3'&&<FirmwareManagement state={state} serviceUnknown={!display||display.stateId==='serviceUnknown'}/>}
         <details className="lab-firmware-details"><summary><ChevronRight size={16}/>{copy("固件信息", "Firmware information")}</summary><div>
           <p>{copy(firmwareUnconfirmed?"上次读取版本":"当前版本", firmwareUnconfirmed?"Last known version":"Current version")} {firmware?.current || device?.firmware || "—"}</p>
           {firmware?.latest && <p>{firmwareUnconfirmed?`${copy("上次状态","Last known state")} · `:""}{copy("官方版本", "Official version")} {firmware.latest}</p>}

@@ -30,7 +30,7 @@ test("updater handoff restores lighting, releases USB and pauses automatic recon
   const s=await fakeService(t);
   await s.command({op:"preview",colors:Array(84).fill("#010101")});
   const opened=await s.command({op:"prepareFirmwareUpdate"});
-  assert.equal(opened.ok,true); assert.equal(opened.result.url,"https://drive.nuphyio.com/#/setting");
+  assert.equal(opened.ok,true); assert.equal(opened.result.url,"https://drive.nuphy.io/#/setting");
   const operations=await s.operations();
   const end=operations.findLastIndex(x=>x.op==="disconnect");
   assert.ok(operations.slice(0,end).some(x=>x.op==="restore"));

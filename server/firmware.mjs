@@ -1,11 +1,11 @@
 import {KEYBOARD_MODELS} from '../shared/keyboard-models.mjs';
-export const FIRMWARE_URL = "https://drive.nuphyio.com/#/setting";
+export const FIRMWARE_URL = "https://drive.nuphy.io/#/setting";
 export const FIRMWARE_API = "https://drive.nuphy.io/prod-api/api/nuphyIo/getLastFirmwareVersionsByType?businessId=1930212869851615233&type=1";
 // Hardware-tested version is distinct from protocol support and online latest.
-export const VERIFIED_FIRMWARE = "1.0.23.6";
+export const VERIFIED_FIRMWARE = "2.0.0.7";
 // Official model catalog: /prod-api/api/nuphyIo/keyBoardList. Kick75 IO
 // identifies 19f5:1026 with keyBoardId 1930094363885735938 (checked 2026-10-29).
-export const FIRMWARE_MODELS = Object.freeze(Object.fromEntries(Object.entries(KEYBOARD_MODELS).map(([id,p])=>[id,Object.freeze({businessId:p.businessId,modelName:id === "air75-v3" ? "AIR75 V3" : p.name,verifiedVersion:['air75-v3','kick75'].includes(id)?p.qualifiedFirmware:null,qualifiedVersion:p.qualifiedFirmware,minimumVersion:p.minimumVersion})])));
+export const FIRMWARE_MODELS = Object.freeze(Object.fromEntries(Object.entries(KEYBOARD_MODELS).map(([id,p])=>[id,Object.freeze({businessId:p.businessId,modelName:id === "air75-v3" ? "AIR75 V3" : p.name,verifiedVersion:['air75-v3','kick75'].includes(id)?p.qualifiedFirmware:null,qualifiedVersion:p.qualifiedFirmware,qualifiedVersions:p.qualifiedFirmwares??[p.qualifiedFirmware],minimumVersion:p.minimumVersion})])));
 const modelConfig = modelId => Object.hasOwn(FIRMWARE_MODELS, modelId) ? FIRMWARE_MODELS[modelId] : null;
 export const firmwareAPI = (modelId = "air75-v3") => {
   const model = modelConfig(modelId);
@@ -31,7 +31,16 @@ export function parseFirmwareManifest(value, modelId = "air75-v3") {
       String(entry.type) !== "1" || entry.environment !== "prod" ||
       String(entry.status) !== "0" || !versionParts(entry.versionNumber))
     throw new Error("官方固件信息暂时无法确认");
-  return { version: entry.versionNumber, releasedAt: entry.firstListTime || null };
+  // Keep only bounded plain text from the official manifest, never supplied links/HTML.
+  const releaseNotes = Object.fromEntries(['zh-CN','en-US'].map(language => {
+    const group = Array.isArray(entry.dataList) ? entry.dataList.find(row => row?.languageType === language) : null;
+    const sections = Array.isArray(group?.driverVersionItemList) ? group.driverVersionItemList.slice(0,12) : [];
+    return [language, sections.flatMap(section => Array.isArray(section?.data) ? section.data : [])
+      .filter(line => typeof line === 'string').slice(0,32).map(line => line.slice(0,1200))];
+  }));
+  const pairedReceiverUpdate = Object.values(releaseNotes).flat().some(line =>
+    /2[.,]4\s*G/i.test(line) && /接收器|receiver/i.test(line) && /配套|both|together/i.test(line));
+  return { version: entry.versionNumber, releasedAt: entry.firstListTime || null, releaseNotes, pairedReceiverUpdate };
 }
 export class FirmwareChecker {
   constructor({ fetchImpl = fetch, now = Date.now } = {}) {
@@ -131,7 +140,7 @@ export class FirmwareChecker {
     const hasChecked = entry.checkedAt !== null;
     const latestConfirmed = Boolean(model && hasChecked && entry.latest && !entry.error && !stale);
     const minimumRequired = model?.minimumVersion ?? null;
-    const latestSupported = latestConfirmed ? entry.latest.version === model?.qualifiedVersion : null;
+    const latestSupported = latestConfirmed ? model.qualifiedVersions.includes(entry.latest.version) : null;
     // An old keyboard can lack the required protocol even when the official
     // service is unreachable. Numeric version evidence can recommend an upgrade
     // offline, but it must never grant per-key or function-key capabilities.
@@ -150,7 +159,9 @@ export class FirmwareChecker {
     return { status, modelId, modelName: model?.modelName ?? null, current, latest: entry.latest?.version ?? null,
       checkedAt: entry.checkedAt, hasChecked, latestConfirmed, checking: Boolean(entry.pending), stale,
       minimumRequired, updateRequired, updateAvailable,
-      upgradeRecommended: updateRequired || (updateAvailable && latestSupported !== false),
+      upgradeRecommended: updateRequired || (updateAvailable && latestSupported === true),
+      releaseNotes: latestConfirmed ? entry.latest.releaseNotes : null,
+      pairedReceiverUpdate: latestConfirmed && entry.latest.pairedReceiverUpdate === true,
       latestSupported,qualifiedVersion:model?.qualifiedVersion ?? null,
       firmwareDetectionAvailable: Boolean(canDetectFirmware && model && current),
       error: entry.error, updateUrl: FIRMWARE_URL,

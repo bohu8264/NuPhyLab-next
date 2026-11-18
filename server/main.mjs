@@ -1,3 +1,4 @@
+import {AGENT_COHORT_COLORS,agentLightZone,enabledAgentBindings} from '../shared/agent-cohort.mjs';
 import {AmbientLighting,DEFAULT_AMBIENT_LIGHTING,validateAmbientLighting} from '../shared/ambient-lighting.mjs';
 import {MusicRoutes} from './music-routes.mjs';
 import {getKeyboardProfile,getCanvasCount} from '../shared/keyboard-models.mjs';
@@ -52,6 +53,7 @@ const store = await new Store(dataDir).load();
 const ambientLighting = new AmbientLighting();
 const ambientSettings = () => store.data.settings.ambientLighting ?? DEFAULT_AMBIENT_LIGHTING;
 const verifiedNativeGesture=Symbol('verifiedNativeGesture');
+const sideOperationFailure=Symbol('sideOperationFailure');
 const verifyNativeKey=createNativeKeyVerifier();
 const nativeHoldEnvironment=takeNativeHoldEnvironment();
 // Written by scripts/package.mjs. Absent when running from source.
@@ -70,10 +72,12 @@ const connectionRecovery = new ConnectionRecovery();
 const connectionWake = new AirConnectionWake();
 hardware.on('disconnected', () => {
   connectionWake.absent();
+  resetAggregateObservation();
   invalidateLightingCache();
   connectionRecovery.disconnected();
 });
 hardware.on('disconnect', () => {
+  resetAggregateObservation();
   cancelConnectionWake('helperLost');
   connectionRecovery.disconnected();
 });
@@ -130,6 +134,7 @@ let colors = blank(),
   stopping = false,
   busy = false,
   wakeReleasePending = null,
+  wakeHandoffInProgress = false,
   explicitDisconnect = false,
   commandTail = Promise.resolve(),
   lastStatusCheck = -Infinity,
@@ -137,6 +142,9 @@ let colors = blank(),
   quotaChanged = -Infinity,
   integrationsSuspended = false,
   gameSideMuted = false;
+const agentOffOutputPending = new Map();
+const wakeFailureBarriers = new Map();
+const recoveryScopeKey=scope=>JSON.stringify([scope.session,scope.epoch,scope.profile]);
 let playback = {
   mode: "idle",
   playing: false,
@@ -151,7 +159,7 @@ const recordWarnings = new Map();
 const recordRetryAt = new Map();
 const taskSlots = new StableTaskSlots();
 let publishedCodexSlots = null;
-let publishedClaudeSlots = null, agentOutputReceipt = null;
+let publishedClaudeSlots = null, agentOutputReceipt = null, agentSideReceipt = null;
 const resolveCodexSlots = (snap = codex.snapshot()) => taskSlots.resolve(snap.tasks ?? [], store.data.settings);
 // While USB displays task lights, the UI and physical keys use the same
 // acknowledged frame. A poll must not move a task before its RGB reaches USB.
@@ -240,10 +248,13 @@ function keyBindingFingerprint(settings) {
   return JSON.stringify({source:settings.agentSource,codexEnabled:settings.codexEnabled,claudeEnabled:settings.claudeEnabled,
     codexKeys:codexBindings(settings).map(key=>key.code),claudeKeys:claudeBindings(settings).map(key=>key.code),
     codexCommands:settings.codexCommandIds,claudeCommands:settings.claudeCommandIds,
+    zones:[settings.codexLightZone,settings.claudeLightZone],commandSwitches:[settings.codexCommandKeysEnabled,settings.claudeCommandKeysEnabled],
     codexTaskSource:settings.codexTaskSource,slotIds:settings.slotIds,
     claudeTaskSource:settings.claudeTaskSource,claudeSlotIds:settings.claudeSlotIds,claudeTaskAction:settings.claudeTaskAction});
 }
 function validateCapturedKey(req,index) {
+  if((req[verifiedNativeGesture]===true || Object.hasOwn(req,'nativeKeyBindingEpoch')) && req.nativeKeyBindingEpoch!==keyBindingEpoch)
+    throw new Error('按键绑定已更新，请重新按下');
   const captured=req[capturedKeyContext];
   if(captured && (captured.source!==agentSource() || captured.epoch!==keyBindingEpoch || captured.index!==index))
     throw new Error('按键绑定已更新，请重新按下');
@@ -259,9 +270,106 @@ function wakeCodexInteraction() {
 const agentSource = () => (store.data.settings.agentSource === "claude" ? "claude" : "codex");
 const agentEnabled = () => store.data.settings.sidebarFeatures.includes("codex") &&
   (agentSource() === "claude" ? store.data.settings.claudeEnabled === true : store.data.settings.codexEnabled === true);
+const sideSelected = (source=agentSource()) => agentLightZone(store.data.settings,source,hardware.state.modelId)==='side';
+const activeAgentBindings = () => enabledAgentBindings(store.data.settings,agentSource(),agentBindings(),hardware.state.modelId);
+let aggregateConnection = null, aggregateStartedAt = Infinity;
+function startupRecoveryBlocked() {
+  const key=recoveryScopeKey({session:hardware.state.connectionSessionId,epoch:hardware.transportEpoch,profile:hardware.state.lightingProfile??0});
+  const barrier=wakeFailureBarriers.get(key);
+  if (!barrier) return false;
+  // A verified recovery receipt describes the completed old lease. A new
+  // artwork can arm immediately, creating its own valid pending journal before
+  // the next poll; that new journal must not revive the old startup failure.
+  if (hardware.restorationVersion(barrier)>barrier.restorations ||
+      barrier.rollbackReported && !hardware.state.armed && !hardware.state.recoveryPending &&
+      !hardware.state.needsRestore && !hardware.state.boardSleepLease?.pending) {
+    wakeFailureBarriers.delete(key);return false;
+  }
+  return true;
+}
+const currentAggregateConnection = () => hardware.state.connected && !explicitDisconnect && !driverHandoff && !applicationUpdating && !stopping &&
+  hardware.state.modelId==='air75-v3' && !startupRecoveryBlocked() && !hardware.state.lightingRecoveryPending && !hardware.state.sideRecoveryPending && !hardware.state.readOnly && hardware.state.capabilities?.sideWholeZone===true && agentEnabled() && sideSelected()
+  ? JSON.stringify([agentSource(),hardware.state.connectionSessionId,hardware.transportEpoch,hardware.state.lightingProfile??0]) : null;
+function syncAggregateObservation() {
+  const connection=currentAggregateConnection();
+  if(connection!==aggregateConnection) {
+    for(const adapter of [codex,claude])adapter.observeAggregate?.(false);
+    aggregateConnection=connection;aggregateStartedAt=connection===null?Infinity:Date.now();
+    if(agentSideReceipt)agentSideReceipt={...agentSideReceipt,signature:null};
+  }
+  for (const [source,adapter] of [['codex',codex],['claude',claude]])
+    adapter.observeAggregate?.(connection!==null && agentSource()===source);
+}
+function resetAggregateObservation() {
+  for(const adapter of [codex,claude])adapter.observeAggregate?.(false);
+  aggregateConnection=null;aggregateStartedAt=Infinity;
+  syncAggregateObservation();
+}
+const currentAggregate = (aggregate) => aggregateConnection!==null && aggregateConnection===currentAggregateConnection() &&
+  Number.isFinite(aggregate?.observedAt) && aggregate.observedAt>=aggregateStartedAt;
+function sidePauseReason(source=agentSource()) {
+  if(source!==agentSource())return 'inactiveSource';
+  if(!agentEnabled()||!sideSelected(source))return 'off';
+  if(stopping||driverHandoff||applicationUpdating)return 'handoff';
+  if(explicitDisconnect||!hardware.state.connected)return 'disconnected';
+  if(hardware.state.modelId!=='air75-v3'||hardware.state.readOnly||hardware.state.capabilities?.sideWholeZone!==true)return 'unsupported';
+  if(connectionWake.active || wakeReleasePending || wakeHandoffInProgress)return 'connectionWake';
+  if(startupRecoveryBlocked())return 'recovery';
+  if(['game','trigger','audio'].includes(playback.mode))return playback.mode;
+  if(integrationsSuspended)return 'paused';
+  return null;
+}
+function sideSnapshot(source) {
+  const aggregate=(source==='claude'?claude:codex).snapshot().aggregate??{status:'unknown',complete:false,fresh:false,count:0};
+  const pausedReason=sidePauseReason(source), receipt=agentSideReceipt;
+  const ownsOutput=pausedReason===null && currentAggregate(aggregate) && Boolean(receipt?.signature) && (!['completed','idle'].includes(aggregate.status)||aggregate.complete) && receipt?.source===source && receipt.session===hardware.state.connectionSessionId
+    && receipt.epoch===hardware.transportEpoch && receipt.profile===(hardware.state.lightingProfile??0) && receipt.color===AGENT_COHORT_COLORS[aggregate.status]
+    && receipt.brightness===Math.round(store.data.settings[`${source}Brightness`]??100) && aggregate.fresh;
+  return {aggregate,ownsOutput,pausedReason:pausedReason??(ownsOutput?null:aggregate.status==='idle'?'idle':'waitingOutput'),
+    color:ownsOutput?receipt.color:null,transport:'usb',bleReady:false};
+}
+async function releaseAgentSide() {
+  const receipt=agentSideReceipt;
+  if(!receipt)return;
+  if(hardware.state.connected&&receipt.session===hardware.state.connectionSessionId&&receipt.epoch===hardware.transportEpoch&&receipt.profile===(hardware.state.lightingProfile??0))
+    await updateSide({restore:true});
+  agentSideReceipt=null;
+}
+async function syncAgentSide() {
+  // A new task may already be visible when the last startup frame finishes.
+  // Do not write its color until main restoration and side handoff both verify.
+  if(connectionWake.active || wakeReleasePending || wakeHandoffInProgress)return;
+  syncAggregateObservation();
+  await finishDisabledAgentOutput();
+  if(startupRecoveryBlocked())return;
+  if(hardware.state.connected && !hardware.state.readOnly &&
+     (hardware.state.sideRecoveryPending===true || hardware.state.lightingRecoveryPending===true)) {
+    // A profile return can reload a dormant journal without reconnecting USB,
+    // including one deferred across worker restarts. Recover it before a new
+    // side owner; an already armed main canvas never enters this branch.
+    if(hardware.state.sideRecoveryPending===true) await updateSide({restore:true});
+    else await hardware.restore({expectedProfile:hardware.state.lightingProfile??0});
+    await hardware.status();resetAggregateObservation();
+  }
+  // Retire the prior quota owner even when no task color is available yet.
+  if(agentEnabled() && sideSelected() && lastQuotaColor!==null && hardware.state.connected) {
+    await updateSide({restore:true});lastQuotaColor=null;quotaChanged=-Infinity;
+  }
+  const source=agentSource(), aggregate=(source==='claude'?claude:codex).snapshot().aggregate;
+  const color=currentAggregate(aggregate)&&aggregate?.fresh&&(!['completed','idle'].includes(aggregate.status)||aggregate.complete)?AGENT_COHORT_COLORS[aggregate.status]:null;
+  if(sidePauseReason()!==null||!color){await releaseAgentSide();return;}
+  const brightness=Math.round(store.data.settings[`${source}Brightness`]??100);
+  const signature=JSON.stringify([source,hardware.state.connectionSessionId,hardware.transportEpoch,hardware.state.lightingProfile??0,color,brightness]);
+  if(agentSideReceipt?.signature===signature)return;
+  const result=await updateSide({color,brightness},true);
+  if(result.verified!==true && result.changed!==false)throw new Error('侧灯状态尚未确认');
+  agentSideReceipt={source,session:hardware.state.connectionSessionId,epoch:hardware.transportEpoch,profile:hardware.state.lightingProfile??0,color,brightness,signature};
+  lastQuotaColor=null;gameSideMuted=false;
+}
 function agentLightingPauseReason(source = agentSource()) {
   if (source !== agentSource()) return 'inactiveSource';
   if (!agentEnabled()) return 'off';
+  if (sideSelected(source)) return 'sideMode';
   if (driverHandoff || applicationUpdating) return 'handoff';
   if (explicitDisconnect || !hardware.state.connected) return 'disconnected';
   if (hardware.state.readOnly === true || hardware.state.capabilities?.perKey === false) return 'unsupported';
@@ -282,7 +390,7 @@ function agentLightingSnapshot(source, lights, wholeTask) {
   const ownsOutput = agentOwnsLights(source), receipt = ownsOutput ? {...agentOutputReceipt} : null;
   return {...lights.snapshot(), sleeping:ownsOutput ? false : lightPower.sleeping, backgroundSleeping:lightPower.sleeping,
     ownsOutput, outputOwner:receipt, pausedReason:agentLightingPauseReason(source) ?? (ownsOutput ? null : 'waitingOutput'),
-    mode:store.data.settings[`${source}LightMode`], wholeTaskId:wholeTask?.id ?? null};
+    mode:store.data.settings[`${source}LightMode`], zone:agentLightZone(store.data.settings,source,hardware.state.modelId), side:sideSnapshot(source),wholeTaskId:wholeTask?.id ?? null};
 }
 const agentBindings = () =>
   agentSource() === "claude" ? claudeBindings(store.data.settings) : codexBindings(store.data.settings);
@@ -325,11 +433,15 @@ function nativePermissions() {
 let codexKeyRevision = 0, codexKeySignature = '';
 let codexSetupRevision = 0;
 const keyCapture = new KeyCapture();
+let keyRecoveryInProgress = false;
 const functionKeys = Array.from({length:12},(_,i)=>`F${i+1}`);
 const bluetoothOnly = () => !hardware.state.connected && bluetoothInput.value.connected;
 const codexPlaying = () => hardware.state.connected && ['game','trigger'].includes(playback.mode);
 function codexKeysState() {
-  const config={source:agentSource(),bindings:agentBindings(),capturing:keyCapture.active,enabled:agentEnabled() && !driverHandoff && !keyCapture.active && !codexPlaying()
+  const bindings=activeAgentBindings();
+  const bindingScope=sideSelected()?(store.data.settings[`${agentSource()}CommandKeysEnabled`]!==false?'commands':'none')
+    :(store.data.settings[`${agentSource()}CommandKeysEnabled`]!==false?'all':'tasks');
+  const config={source:agentSource(),bindings,bindingScope,capturing:keyCapture.active,enabled:bindings.length>0&&agentEnabled() && !driverHandoff && !keyCapture.active && !codexPlaying()
     && (!store.data.settings.codexKeyAdaptation || (hardware.state.connected && !explicitDisconnect) || bluetoothOnly())};
   const signature=JSON.stringify(config);
   if(signature!==codexKeySignature){codexKeySignature=signature;codexKeyRevision++;}
@@ -338,6 +450,7 @@ function codexKeysState() {
     held:codexGestures.held,dictation:codexGestures.dictation,gestureTrace:[...keyGestureTrace],taskOpenTrace:[...taskOpenTrace]};
 }
 function syncKeyAdaptation(force=false) {
+  if(keyRecoveryInProgress) return Promise.resolve(keyAdaptation.snapshot());
   return keyAdaptation.sync({enabled:!driverHandoff && (bluetoothOnly() || hardware.state.capabilities?.functionKeyAdaptation !== false) && (keyCapture.active || store.data.settings.codexKeyAdaptation || store.data.settings.codexKeycapFallback),
     keycapFallback:store.data.settings.codexKeycapFallback,
     active:keyCapture.active || (codexKeysState().enabled && codexKeysState().host?.suspended!==true),
@@ -345,7 +458,7 @@ function syncKeyAdaptation(force=false) {
     bluetooth:bluetoothOnly(),
     bluetoothIdentity:bluetoothInput.signature,
     hostPermissions:nativeHostPermissions,
-    bindings:keyCapture.active ? functionKeys : agentBindings().map(key=>key.code)},force);
+    bindings:keyCapture.active ? functionKeys : activeAgentBindings().map(key=>key.code)},force);
 }
 async function refreshBluetooth(force=false) {
   const previous=bluetoothInput.signature;
@@ -361,6 +474,7 @@ async function refreshBluetooth(force=false) {
   return bluetoothInput.snapshot();
 }
 async function identifiedKeyboard() {
+  resetAggregateObservation();keyBindingEpoch++;
   const modelId = hardware.state.modelId ?? "air75-v3";
   firmware.setModel?.(modelId);
   if (getLayoutModel() === modelId) return;
@@ -393,7 +507,7 @@ function state() {
       ...hardware.state,
       outputColorProfile: hardware.outputColorProfileStatus(),
       layoutModelId: getLayoutModel(),
-      sideColor: lastQuotaColor,
+      sideColor: sideSnapshot(agentSource()).color ?? (agentEnabled()&&sideSelected()?null:lastQuotaColor),
       storagePath: dataDir,
       storageWarning: store.warning,
       unmappedIndices: getKeyboardProfile(getLayoutModel()).unmappedIndices,
@@ -493,6 +607,7 @@ function invalidateLightingCache({preserveSide = false} = {}) {
   lastFrame = "";
   lastCommittedWire = null;
   agentOutputReceipt = null;
+  if (!preserveSide && agentSideReceipt) agentSideReceipt = {...agentSideReceipt,signature:null};
 }
 function cancelConnectionWake(reason) {
   if (reason === 'userAction' && reconnectPlayback) {
@@ -518,6 +633,8 @@ function observeConnectionFailure(error) {
 async function beginConnectionWake(context) {
   const ticket = connectionWake.begin(hardware.state, hardware.transportEpoch, context);
   if (!ticket) return false;
+  ticket.recoveryScope={session:ticket.sessionId,epoch:ticket.epoch,profile:ticket.profile};
+  ticket.recoveryScope.restorations=hardware.restorationVersion(ticket.recoveryScope);
   wakeReleasePending = null;
   invalidateLightingCache();
   try {
@@ -539,19 +656,27 @@ async function beginConnectionWake(context) {
   } catch(error) {
     cancelConnectionWake('outputFailed');
     playback.lastError = error.message;
-    await resumeAgentAfterWakeFailure(error);
+    await resumeAgentAfterWakeFailure(error,ticket.recoveryScope);
     throw error;
   }
 }
-async function resumeAgentAfterWakeFailure(error) {
+async function resumeAgentAfterWakeFailure(error,scope) {
   // Resume an enabled AI mode only after native explicitly verified rollback.
   // Uncertain or deferred restoration stays stopped with its original journal.
-  if (!error?.protocolDetail?.includes('Original lighting was restored and verified.') ||
-      !agentEnabled() || integrationsSuspended || explicitDisconnect || driverHandoff || stopping || applicationUpdating)
-    return;
+  if(!scope)return;
+  const key=recoveryScopeKey(scope);
+  const rollbackReported=Boolean(error?.protocolDetail?.includes('Original lighting was restored and verified.'));
+  // Recovery preceding this failure cannot acknowledge it. Only a later
+  // complete receipt for this exact USB connection and profile may clear it.
+  wakeFailureBarriers.set(key,{...scope,restorations:hardware.restorationVersion(scope),rollbackReported});
   await reconcileHardwareError();
-  if (!hardware.state.connected || hardware.state.readOnly === true || hardware.state.armed ||
-      hardware.state.recoveryPending || hardware.state.needsRestore) return;
+  syncAggregateObservation();
+  if (!rollbackReported || scope.session!==hardware.state.connectionSessionId || scope.epoch!==hardware.transportEpoch ||
+      scope.profile!==(hardware.state.lightingProfile??0) ||
+      !hardware.state.connected || hardware.state.readOnly === true || hardware.state.armed ||
+      hardware.state.recoveryPending || hardware.state.needsRestore || hardware.state.boardSleepLease?.pending) return;
+  wakeFailureBarriers.delete(key);syncAggregateObservation();
+  if (!agentEnabled() || integrationsSuspended || explicitDisconnect || driverHandoff || stopping || applicationUpdating) return;
   const message = playback.lastError;
   try { await reconcileAgentLighting(); }
   catch { await reconcileHardwareError(); }
@@ -579,20 +704,40 @@ async function handoffConnectionWakeSide() {
       !(source && store.data.settings[`${source}LightMode`] === 'whole') && !lightPower.sleeping)
     await restoreGameSide();
 }
+async function withWakeHandoffRecovery(ticket, action) {
+  // The animation releases its current ticket before handing output to the
+  // next owner. Retain the original scope through every fallible handoff step.
+  const prior = wakeHandoffInProgress;
+  wakeHandoffInProgress = true;
+  try {
+    // Task-side colors belong to the regular side-only update in tick(), after
+    // this transaction ends. Its failures must not roll back a healthy new
+    // main owner or manufacture another whole-keyboard startup barrier.
+    return await action();
+  }
+  catch(error) {
+    await resumeAgentAfterWakeFailure(error,ticket.recoveryScope);
+    throw error;
+  }
+  finally {wakeHandoffInProgress=prior;}
+}
 async function releaseCancelledWake() {
   const ticket = wakeReleasePending;
   wakeReleasePending = null;
   if (!ticket || connectionWake.active || ticket.sessionId !== hardware.state.connectionSessionId ||
-      ticket.epoch !== hardware.transportEpoch || !hardware.state.connected || !hardware.state.armed) return;
-  await settleConnectedOutput(ticket.context);
-  await handoffConnectionWakeSide();
-  if (['static','paused'].includes(playback.mode) && hardware.state.armed)
-    await output(playback.mode === 'paused' ? renderAnimation(baseColors, animation, playback.elapsed ?? 0) : baseColors);
-  else if (!hasOrdinaryLighting() && hardware.state.armed) {
-    await hardware.restore();
-    invalidateLightingCache();
-    colors = blank();
-  }
+      ticket.epoch !== hardware.transportEpoch || ticket.profile !== (hardware.state.lightingProfile??0) ||
+      !hardware.state.connected || !hardware.state.armed) return;
+  await withWakeHandoffRecovery(ticket,async()=>{
+    await settleConnectedOutput(ticket.context);
+    await handoffConnectionWakeSide();
+    if (['static','paused'].includes(playback.mode) && hardware.state.armed)
+      await output(playback.mode === 'paused' ? renderAnimation(baseColors, animation, playback.elapsed ?? 0) : baseColors);
+    else if (!hasOrdinaryLighting() && hardware.state.armed) {
+      await hardware.restore();
+      invalidateLightingCache();
+      colors = blank();
+    }
+  });
 }
 async function tickConnectionWake() {
   const ticket = connectionWake.current;
@@ -613,21 +758,23 @@ async function tickConnectionWake() {
   // A slow ACK for an earlier tail frame must not skip the verified blackout.
   if (finishing) {
     const context = connectionWake.handoff();
-    invalidateLightingCache({preserveSide:true});
-    await settleConnectedOutput(context);
-    await handoffConnectionWakeSide();
-    if (['static','paused'].includes(playback.mode) && hardware.state.armed)
-      await output(playback.mode === 'paused' ? renderAnimation(baseColors, animation, playback.elapsed ?? 0) : baseColors);
-    // An idle/native keyboard belongs to its original firmware lighting,
-    // whereas an existing Lab scene or AI mode resumes through its own path.
-    if (!hasOrdinaryLighting() && hardware.state.armed) {
-      await hardware.restore();
-      invalidateLightingCache();
-      colors = blank();
-    }
-    if (ticket.sessionId !== hardware.state.connectionSessionId || ticket.epoch !== hardware.transportEpoch || !hardware.state.connected)
-      connectionWake.cancel('sessionChanged');
-    else connectionWake.complete();
+    await withWakeHandoffRecovery(ticket,async()=>{
+      invalidateLightingCache({preserveSide:true});
+      await settleConnectedOutput(context);
+      await handoffConnectionWakeSide();
+      if (['static','paused'].includes(playback.mode) && hardware.state.armed)
+        await output(playback.mode === 'paused' ? renderAnimation(baseColors, animation, playback.elapsed ?? 0) : baseColors);
+      // An idle/native keyboard belongs to its original firmware lighting,
+      // whereas an existing Lab scene or AI mode resumes through its own path.
+      if (!hasOrdinaryLighting() && hardware.state.armed) {
+        await hardware.restore();
+        invalidateLightingCache();
+        colors = blank();
+      }
+      if (ticket.sessionId !== hardware.state.connectionSessionId || ticket.epoch !== hardware.transportEpoch || ticket.profile !== (hardware.state.lightingProfile??0) || !hardware.state.connected)
+        connectionWake.cancel('sessionChanged');
+      else connectionWake.complete();
+    });
   }
   return true;
 }
@@ -670,8 +817,14 @@ async function activate() {
   lastFrame = "";
   playback.lastError = null;
 }
-async function updateSide(args) {
-  const result = await hardware.request("side", args);
+async function updateSide(args,agent=false) {
+  // A new write invalidates the old receipt, including a failed write whose
+  // native rollback cannot be confirmed. Keep its identity for later restore.
+  if(agentSideReceipt)agentSideReceipt={...agentSideReceipt,signature:null};
+  let result;
+  try { result = await hardware.request("side", {...args,expectedProfile:hardware.state.lightingProfile??0}); }
+  catch(error) { error[sideOperationFailure]=true; throw error; }
+  if(!agent)agentSideReceipt=null;
   if (result.state) hardware.state.state = result.state;
   return result;
 }
@@ -687,6 +840,57 @@ async function restoreGameSide() {
   gameSideMuted = false;
   lastQuotaColor = null;
   quotaChanged = -Infinity;
+}
+function queueDisabledAgentOutput({whole = playback.mode==='agent'} = {}) {
+  const scope={session:hardware.state.connectionSessionId,epoch:hardware.transportEpoch,profile:hardware.state.lightingProfile??0};
+  const key=JSON.stringify(scope), pending=agentOffOutputPending.get(key);
+  if (pending) pending.whole ||= whole;
+  else agentOffOutputPending.set(key,{...scope,whole});
+}
+async function finishDisabledAgentOutput() {
+  // Another Mac/Win profile can acquire its own output while this one waits.
+  // Keep both intents; a USB replacement instead uses its native journals.
+  for (const [key,pending] of agentOffOutputPending)
+    if (pending.session!==hardware.state.connectionSessionId || pending.epoch!==hardware.transportEpoch) agentOffOutputPending.delete(key);
+  const key=JSON.stringify({session:hardware.state.connectionSessionId,epoch:hardware.transportEpoch,profile:hardware.state.lightingProfile??0});
+  const ticket=agentOffOutputPending.get(key);
+  if (!ticket) return;
+  if (!hardware.state.connected || hardware.state.readOnly) return;
+  if (agentEnabled() && !sideSelected()) {
+    agentOffOutputPending.delete(key);return;
+  }
+  // These newer outputs own both the main canvas and the muted side zone.
+  // The old AI return must not restore either zone underneath them.
+  if(hardware.state.armed && ['game','trigger','audio'].includes(playback.mode)) {
+    agentOffOutputPending.delete(key);return;
+  }
+  let error;
+  try { await releaseAgentSide(); } catch(failure) { error=failure; }
+  if (playback.mode==='agent') {
+    ticket.whole=true;
+    try { await stop({resumeAgent:false,expectedProfile:ticket.profile}); } catch(failure) { error=failure; }
+  } else if (ticket.whole && playback.mode==='idle') {
+    // stop() relinquishes its UI mode before the native restore completes.
+    // Retain that ownership until a later restore is actually confirmed.
+    try {
+      if (hardware.state.armed || hardware.state.recoveryPending || hardware.state.needsRestore) await hardware.restore({expectedProfile:ticket.profile});
+      invalidateLightingCache();colors=blank();
+    } catch(failure) { error=failure; }
+  } else if (hardware.state.armed && ['static','animation','paused'].includes(playback.mode)) {
+    ticket.whole=false; // A newly started work owns the main zone now.
+    // Whole-task mode muted the side zone over an ordinary work. Off must
+    // return that zone even if releasing a held command failed earlier.
+    if (!lightPower.sleeping) try { await restoreGameSide(); } catch(failure) { error??=failure; }
+    if (['static','paused'].includes(playback.mode)) {
+      try {
+        lastFrame='';
+        await output(playback.mode==='paused'?renderAnimation(baseColors,animation,playback.elapsed??0):baseColors);
+      } catch(failure) { error=failure; }
+    }
+  }
+  if (error) throw error; // Keep the cleanup intent for the next connected tick.
+  if (agentOffOutputPending.get(key)===ticket) agentOffOutputPending.delete(key);
+  if (agentEnabled() && sideSelected()) {integrationsSuspended=false;resetAggregateObservation();}
 }
 async function disableTrigger() {
   const wasGlobal = triggerMonitor === "global";
@@ -716,7 +920,7 @@ async function fireTrigger(code, at = performance.now()) {
   }
   return trigger.snapshot();
 }
-async function stop({restore = true, resumeAgent = true} = {}) {
+async function stop({restore = true, resumeAgent = true, expectedProfile, recoverCurrentProfile = false} = {}) {
   cancelConnectionWake('stopped');
   audio.stop();
   let keyReleaseError;
@@ -732,7 +936,7 @@ async function stop({restore = true, resumeAgent = true} = {}) {
   pendingSceneRestore = false;
   lastFrame = "";
   const keepAgent = resumeAgent && agentEnabled() && !stopping && !applicationUpdating && !driverHandoff && !explicitDisconnect;
-  if (restore && !keepAgent) await hardware.restore();
+  if (restore && (!keepAgent || sideSelected())) await hardware.restore({expectedProfile,currentProfile:recoverCurrentProfile});
   playback.lastError = null;
   invalidateLightingCache();
   colors = blank();
@@ -743,6 +947,13 @@ async function stop({restore = true, resumeAgent = true} = {}) {
   return hardware.state;
 }
 async function startAgentLighting() {
+  if(sideSelected()) {
+    // Side status never arms/clears the main RGB canvas or takes task keys.
+    if(playback.mode==='agent') queueDisabledAgentOutput({whole:true});
+    await finishDisabledAgentOutput();
+    integrationsSuspended=false;
+    await syncAgentSide();return;
+  }
   // Task status has exclusive ownership: cancel capture, game and trigger
   // dispatch before sending the first status frame. Keep saved artwork intact.
   audio.stop();
@@ -761,6 +972,7 @@ async function startAgentLighting() {
 async function reconcileAgentLighting({resumeSuspended = false, replaceSpecialOutput = false} = {}) {
   if (!agentEnabled() || explicitDisconnect || driverHandoff || applicationUpdating ||
       (!resumeSuspended && integrationsSuspended) || (!replaceSpecialOutput && ['game', 'trigger'].includes(playback.mode))) return false;
+  if(sideSelected()){await startAgentLighting();return true;}
   if (['static', 'animation', 'paused', 'audio'].includes(playback.mode)) {
     // Enabling the mode overlays the current work; it must not reset its
     // clock, frames, pause position or native audio-capture session.
@@ -788,6 +1000,7 @@ async function setAgentMode(source, enabled, {repairEmptyCustom = false} = {}) {
     if (enabled) await reconcileAgentLighting({resumeSuspended:true,replaceSpecialOutput:true});
     else if (playback.mode === 'agent') await stop({resumeAgent:false});
     await syncKeyAdaptation();
+    syncAggregateObservation();await syncAgentSide();
   }
   if (enabled && explicitDisconnect && !bluetoothOnly()) { try { await command({op:'connect'}); } catch {} }
   if (!enabled && hardware.state.connected) await hardware.status();
@@ -890,6 +1103,19 @@ async function tick() {
     void firmware.refresh();
     await releaseCancelledWake();
     if (await tickConnectionWake()) return;
+    try { await syncAgentSide(); }
+    catch(error) {
+      // A side-only failure must not stop a healthy main animation/audio
+      // session. Confirm its lease survived before continuing ordinary frames.
+      await reconcileHardwareError();
+      if (!error[sideOperationFailure] || !hardware.state.connected || hardware.state.readOnly ||
+          hasOrdinaryLighting() && !hardware.state.armed) throw error;
+      playback.lastError=error.message;
+    }
+    if(startupRecoveryBlocked()) {
+      if(performance.now()-lastStatusCheck>4000) {lastStatusCheck=performance.now();await hardware.status();}
+      return;
+    }
     if (hardware.state.capabilities?.perKey === false) {
       if (performance.now() - lastStatusCheck > 4000) {
         lastStatusCheck = performance.now();
@@ -907,7 +1133,7 @@ async function tick() {
           if (systemIdleAvailable) lightPower.observeSystemIdle(idle.idleMs);
         } catch { systemIdleAvailable = false; }
       }
-      if (agentEnabled() && !agentLightingSource()) {
+      if (agentEnabled() && !sideSelected() && !agentLightingSource()) {
         const watched = agentSource() === "claude"
           ? (store.data.settings.claudeLightMode === "whole"
               ? [resolveClaudeWholeTask(claudeTasks(),store.data.settings,claudeLights.selectedId)] : claudeSlots())
@@ -921,7 +1147,7 @@ async function tick() {
         lightSleepStarted ??= performance.now();
         lastGameTick = performance.now();
         if (trigger.armed) { trigger.render(performance.now()); playback.playing = trigger.flashing; }
-        await muteGameSide();
+        if(!sideSelected()||!agentEnabled())await muteGameSide();
         await output(blank());
         if (performance.now() - lastStatusCheck > 4000) { lastStatusCheck = performance.now(); await hardware.status(); }
         return;
@@ -975,7 +1201,7 @@ async function tick() {
       await hardware.status();
     }
     if (
-      store.data.settings.quotaSideEnabled &&
+      store.data.settings.quotaSideEnabled && !(agentEnabled()&&sideSelected()) &&
       !["game", "trigger", "audio", "agent"].includes(playback.mode) &&
       !(agentLightingSource() && store.data.settings[`${agentSource()}LightMode`] === 'whole') &&
       !integrationsSuspended &&
@@ -1006,7 +1232,7 @@ async function tick() {
       }
     }
   } catch (e) {
-    const failedWake = connectionWake.active;
+    const failedWakeScope = connectionWake.current?.recoveryScope ?? wakeReleasePending?.recoveryScope;
     cancelConnectionWake('outputFailed');
     playback.lastError = e.message;
     const audioFailed = playback.mode === 'audio';
@@ -1027,7 +1253,7 @@ async function tick() {
       game.status = "paused";
       playback.playing = false;
     } else if (hardware.state.connected) playback.playing = false;
-    if (failedWake) await resumeAgentAfterWakeFailure(e);
+    if (failedWakeScope) await resumeAgentAfterWakeFailure(e,failedWakeScope);
   } finally {
     busy = false;
   }
@@ -1042,6 +1268,7 @@ async function serialized(fn) {
     try {
       return await fn();
     } catch (error) {
+      const failedWakeScope = connectionWake.current?.recoveryScope ?? wakeReleasePending?.recoveryScope;
       cancelConnectionWake('outputFailed');
       await reconcileHardwareError();
       if (playback.mode === "trigger" && (!hardware.state.armed || !hardware.state.connected)) {
@@ -1058,6 +1285,10 @@ async function serialized(fn) {
       if (playback.mode === "game" && (!hardware.state.armed || !hardware.state.connected)) {
         if (game.status === "running") game.status = "paused";
         playback.playing = false;
+      }
+      if(failedWakeScope && error.hardwareOperation) {
+        playback.lastError=error.message;
+        await resumeAgentAfterWakeFailure(error,failedWakeScope);
       }
       throw error;
     } finally {
@@ -1130,24 +1361,31 @@ async function command(req) {
       void firmware.refresh(true);
       return firmware.snapshot(hardware.state);
     case "previewFunctionKeyRecovery": {
+      if(keyCapture.active) throw new Error("请先结束快捷键录制，再检查和恢复按键。");
       if(!hardware.state.connected) throw new Error('请先连接需要恢复的键盘。');
       return hardware.request('previewFunctionKeyRecovery');
     }
     case "confirmFunctionKeyRecovery": {
+      if(keyCapture.active || keyRecoveryInProgress) throw new Error("请先结束快捷键录制，再检查和恢复按键。");
       if (agentEnabled()) throw new Error(agentSource() === 'claude'
         ? '请先关闭 Claude Code 模式后再恢复按键。' : '请先关闭 Codex 模式后再恢复按键。');
       if(req.confirmSameKeyboard!==true) throw new Error('请先确认当前连接的是原来那一把键盘。');
       if(typeof req.token!=='string' || !req.token || req.token.length>200) throw new Error('恢复预览已失效，请重新检查。');
-      await codexGestures.release();codexPresses.reset();
-      const result=await hardware.request('confirmFunctionKeyRecovery',{token:req.token,sameKeyboard:true});
-      await hardware.status();
-      codexSetupRevision++;
-      await syncKeyAdaptation(true);
-      return result;
+      keyRecoveryInProgress=true;
+      try {
+        await codexGestures.release();codexPresses.reset();
+        const result=await hardware.request('confirmFunctionKeyRecovery',{token:req.token,sameKeyboard:true});
+        await hardware.status();
+        codexSetupRevision++;
+        return result;
+      } finally {keyRecoveryInProgress=false;}
+      // A successful recovery leaves the keys restored. The next explicit
+      // capture/mode command, never this confirmation, may lease them again.
     }
     case "prepareAppUpdate": {
       applicationUpdating = true;
       explicitDisconnect = true;
+      resetAggregateObservation();
       try {
         await codexCommandBridge.close();
         audio.stop();
@@ -1172,6 +1410,7 @@ async function command(req) {
     case "prepareFirmwareUpdate": {
       driverHandoff = true;
       explicitDisconnect = true;
+      resetAggregateObservation();
       let releaseError;
       try { await keyAdaptation.release('paused'); } catch(error) { releaseError=error; }
       try { await stop(); } catch(error) { releaseError ??= error; }
@@ -1275,6 +1514,7 @@ async function command(req) {
     }
     case "disconnect":
       explicitDisconnect = true;
+      resetAggregateObservation();
       // Release USB even when restoring the original lighting fails. The
       // helper retains the journal and reports recovery separately.
       await stop({restore:false});
@@ -1288,7 +1528,7 @@ async function command(req) {
       // If disabling failed before committing the intent, do not leave the
       // switch On while deliberately restoring stock colours underneath it.
       if (modeError && agentEnabled()) throw modeError;
-      const result=await stop({resumeAgent:false});
+      const result=await stop({resumeAgent:false,recoverCurrentProfile:true});
       if (modeError) throw modeError;
       return result;
     }
@@ -1364,19 +1604,13 @@ async function command(req) {
         // Apply cleanup only for a committed sidebar, including a partially
         // failed off-switch write. Unrelated additions leave output untouched.
         if (JSON.stringify(store.data.settings.sidebarFeatures)===JSON.stringify(req.settings.sidebarFeatures)) {
-          if (removed.includes('codex')) {keyBindingEpoch++;try{await codexGestures.release();}catch(error){failure??=error;}codexPresses.reset();}
-          const ownsPlayback=removed.includes('codex') && playback.mode==='agent'
-            || removed.includes('game') && playback.mode==='game'
+          if (removed.includes('codex')) {queueDisabledAgentOutput();syncAggregateObservation();keyBindingEpoch++;try{await codexGestures.release();}catch(error){failure??=error;}codexPresses.reset();}
+          const ownsPlayback=removed.includes('game') && playback.mode==='game'
             || removed.includes('studio') && ['static','animation','paused','audio','trigger','native'].includes(playback.mode);
           if (removed.includes('studio')) {reconnectPlayback=null;suspendedScene=null;pendingSceneRestore=false;}
-          if (ownsPlayback) {try{await stop();}catch(error){failure??=error;}}
+          if (ownsPlayback) {if(removed.includes('codex'))queueDisabledAgentOutput({whole:true});try{await stop();}catch(error){failure??=error;}}
           if (removed.includes('codex')) {
-            try {
-              if (hardware.state.armed && ['static','paused'].includes(playback.mode)) {
-                await restoreGameSide();lastFrame='';
-                await output(playback.mode==='paused'?renderAnimation(baseColors,animation,playback.elapsed??0):baseColors);
-              }
-            }catch(error){failure??=error;}
+            try {await finishDisabledAgentOutput();}catch(error){failure??=error;}
             try {await syncKeyAdaptation();}catch(error){failure??=error;}
           }
         }
@@ -1391,14 +1625,31 @@ async function command(req) {
         return store.settings(req.settings);
       // Reject an invalid mixed preference batch before touching held keys.
       validateSettings(req.settings, store.data.settings);
+      const old = store.data.settings;
       const lightingKeys = ['brightness','ambientLighting','outputColorProfile','lightDurationMs','lightIdleMs','autoConnect','quotaSideEnabled','audio'];
       if (connectionWake.active && Object.entries(req.settings).some(([key,value]) =>
           (lightingKeys.includes(key) || key.startsWith('codex') || key.startsWith('claude') || key === 'agentSource') &&
           JSON.stringify(value) !== JSON.stringify(store.data.settings[key])))
         cancelConnectionWake('userAction');
+      // Commit only disable intents before releasing held input. A failed
+      // dictation stop must not keep mode/command keys enabled or enable a new
+      // source. Remaining requested changes still wait for successful cleanup.
+      const offKeys=['codexEnabled','claudeEnabled','codexCommandKeysEnabled','claudeCommandKeysEnabled','codexKeyAdaptation'];
+      const offPatch=Object.fromEntries(offKeys.filter(key=>req.settings[key]===false && store.data.settings[key]!==false).map(key=>[key,false]));
+      if(Object.keys(offPatch).length) {
+        await store.settings(offPatch);keyBindingEpoch++;syncAggregateObservation();
+        if ((old.agentSource==='claude'?old.claudeEnabled:old.codexEnabled) && !agentEnabled()) queueDisabledAgentOutput();
+        let offError;
+        try {await codexGestures.release();}catch(error){offError=error;}
+        codexPresses.reset();
+        try {await syncKeyAdaptation();}catch(error){offError??=error;}
+        if(!agentEnabled()) {
+          try {await finishDisabledAgentOutput();}catch(error){offError??=error;}
+        }
+        if(offError)throw offError;
+      }
       await codexGestures.release();
       codexPresses.reset();
-      const old = store.data.settings;
       if(audio.session && req.settings.audio && (req.settings.audio.source !== undefined && req.settings.audio.source!==old.audio.source || req.settings.audio.deviceId !== undefined && req.settings.audio.deviceId!==old.audio.deviceId)) await stop();
       const nextRequest={...req.settings};
       if (typeof req.settings.brightness === 'number') {
@@ -1406,11 +1657,26 @@ async function command(req) {
         nextRequest.ambientLighting=!lightPower.sleeping && !connectionWake.active
           ? ambientLighting.preference(config,hardware.state,old.brightness,req.settings.brightness) : config;
       }
+      const releaseSide = agentSideReceipt && (req.settings.agentSource!==undefined || req.settings[`${agentSource()}LightZone`]!==undefined || req.settings[`${agentSource()}Enabled`]===false);
+      // Persist Off and withdraw key ownership before any fallible restoration.
+      // An unavailable keyboard must not turn a disabled feature back on.
       const settings = await store.settings(nextRequest);
+      // Side mode cannot inherit an exclusive main-zone lease. Record its
+      // return before key releases or the first restore can fail.
+      const priorZoneSource=old.agentSource==='claude'?'claude':'codex';
+      if (agentEnabled() && sideSelected() && (playback.mode==='agent' ||
+          old[`${priorZoneSource}Enabled`] && agentLightZone(old,priorZoneSource,hardware.state.modelId)==='backlight')) queueDisabledAgentOutput();
+      syncAggregateObservation();
       if (settings.ambientLighting.enabled !== old.ambientLighting?.enabled) ambientLighting.reset();
       if (typeof req.settings.brightness === 'number') ambientLighting.manualBrightness(settings.brightness);
       void codexCommandBridge.inspect();
       if(keyBindingFingerprint(old)!==keyBindingFingerprint(settings))keyBindingEpoch++;
+      if(releaseSide) {
+        let transitionError;
+        try { await syncKeyAdaptation(); } catch(error) { transitionError=error; }
+        try { await releaseAgentSide(); } catch(error) { transitionError??=error; }
+        if(transitionError)throw transitionError;
+      }
       hardware.setOutputColorProfile(settings.outputColorProfile);
       if (JSON.stringify(old.outputColorProfile) !== JSON.stringify(settings.outputColorProfile))
         invalidateLightingCache({preserveSide:true});
@@ -1426,10 +1692,10 @@ async function command(req) {
       }
       const previousAgentEnabled = old.agentSource === "claude" ? old.claudeEnabled : old.codexEnabled;
       const previousSource=old.agentSource === 'claude' ? 'claude' : 'codex';
-      const oldWhole=previousAgentEnabled && old[`${previousSource}LightMode`] === 'whole';
-      const newWhole=agentEnabled() && settings[`${agentSource()}LightMode`] === 'whole';
+      const oldWhole=previousAgentEnabled && agentLightZone(old,previousSource,hardware.state.modelId)==='backlight' && old[`${previousSource}LightMode`] === 'whole';
+      const newWhole=agentEnabled() && !sideSelected() && settings[`${agentSource()}LightMode`] === 'whole';
       if (oldWhole && !newWhole && ['static','animation','paused'].includes(playback.mode)) await restoreGameSide();
-      const startsAgentLighting = agentEnabled() && (!previousAgentEnabled || settings.agentSource !== old.agentSource
+      const startsAgentLighting = agentEnabled() && (!previousAgentEnabled || settings.agentSource !== old.agentSource || agentLightZone(old,previousSource,hardware.state.modelId)!==agentLightZone(settings,agentSource(),hardware.state.modelId)
         || req.settings[agentSource() === 'claude' ? 'claudeEnabled' : 'codexEnabled'] === true);
       // Starting task lighting is a new lighting session even when a previous
       // scene still owns the device. Do not inherit that scene's elapsed timer.
@@ -1464,6 +1730,7 @@ async function command(req) {
       else if (hardware.state.armed && playback.mode === "game")
         await output(game.render());
       await syncKeyAdaptation();
+      await syncAgentSide();
       void codexCommandBridge.inspect();
       return settings;
     }
@@ -1613,6 +1880,7 @@ async function command(req) {
     case "codexBind":
       return command({op:'settings',settings:rebindCodexKey(store.data.settings,req.group,req.index,req.code)});
     case "codexCapture": {
+      if(keyRecoveryInProgress) throw new Error("正在恢复按键，请完成后再录制快捷键。");
       const wasActive=keyCapture.active;
       keyCapture.update(req.session,req.active);
       if (keyCapture.active && !wasActive) { await codexGestures.release(); codexPresses.reset(); }
@@ -1651,14 +1919,18 @@ async function command(req) {
         return codexGestures.release(req.code);
       }
       if(req.phase!==undefined && req.phase!=='down') throw new Error('按键阶段无效');
+      if(req.phase==='down'&&codexPresses.seen(req.code,gesture?.id)){
+        traceKeyGesture(req,'ignored',{reason:'duplicate-press',targetId:req[capturedKeyContext]?.id??null});
+        return {ignored:true,reason:'duplicate-press'};
+      }
       const index=agentBindings().findIndex(key=>key.code===req.code);
+      const captured=validateCapturedKey(req,index);
+      if(index<0||!activeAgentBindings().some(binding=>binding.index===index))throw new Error('这个按键尚未绑定');
       if(req.phase==='down'&&!codexPresses.down(req.code,gesture?.id)){
         traceKeyGesture(req,'ignored',{reason:'duplicate-press',targetId:req[capturedKeyContext]?.id??null});
         return {ignored:true,reason:'duplicate-press'};
       }
       try {
-        const captured=validateCapturedKey(req,index);
-        if(index<0)throw new Error('这个按键尚未绑定');
         const context=Object.freeze({code:req.code,gestureId:gesture?.id??null,eventSource:gesture?.source??'legacy',
           ...(gesture?.time!==undefined?{eventTime:gesture.time}:{}),source:captured?.source??agentSource(),
           index,epoch:captured?.epoch??keyBindingEpoch,trustedNative:req[verifiedNativeGesture]===true,nativeEpoch:req.nativeKeyBindingEpoch});
@@ -1676,6 +1948,7 @@ async function command(req) {
     }
     case "codexSlot": {
       if (agentSource() !== "codex" || !codexKeysState().enabled || !Number.isInteger(req.index) || req.index < 0 || req.index > 11) throw new Error("命令键未启用");
+      if(!activeAgentBindings().some(binding=>binding.index===req.index))throw new Error('此按键控制已关闭');
       const captured=validateCapturedKey(req,req.index);
       if (req.index < 6) {
         const threadId = captured ? captured.id : slots()[req.index]?.id;
@@ -1782,6 +2055,7 @@ async function command(req) {
     case "claudeSlot": {
       if (agentSource() !== "claude" || !codexKeysState().enabled || !Number.isInteger(req.index) || req.index < 0 || req.index > 11)
         throw new Error("命令键未启用");
+      if(!activeAgentBindings().some(binding=>binding.index===req.index))throw new Error('此按键控制已关闭');
       const captured=validateCapturedKey(req,req.index);
       claudeLights.wake();
       if (req.index < 6) {
@@ -1851,11 +2125,12 @@ async function claudeLocalCommand(id) {
   }
 }
 hardware.on("shortcut", (event) => {
-  if (!agentEnabled()) return;
+  if (!agentEnabled()||sideSelected()) return;
+  const capturedEpoch=keyBindingEpoch;
   if (agentSource() === "claude") {
     const session = event.action === "slot" ? claudeSlots()[event.index] : null;
     if (session)
-      serialized(() => command({ op: "claudeAction", action: "task", sessionId: session.id })).catch((e) => {
+      serialized(() => capturedEpoch===keyBindingEpoch && agentEnabled() && !sideSelected() ? command({ op: "claudeAction", action: "task", sessionId: session.id }) : undefined).catch((e) => {
         playback.lastError = e.message;
       });
     return;
@@ -1863,7 +2138,7 @@ hardware.on("shortcut", (event) => {
   const task = event.action === "slot" ? slots()[event.index] : null;
   if (task)
     serialized(() =>
-      command({ op: "codexAction", action: "task", threadId: task.id }),
+      capturedEpoch===keyBindingEpoch && agentEnabled() && !sideSelected() ? command({ op: "codexAction", action: "task", threadId: task.id }) : undefined,
     ).catch((e) => {
       playback.lastError = e.message;
     });
@@ -2023,6 +2298,7 @@ server.once("listening", async () => {
   console.log(
     JSON.stringify({ event: "ready", port: address.port, url: info.url }),
   );
+  syncAggregateObservation();
   codex.start().catch((e) => {
     playback.lastError = "Codex 读取暂不可用：" + e.message;
   });

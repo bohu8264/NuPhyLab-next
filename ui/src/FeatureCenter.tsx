@@ -1,5 +1,5 @@
 import {useState} from 'react';
-import {Lightbulb,Folder,SquareTerminal,Gamepad2,AudioLines,Music2,ScanLine,Files,Archive,Mic,Plus,Minus,ArrowUpRight,Search} from 'lucide-react';
+import {Lightbulb,Folder,SquareTerminal,Gamepad2,AudioLines,Music2,ScanLine,Files,Archive,Mic,PanelsTopLeft,Plus,Minus,ArrowUpRight,Search} from 'lucide-react';
 import {useLanguage} from './i18n';
 import type {FeatureId} from '../../shared/sidebar-features.mjs';
 import './feature-center.css';
@@ -14,6 +14,7 @@ export const features = [
   {id:'selection-question',zh:'智能框选',en:'Smart Selection',icon:ScanLine,description:['框选内容，快速翻译、总结、解释或起草回复。','Select anything to translate, summarize, explain or draft a reply.']},
   {id:'drag-convert',zh:'拖拽转换',en:'Drag Convert',icon:Files,description:['拖动文件，完成格式转换、压缩与解压。','Convert, compress and extract files with a drag.']},
   {id:'voice-input',zh:'语音输入',en:'Voice Input',icon:Mic,description:['说话后自动整理语句，填入当前输入框。','Speak, refine your wording and insert it into the current text field.']},
+  {id:'dock-scenes',zh:'Dock 场景',en:'Dock Scenes',icon:PanelsTopLeft,description:['按场景整理 Mac 的 Dock，用快捷键切换固定应用。','Organize pinned Mac apps into scenes and switch your Dock with a shortcut.']},
   {id:'keyboard-pocket',zh:'键盘口袋',en:'Keyboard Pocket',icon:Archive,description:['随手收纳文字、图片与文件，用快捷键取用。','Keep text, images and files ready to use with a shortcut.']},
 ] satisfies {id:FeatureId;zh:string;en:string;icon:typeof Folder;description:string[]}[];
 

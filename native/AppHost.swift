@@ -589,6 +589,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     var registeredCodes: [String] = []
     var failedCodes: [String] = []
     var carbonRegisteredCodes: [String] = []
+    var carbonBindings: [UInt32:(code:String,keyCode:UInt32)] = [:]
+    var nextCarbonRegistrationID: UInt32 = 1
     var nextCaptureRetry = Date.distantPast
     var captureAttemptOverride: (() -> Bool)? // In-process tests only; never configured by IPC.
     typealias DriverBrowser = (url:URL,bundleID:String)
@@ -640,6 +642,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         !terminating && !applicationQuitPending && !preparingUpdate && !updateInstallCommitted && !updateAbortRecoveryRequested && !permissionRelaunchPending && !musicFlushInProgress && !musicExportActive && !keySessionSuspended && !capturingKey && !selectionShortcutRecording && !pocketShortcutRecording && (recordingShortcut || !(editingField && NSApp.isActive)) && !voiceInput.isBusy && !musicActive && musicCaptureReasons.subtracting(["keyboardPocket"]).isEmpty && !selectionLab.isBusy && !dragConvert.busy && (acceptingDrop || !dragConvert.isFileDragActive) && !IsSecureEventInputEnabled() && worker?.isRunning == true
     }
     lazy var voiceInput = VoiceInputController(directory:dataDirectory.appendingPathComponent("voice-input"),migrateFrom:FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/NuPhy Voice Input Lab"),featureAdded:false)
+    lazy var dockScenes = DockScenesFeature(directory: dataDirectory, legacy: FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/NuPhy Dock Scenes Lab"))
+    var dockQuitWaiting = false
     var voiceShortcutRecording=false
     var voiceOperationAllowed:Bool {
         !terminating && !applicationQuitPending && !preparingUpdate && !updateInstallCommitted && !updateAbortRecoveryRequested && !permissionRelaunchPending && !musicFlushInProgress && !musicExportActive && !keySessionSuspended && !capturingKey && !selectionShortcutRecording && !pocketShortcutRecording && !selectionLab.isBusy && !pocket.isBusy && !pocket.isInteracting && !dragConvert.busy && !dragConvert.isFileDragActive && musicCaptureReasons.subtracting(["voiceInput"]).isEmpty && !IsSecureEventInputEnabled() && worker?.isRunning == true
@@ -698,6 +702,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         config.userContentController.addScriptMessageHandler(self,contentWorld:.page,name:"musicControl")
         config.userContentController.addScriptMessageHandler(self, contentWorld:.page, name:"dragConvert")
         config.userContentController.addScriptMessageHandler(self, contentWorld:.page, name:"keyboardPocket")
+        config.userContentController.addScriptMessageHandler(self, contentWorld:.page, name:"dockScenes")
         config.userContentController.addScriptMessageHandler(self, contentWorld:.page, name:"voiceInput")
         dragConvert.updateLanguage(english:english)
         dragConvert.canPresent = { [weak self] in self?.dragPresentationAllowed ?? false }
@@ -775,13 +780,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             self.selectionLab.setExternalShortcutRecording(active || self.voiceInput.isBusy || self.pocketShortcutRecording)
             self.refreshHotkeys()
         }
+        dockScenes.window = window
+        dockScenes.web = web
+        dockScenes.english = english
+        dockScenes.allowSwitch = { [weak self] in
+            guard let self else { return false }
+            return !self.dockQuitWaiting && !self.terminating && !self.applicationQuitPending && !self.preparingUpdate
+                && !self.updateInstallCommitted && !self.updateAbortRecoveryRequested && !self.permissionRelaunchPending
+                && !self.keySessionSuspended && !self.capturingKey && !self.voiceShortcutRecording
+                && !self.selectionShortcutRecording && !self.pocketShortcutRecording
+                && !self.musicFlushInProgress && !self.musicActive && !self.voiceInput.isBusy
+                && !self.pocket.isInteracting && !self.selectionLab.isBusy && !IsSecureEventInputEnabled()
+                && self.worker?.isRunning == true
+        }
         voiceInput.updateLanguage(english:english);voiceInput.start(web:web)
         window.contentView=web;show();startWorker()
         // Targeted events delivered to this window do not always become Carbon
         // global-hotkey events. Share the same held-key gate and action path.
         localKeyMonitor=NSEvent.addLocalMonitorForEvents(matching:[.keyDown,.keyUp,.flagsChanged]){[weak self] event in
             guard let self=self else{return event}
-            if self.pocketShortcutRecording || self.voiceShortcutRecording || self.voiceInput.isBusy {return event}
+            if self.pocketShortcutRecording || self.voiceShortcutRecording || self.voiceInput.isBusy || self.dockScenes.isRecording {return event}
             if self.selectionLab.consumeLocal(event){return nil}
             guard event.type == .keyDown || event.type == .keyUp else{return event}
             return self.handleLocalKey(event)
@@ -1064,7 +1082,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     func prepareUpdateInstallation(){
         guard !preparingUpdate,!updateInstallCommitted,!updateAbortRecoveryRequested,!permissionRelaunchPending,!musicFlushInProgress,!musicExportActive,!terminating,pendingUpdateInstall != nil else{return}
         guard !dragConvert.busy else{presentDragBusyNotice();return}
-        guard !voiceInput.isBusy else{show();return}
+        guard !voiceInput.isBusy && !dockScenes.isApplying else{show();return}
         voiceInput.suspend();dragConvert.suspend();pocket.suspend()
         updateMusicSaveEpoch=musicEverUsed ? musicFlushEpoch+1 : nil
         flushMusicForTransition { [weak self] saved in
@@ -1123,7 +1141,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     func prepareUpdateAfterMusicSave(){
         guard !preparingUpdate, !updateInstallCommitted, !updateAbortRecoveryRequested, pendingUpdateInstall != nil, let base=baseURL,let version=pendingUpdateVersion else {unlockMusicTransition();return}
         guard !dragConvert.busy else{unlockMusicTransition();presentDragBusyNotice();return}
-        guard !voiceInput.isBusy else{unlockMusicTransition();show();return}
+        guard !voiceInput.isBusy && !dockScenes.isApplying else{unlockMusicTransition();show();return}
         guard let requestWorker=worker,requestWorker.isRunning else{unlockMusicTransition();return}
         do {try PendingAppUpdate.stage(version:version)} catch {
             appendWorkerLog(Data("Unable to prepare update relaunch: \(error.localizedDescription)\n".utf8))
@@ -1368,7 +1386,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     @discardableResult func syncFeatureAvailability(fallback:Any?=nil)->Bool {
         let file=dataDirectory.appendingPathComponent("sidebar-features.json")
         let saved=(try? Data(contentsOf:file)).flatMap{try? JSONSerialization.jsonObject(with:$0)}
-        let known:Set<String>=["studio","library","codex","game","typing-sounds","music","selection-question","drag-convert","keyboard-pocket","voice-input"]
+        let known:Set<String>=["studio","library","codex","game","typing-sounds","music","selection-question","drag-convert","keyboard-pocket","voice-input","dock-scenes"]
         func valid(_ value:Any?)->[String]? {
             guard let values=value as? [String],Set(values).count==values.count,Set(values).isSubset(of:known) else{return nil};return values
         }
@@ -1377,6 +1395,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let previous=addedFeatures;addedFeatures=Set(values)
         selectionLab.setFeatureAdded(addedFeatures.contains("selection-question"))
         dragConvert.setFeatureAdded(addedFeatures.contains("drag-convert"))
+        dockScenes.setAdded(addedFeatures.contains("dock-scenes"))
         pocket.setFeatureAdded(addedFeatures.contains("keyboard-pocket"))
         voiceInput.setFeatureAdded(addedFeatures.contains("voice-input"))
         typingSounds.setFeatureAdded(addedFeatures.contains("typing-sounds"))
@@ -1408,6 +1427,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         if message.name == "dragConvert" {
             guard !terminating, !preparingUpdate, !updateInstallCommitted, !updateAbortRecoveryRequested, !musicFlushInProgress else{replyHandler(nil,english ? "Finishing the current operation" : "正在完成当前操作");return}
             dragConvert.handle(body, reply:replyHandler);return
+        }
+        if message.name == "dockScenes" {
+            guard !terminating, !applicationQuitPending, !dockQuitWaiting, !preparingUpdate, !permissionRelaunchPending,
+                  !updateInstallCommitted, !updateAbortRecoveryRequested,
+                  syncFeatureAvailability(fallback: featureAvailabilityReady ? Array(addedFeatures) : nil) else {
+                replyHandler(nil, english ? "Finishing the current operation" : "正在完成当前操作"); return
+            }
+            dockScenes.handle(body, reply: replyHandler); return
         }
         if message.name == "voiceInput" {
             guard !terminating,!preparingUpdate,!updateInstallCommitted,!permissionRelaunchPending else{replyHandler(nil,english ? "Finishing the current operation":"正在完成当前操作");return}
@@ -1532,7 +1559,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             captureReady:!stale && (!hotkeysEnabled || functionKeyTapIsActive()),now:now,
             freshGrantNeedsRelaunch:fresh != nil && granted && stale)
         let canRecover = NSApp?.isActive == true && worker?.isRunning == true && !IsSecureEventInputEnabled()
-            && !applicationQuitPending && !dragConvert.busy && !dragConvert.isFileDragActive
+            && !applicationQuitPending && !dockScenes.isApplying && !dockScenes.isRecording && !dragConvert.busy && !dragConvert.isFileDragActive
             && !musicSaveFailed && !musicActive && !musicExportActive && !musicFlushInProgress
             && !selectionLab.isBusy && !voiceInput.isBusy && !pocket.isBusy && !pocket.isInteracting && !capturingKey && keyGestureGate.activeCount==0
             && !driverOpenInFlight && !preparingUpdate && !updateInstallCommitted
@@ -1593,6 +1620,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         return ["opened":opened,"permission":permission,"permissions":permissionStatus(nativePermissionSnapshot())]
     }
     func applicationDidBecomeActive(_ notification:Notification){
+        dockScenes.refreshIfOpen()
         refreshMusicPause()
         selectionLab.refreshAuthorization();pocket.refreshAuthorization();voiceInput.refreshAuthorization()
         reportNativePermissions(force:true);refreshHotkeys();resumeAfterOfficialDriverIfNeeded()
@@ -1654,7 +1682,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }
         driverReturnTask?.resume()
     }
-    let officialDriverURL = URL(string:"https://drive.nuphyio.com/#/setting")!
+    let officialDriverURL = URL(string:"https://drive.nuphy.io/#/setting")!
     func driverBrowserCandidates()->[DriverBrowser] {
         if let override=driverBrowserCandidatesOverride {return override()}
         var result=[DriverBrowser]()
@@ -1788,9 +1816,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }
         attempt(0)
     }
-    func presentOfficialDriverMessage(_ message:String,error:Bool) {
+    func presentOfficialDriverMessage(_ message:String,error:Bool,opened:Bool?=nil) {
         let alert=NSAlert();alert.alertStyle=error ? .warning : .informational
-        alert.messageText=T(error ? "无法打开 NuPhyIO 官网" : "NuPhyIO 官网已打开")
+        alert.messageText=T((opened ?? !error) ? "NuPhyIO 官网已打开" : "无法打开 NuPhyIO 官网")
         alert.informativeText=message+"\n\n"+officialDriverURL.absoluteString
         alert.addButton(withTitle:T("复制官网地址"));alert.addButton(withTitle:T("关闭"))
         let copy:(NSApplication.ModalResponse)->Void = { [weak self] response in
@@ -1817,9 +1845,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             return (code,UInt32(n))
         }
         dictationKeyCodes=Set(next.filter{dictationCodes.contains($0.code)}.map{$0.keyCode})
-        let valid=next.count==12 && Set(next.map{$0.code}).count==12 && Set(next.map{$0.keyCode}).count==12
-        configuredKeysEnabled=valid && value?["enabled"] as? Bool==true
-        if keyConfiguration.map({$0.code}) != next.map({$0.code}) || keyConfiguration.map({$0.keyCode}) != next.map({$0.keyCode}) {
+        let scope=value?["bindingScope"] as? String ?? "all"
+        let expected=scope=="all" ? 12 : ["commands","tasks"].contains(scope) ? 6 : scope=="none" ? 0 : -1
+        let valid=next.count==expected && raw.count==expected && Set(next.map{$0.code}).count==expected && Set(next.map{$0.keyCode}).count==expected
+        configuredKeysEnabled=valid && expected>0 && value?["enabled"] as? Bool==true
+        if !valid || keyConfiguration.map({$0.code}) != next.map({$0.code}) || keyConfiguration.map({$0.keyCode}) != next.map({$0.keyCode}) {
             setHotkeysEnabled(false);keyConfiguration=valid ? next : []
         }
         refreshHotkeys()
@@ -1883,7 +1913,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                 let grants=PermissionProbe.keys.compactMap { helper?[$0] as? Bool }
                 self.permissionHelperReady=grants.contains(false) ? false : (grants.count==PermissionProbe.keys.count ? true : nil)
                 if let value=settings?["language"] as? String, ["en","zh-CN"].contains(value), self.english != (value == "en") {
-                    self.english = value == "en"; self.buildMenus(); self.selectionLab.updateLanguage(self.english ? .en:.zh); self.dragConvert.updateLanguage(english:self.english);self.pocket.updateLanguage(english:self.english);self.voiceInput.updateLanguage(english:self.english)
+                    self.english = value == "en"; self.dockScenes.english = self.english; self.buildMenus(); self.selectionLab.updateLanguage(self.english ? .en:.zh); self.dragConvert.updateLanguage(english:self.english);self.pocket.updateLanguage(english:self.english);self.voiceInput.updateLanguage(english:self.english)
                     #if canImport(Sparkle)
                     self.updateUserDriver?.refreshLanguage()
                     #endif
@@ -1916,7 +1946,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             for gesture in keyGestureGate.releaseAll() {enqueueKey(gesture.packet(phase:"up"))}
             hotkeysEnabled=false
             for key in hotKeys {if let key=key {UnregisterEventHotKey(key)}}
-            hotKeys.removeAll();heldHotkeys.removeAll();registeredCodes.removeAll();failedCodes.removeAll();carbonRegisteredCodes.removeAll();nextCaptureRetry = .distantPast
+            hotKeys.removeAll();heldHotkeys.removeAll();registeredCodes.removeAll();failedCodes.removeAll();carbonRegisteredCodes.removeAll();carbonBindings.removeAll();nextCaptureRetry = .distantPast
             if let handler=hotkeyHandler {RemoveEventHandler(handler);hotkeyHandler=nil}
         }
     }
@@ -1926,14 +1956,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let status=InstallEventHandler(GetApplicationEventTarget(),{_,event,user in
             guard let event=event,let user=user else{return noErr};var ident=EventHotKeyID();GetEventParameter(event,EventParamName(kEventParamDirectObject),EventParamType(typeEventHotKeyID),nil,MemoryLayout<EventHotKeyID>.size,nil,&ident)
             let host=Unmanaged<AppDelegate>.fromOpaque(user).takeUnretainedValue()
-            guard host.hotkeysEnabled,!host.terminating else{return OSStatus(eventNotHandledErr)}
+            guard host.hotkeysEnabled,!host.terminating,ident.signature==0x41495253 else{return OSStatus(eventNotHandledErr)}
             return host.handleCarbonHotKey(ident.id,down:GetEventKind(event) != UInt32(kEventHotKeyReleased),eventTime:GetEventTime(event)) ? noErr : OSStatus(eventNotHandledErr)
         },2,&eventTypes,Unmanaged.passUnretained(self).toOpaque(),&hotkeyHandler)
         guard status==noErr else {hotkeysEnabled=false;failedCodes=keyConfiguration.map{$0.code};return}
-        for (i,binding) in keyConfiguration.enumerated(){
+        for binding in keyConfiguration {
+            guard nextCarbonRegistrationID < UInt32.max else {failedCodes.append(binding.code);continue}
+            let id=nextCarbonRegistrationID;nextCarbonRegistrationID+=1
             var key:EventHotKeyRef?
-            let result=RegisterEventHotKey(binding.keyCode,0,EventHotKeyID(signature:0x41495253,id:UInt32(i+1)),GetApplicationEventTarget(),0,&key)
-            if result==noErr {hotKeys.append(key);registeredCodes.append(binding.code)}
+            let result=RegisterEventHotKey(binding.keyCode,0,EventHotKeyID(signature:0x41495253,id:id),GetApplicationEventTarget(),0,&key)
+            if result==noErr {hotKeys.append(key);registeredCodes.append(binding.code);carbonBindings[id]=binding}
             else {failedCodes.append(binding.code);appendWorkerLog(Data("Hotkey \(binding.code) unavailable: \(result)\n".utf8))}
         }
         carbonRegisteredCodes = registeredCodes
@@ -2028,8 +2060,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         if worker?.isRunning == true,let line=NativeFunctionKeyObservations.logLine(row) {appendWorkerLog(line)}
     }
     func handleCarbonHotKey(_ id:UInt32,down:Bool,eventTime:Double)->Bool {
-        let index=Int(id)-1
-        guard hotkeysEnabled,!terminating,keyConfiguration.indices.contains(index) else{return false}
+        guard hotkeysEnabled,!terminating,let registered=carbonBindings[id],
+              let index=keyConfiguration.firstIndex(where:{$0.code==registered.code && $0.keyCode==registered.keyCode}) else{return false}
         if functionKeyCodes[keyConfiguration[index].keyCode] != nil {
             routeFunctionKey(index,down:down,repeated:false,source:.carbon,eventTime:eventTime,tapActive:reconcileFunctionKeyTap())
         } else {dispatchBoundKey(index,down:down,repeated:false,source:.carbon,eventTime:eventTime)}
@@ -2181,6 +2213,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         NSApp.reply(toApplicationShouldTerminate:allow)
     }
     func applicationShouldTerminate(_ sender:NSApplication)->NSApplication.TerminateReply{
+        if dockQuitWaiting { return .terminateLater }
+        if dockScenes.isApplying {
+            dockQuitWaiting = true
+            finishDockSwitchBeforeQuit(sender)
+            return .terminateLater
+        }
+        return beginApplicationQuit(sender)
+    }
+
+    private func finishDockSwitchBeforeQuit(_ sender: NSApplication) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
+            guard let self, self.dockQuitWaiting else { return }
+            if self.dockScenes.isApplying { self.finishDockSwitchBeforeQuit(sender); return }
+            self.dockQuitWaiting = false
+            let result = self.beginApplicationQuit(sender)
+            if result != .terminateLater { sender.reply(toApplicationShouldTerminate: result == .terminateNow) }
+        }
+    }
+
+    private func beginApplicationQuit(_ sender:NSApplication)->NSApplication.TerminateReply{
         voiceInput.cancel();voiceInput.suspend()
         guard !dragConvert.busy else{presentDragBusyNotice();return .terminateCancel}
         if musicExportActive || preparingUpdate {NSSound.beep();return .terminateCancel}
@@ -2250,10 +2302,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             openOfficialDriver { [weak self] result,error in
                 guard let self=self else{return}
                 if let error=error {self.presentOfficialDriverMessage(error,error:true)}
-                else if result?["prepareError"] as? String != nil {
-                    self.presentOfficialDriverMessage(self.T("请在 NuPhyIO 完成更新，关闭官网页面后返回 NuPhy Lab。"),error:false)
-                } else if result?["needsSupportedBrowser"] as? Bool == true {
-                    self.presentOfficialDriverMessage(result?["message"] as? String ?? "",error:false)
+                else {
+                    var messages:[String]=[]
+                    let releaseUnconfirmed=result?["prepareError"] as? String != nil || result?["safeReleased"] as? Bool != true
+                    if releaseUnconfirmed {messages.append(self.T("无法确认键盘已释放，请返回设备页，重新连接键盘后重试。"))}
+                    if result?["needsSupportedBrowser"] as? Bool == true,let message=result?["message"] as? String,!message.isEmpty {messages.append(message)}
+                    if !messages.isEmpty {self.presentOfficialDriverMessage(messages.joined(separator:"\n\n"),error:releaseUnconfirmed,opened:true)}
                 }
             }
             return

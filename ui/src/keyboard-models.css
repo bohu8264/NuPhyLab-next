@@ -22,3 +22,5 @@
 .keyboard-case.v5-keyboard.model-keyboard.mini .model-side-led {display:none;}
 .keyboard-case.v5-keyboard.model-keyboard:not(.air75-v3):not(.kick75) .key.long-legend>span {font-size:calc(var(--model-key-font) * .78);}
 .keyboard-layout-unavailable {padding:28px; border-radius:12px; background:#f5f5f5; color:#777; text-align:center;}
+
+.keyboard-case.v5-keyboard.model-keyboard[data-model="air75-v3"] .model-side-led {border-radius:0;}

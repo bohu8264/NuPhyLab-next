@@ -14110,21 +14110,183 @@
         "sourceIndices": []
       },
       {
-        "id": "side-left",
+        "id": "side-left-1",
         "kind": "side-led",
-        "x": 7.0007,
-        "y": 34,
-        "w": 3.00167,
-        "h": 42,
+        "x": 7.736,
+        "y": 22.08,
+        "w": 4.4,
+        "h": 4.4,
         "sourceIndices": []
       },
       {
-        "id": "side-right",
+        "id": "side-left-2",
         "kind": "side-led",
-        "x": 948.9976300000001,
-        "y": 34,
-        "w": 3.00167,
-        "h": 42,
+        "x": 7.736,
+        "y": 27.88,
+        "w": 4.4,
+        "h": 4.4,
+        "sourceIndices": []
+      },
+      {
+        "id": "side-left-3",
+        "kind": "side-led",
+        "x": 7.736,
+        "y": 33.68,
+        "w": 4.4,
+        "h": 4.4,
+        "sourceIndices": []
+      },
+      {
+        "id": "side-left-4",
+        "kind": "side-led",
+        "x": 7.736,
+        "y": 39.48,
+        "w": 4.4,
+        "h": 4.4,
+        "sourceIndices": []
+      },
+      {
+        "id": "side-left-5",
+        "kind": "side-led",
+        "x": 7.736,
+        "y": 45.28,
+        "w": 4.4,
+        "h": 4.4,
+        "sourceIndices": []
+      },
+      {
+        "id": "side-left-6",
+        "kind": "side-led",
+        "x": 7.736,
+        "y": 51.08,
+        "w": 4.4,
+        "h": 4.4,
+        "sourceIndices": []
+      },
+      {
+        "id": "side-left-7",
+        "kind": "side-led",
+        "x": 7.736,
+        "y": 56.88,
+        "w": 4.4,
+        "h": 4.4,
+        "sourceIndices": []
+      },
+      {
+        "id": "side-left-8",
+        "kind": "side-led",
+        "x": 7.736,
+        "y": 62.68,
+        "w": 4.4,
+        "h": 4.4,
+        "sourceIndices": []
+      },
+      {
+        "id": "side-left-9",
+        "kind": "side-led",
+        "x": 7.736,
+        "y": 68.48,
+        "w": 4.4,
+        "h": 4.4,
+        "sourceIndices": []
+      },
+      {
+        "id": "side-left-10",
+        "kind": "side-led",
+        "x": 7.736,
+        "y": 74.28,
+        "w": 4.4,
+        "h": 4.4,
+        "sourceIndices": []
+      },
+      {
+        "id": "side-right-1",
+        "kind": "side-led",
+        "x": 944.3,
+        "y": 22.08,
+        "w": 4.4,
+        "h": 4.4,
+        "sourceIndices": []
+      },
+      {
+        "id": "side-right-2",
+        "kind": "side-led",
+        "x": 944.3,
+        "y": 27.88,
+        "w": 4.4,
+        "h": 4.4,
+        "sourceIndices": []
+      },
+      {
+        "id": "side-right-3",
+        "kind": "side-led",
+        "x": 944.3,
+        "y": 33.68,
+        "w": 4.4,
+        "h": 4.4,
+        "sourceIndices": []
+      },
+      {
+        "id": "side-right-4",
+        "kind": "side-led",
+        "x": 944.3,
+        "y": 39.48,
+        "w": 4.4,
+        "h": 4.4,
+        "sourceIndices": []
+      },
+      {
+        "id": "side-right-5",
+        "kind": "side-led",
+        "x": 944.3,
+        "y": 45.28,
+        "w": 4.4,
+        "h": 4.4,
+        "sourceIndices": []
+      },
+      {
+        "id": "side-right-6",
+        "kind": "side-led",
+        "x": 944.3,
+        "y": 51.08,
+        "w": 4.4,
+        "h": 4.4,
+        "sourceIndices": []
+      },
+      {
+        "id": "side-right-7",
+        "kind": "side-led",
+        "x": 944.3,
+        "y": 56.88,
+        "w": 4.4,
+        "h": 4.4,
+        "sourceIndices": []
+      },
+      {
+        "id": "side-right-8",
+        "kind": "side-led",
+        "x": 944.3,
+        "y": 62.68,
+        "w": 4.4,
+        "h": 4.4,
+        "sourceIndices": []
+      },
+      {
+        "id": "side-right-9",
+        "kind": "side-led",
+        "x": 944.3,
+        "y": 68.48,
+        "w": 4.4,
+        "h": 4.4,
+        "sourceIndices": []
+      },
+      {
+        "id": "side-right-10",
+        "kind": "side-led",
+        "x": 944.3,
+        "y": 74.28,
+        "w": 4.4,
+        "h": 4.4,
         "sourceIndices": []
       }
     ]

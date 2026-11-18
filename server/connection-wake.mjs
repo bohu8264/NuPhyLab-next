@@ -33,14 +33,14 @@ export class AirConnectionWake {
     // Recovery, a cancelled animation or a rejected write must not replay it.
     this.available = false;
     if (!supportsAirConnectionWake(device)) return null;
-    const ticket = {modelId:device.modelId,sessionId:device.connectionSessionId, epoch, started:null, context};
+    const ticket = {modelId:device.modelId,sessionId:device.connectionSessionId, epoch, profile:device.lightingProfile??0, started:null, context};
     this.current = ticket;
     this.last = {modelId:device.modelId,status:'starting', reason:null, elapsedMs:0, sessionId:ticket.sessionId};
     return ticket;
   }
   matches(ticket, device, epoch) {
     return this.current === ticket && supportsAirConnectionWake(device) &&
-      ticket.modelId === device.modelId && ticket.sessionId === device.connectionSessionId && ticket.epoch === epoch;
+      ticket.modelId === device.modelId && ticket.sessionId === device.connectionSessionId && ticket.epoch === epoch && ticket.profile===(device.lightingProfile??0);
   }
   start(ticket, device, epoch) {
     if (!this.matches(ticket, device, epoch) || device.armed !== true) {

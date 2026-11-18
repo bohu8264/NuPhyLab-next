@@ -346,3 +346,58 @@ for(const operation of ['connect','status','arm','restore','disconnect','paint']
     await hardware.close();
   });
 }
+
+for(const route of ['connect','arm'])test(`automatic ${route} recovery cannot consume another profile's record`,async()=>{
+ const hardware=new Hardware('/unused/fixture-only','/unused/fixture-only');const pending=new Set([0,1]);let profile=0,switched=false,armed=false;
+ const requests=[],writes=[],snapshot=()=>({connected:true,identified:true,armed,readOnly:false,lightingProfile:profile,recoveryPending:pending.has(profile),capabilities:{boardSleepLease:false}});
+ hardware.updateState(snapshot());hardware.request=async(op,args={})=>{
+  requests.push({op,...args});if(op==='connect'||op==='status'){const observed=snapshot();if(!switched){profile=1;switched=true;}return observed;}
+  if(op==='restore'){if(args.expectedProfile!==undefined&&args.expectedProfile!==profile)throw Object.assign(new Error('isolated switch'),{code:'LIGHTING_PROFILE_CHANGED'});writes.push(profile);pending.delete(profile);return {...snapshot(),verified:true};}
+  if(op==='arm'){armed=true;return snapshot();}throw Error('unexpected '+op);
+ };
+ await assert.rejects(hardware[route](),{code:'LIGHTING_PROFILE_CHANGED'});assert.equal(requests.find(o=>o.op==='restore').expectedProfile,0);assert.deepEqual(writes,[]);assert.deepEqual([...pending],[0,1]);
+ await hardware.restore({currentProfile:true});assert.equal(requests.at(-1).expectedProfile,undefined);assert.deepEqual(writes,[1]);assert.deepEqual([...pending],[0]);assert.equal(hardware.verifiedRestorations,1);
+});
+
+test('verified restore receipts belong to their own USB session and profile',async()=>{
+ const hardware=new Hardware('/unused/fixture-only','/unused/fixture-only');hardware.updateState({connected:true,identified:true,lightingProfile:0,recoveryPending:true,readOnly:false});
+ const mac={session:hardware.state.connectionSessionId,epoch:hardware.transportEpoch,profile:0},win={...mac,profile:1};
+ hardware.request=async()=>({verified:true,lightingProfile:1,recoveryPending:false});await hardware.restore({currentProfile:true});
+ assert.equal(hardware.restorationVersion(mac),0);assert.equal(hardware.restorationVersion(win),1);
+ assert.equal(hardware.restorationVersion({...win,session:'another'}),0);assert.equal(hardware.restorationVersion({...win,epoch:win.epoch+1}),0);
+});
+
+test('recovery acknowledgement survives a new lease but never acknowledges pending old sleep',async()=>{
+ const hardware=new Hardware('/unused/fixture-only','/unused/fixture-only');
+ hardware.updateState({connected:true,identified:true,lightingProfile:0,recoveryPending:true,readOnly:false,
+  boardSleepLease:{pending:true}});
+ const scope={session:hardware.state.connectionSessionId,epoch:hardware.transportEpoch,profile:0};
+ hardware.request=async()=>({verified:true,lightingProfile:0,recoveryPending:false,boardSleepLease:{pending:true}});
+ await hardware.restore();
+ assert.equal(hardware.restorationVersion(scope),0,'old board-global sleep is still outstanding');
+ hardware.request=async()=>({verified:true,lightingProfile:0,recoveryPending:false,boardSleepLease:{pending:false}});
+ await hardware.restore();
+ assert.equal(hardware.restorationVersion(scope),1);
+ hardware.updateState({connected:true,armed:true,lightingProfile:0,recoveryPending:true,boardSleepLease:{pending:true}});
+ assert.equal(hardware.restorationVersion(scope),1,'the new artwork journal cannot undo the prior completed recovery');
+ assert.equal(hardware.restorationVersion({...scope,profile:1}),0);
+});
+
+for(const [name,nested,top,completed] of [
+ ['complete',{verified:true,boardSleepLease:{pending:false}},undefined,true],
+ ['unverified',{verified:false,boardSleepLease:{pending:false}},undefined,false],
+ ['still pending',{verified:true,boardSleepLease:{pending:true}},undefined,false],
+ ['top-level pending wins',{verified:true,boardSleepLease:{pending:false}},{pending:true},false],
+])test(`side-only restore normalizes only verified nested sleep metadata: ${name}`,async()=>{
+ const hardware=new Hardware('/unused/fixture-only','/unused/fixture-only');
+ hardware.updateState({connected:true,identified:true,lightingProfile:0,recoveryPending:true,readOnly:false,
+  boardSleepLease:{pending:true}});
+ const scope={session:hardware.state.connectionSessionId,epoch:hardware.transportEpoch,profile:0};
+ hardware.request=async()=>({verified:true,restored:true,lightingProfile:0,recoveryPending:false,
+  sleepRestoration:nested,...(top ? {boardSleepLease:top} : {})});
+ const result=await hardware.restore();
+ assert.equal(hardware.state.boardSleepLease.pending,!completed);
+ assert.equal(hardware.restorationVersion(scope),completed?1:0);
+ if(completed)assert.equal(result.boardSleepLease.pending,false);
+ assert.equal(hardware.restorationVersion({...scope,profile:1}),0);
+});

@@ -92,7 +92,7 @@ const rotaryProof=()=>{
   modelId:air?'air75-v3':'kick75',matrixKeyCount:air?96:90,keymapKeyCount:count,mode:0,readbackVerified:true,
   macLayers:Array.from({length:4},()=>{const layer=Array(count).fill(0);positions.forEach((index,i)=>layer[index]=109+i);return layer;})};
 };
-let lightingProfile=0;const pendingProfiles=new Set();
+let lightingProfile=0,profileRecoveryPending=false;const pendingProfiles=new Set(),sideOnlyProfiles=new Set();let sideOwned=false;
 let normalizedRow=false,consumerPlan=null,consumerOwner=null,consumerSuppression=false;
 const consumerSession='b6202652-3310-4cd8-9e74-d5f7246a9ac2';
 const consumerConnection=()=>({kind:'consumer-connection-v1',sessionId:consumerSession,sourceFingerprint:'f'.repeat(64),source:{syntheticSource:true},inputAuthorityGranted:false});
@@ -115,8 +115,8 @@ const sideColors=(color,brightness)=>Array(profile().sideCount).fill('#'+[1,3,5]
 const codexLaunchedAt=Date.now();
 const permissions=()=>({inputMonitoring:false,accessibility:false,canPostEvents:false,...configuration().permissions,promptsRequested:false});
 const keyRecovery=()=>recoveryConfirmed?{status:'none',pending:false,blocking:false}:configuration().keyRecovery??{status:functionKeyLease?'active':'none',pending:functionKeyLease,blocking:false};
-const selectProfile=()=>{const next=configuration().lightingProfile??0;if(next!==lightingProfile){lightingProfile=next;armed=false;pending=pendingProfiles.has(next);lighting=[...original];}};
-const state=()=>({...configuration().outputIdentity,keyRecovery:keyRecovery(),functionKeyRecoveryPending:keyRecovery().pending,connected,identified:configuration().outputIdentity?.identified??connected,firmwareDetectionAvailable:connected,readOnly:configuration().readOnly===true,error:configuration().readOnly?'灯位数量校验失败：应为 85，实际为 218。已停止灯效写入。':null,errorCode:configuration().readOnly?'WRONG_LED_COUNT':null,armed,recoveryPending:pending,needsRestore:pending,deferredProfiles:[...pendingProfiles].filter(p=>p!==lightingProfile),lightingProfile,state:[...lighting],firmwareVersion:configuration().firmwareVersion??'1.0.16.6',functionRowSessionId:configuration().consumerBridge?consumerSession:undefined,modelId:configuration().modelId??'air75-v3',model:profile().name+' ANSI',keyLedCount:configuration().outputIdentity?.keyLedCount??profile().keyCount,capabilities:{...(configuration().consumerBridge?{consumerControlVersion:1}:{}),...(Object.hasOwn(configuration(),'readProbeVerified')?{readProbeVerified:configuration().readProbeVerified}:{}),...(Object.hasOwn(configuration(),'connectionWake')?{connectionWake:configuration().connectionWake}:{}),perKey:configuration().readOnly?false:configuration().compatible??true,mainWholeZone:configuration().readOnly?false:configuration().mainWholeZone??false,functionKeyAdaptation:configuration().readOnly?false:configuration().functionKeyAdaptation??true},permissions:permissions()});
+const selectProfile=()=>{const next=configuration().lightingProfile??0;if(next!==lightingProfile){lightingProfile=next;armed=false;sideOwned=false;pending=pendingProfiles.has(next);profileRecoveryPending=pending;lighting=[...original];}};
+const state=()=>({...configuration().outputIdentity,keyRecovery:keyRecovery(),functionKeyRecoveryPending:keyRecovery().pending,connected,identified:configuration().outputIdentity?.identified??connected,firmwareDetectionAvailable:connected,readOnly:configuration().readOnly===true,error:configuration().readOnly?'灯位数量校验失败：应为 85，实际为 218。已停止灯效写入。':null,errorCode:configuration().readOnly?'WRONG_LED_COUNT':null,armed,recoveryPending:pending,sideRecoveryPending:sideOnlyProfiles.has(lightingProfile)&&!sideOwned,lightingRecoveryPending:profileRecoveryPending&&pending&&!armed&&!sideOwned,needsRestore:pending,deferredProfiles:[...pendingProfiles].filter(p=>p!==lightingProfile),lightingProfile,state:[...lighting],firmwareVersion:configuration().firmwareVersion??'1.0.16.6',functionRowSessionId:configuration().consumerBridge?consumerSession:undefined,modelId:configuration().modelId??'air75-v3',model:profile().name+' ANSI',keyLedCount:configuration().outputIdentity?.keyLedCount??profile().keyCount,capabilities:{...(configuration().consumerBridge?{consumerControlVersion:1}:{}),...(Object.hasOwn(configuration(),'readProbeVerified')?{readProbeVerified:configuration().readProbeVerified}:{}),...(Object.hasOwn(configuration(),'connectionWake')?{connectionWake:configuration().connectionWake}:{}),sideWholeZone:configuration().sideWholeZone===true,perKey:configuration().readOnly?false:configuration().compatible??true,mainWholeZone:configuration().readOnly?false:configuration().mainWholeZone??false,functionKeyAdaptation:configuration().readOnly?false:configuration().functionKeyAdaptation??true},permissions:permissions()});
 if(configuration().recordHelperPid)log({event:'simulatedHelperStarted',pid:process.pid});
 const answer=(request,result)=>{
  const delay=configuration().operationDelays?.[request.op];
@@ -126,7 +126,7 @@ const answer=(request,result)=>{
 const reject=(request,message,code)=>send({id:request.id,ok:false,error:{message,code}});
 const rejectRotary=(request,value,code)=>send({id:request.id,ok:false,error:
  typeof value==='object'&&value!==null?{message:'synthetic private rotary failure',code,...value}:{message:'synthetic rotary failure',code}});
-const restore=()=>{log({event:'simulatedRestore',lightingProfile});armed=false;pending=false;pendingProfiles.delete(lightingProfile);lighting=[...original];if(modelVisibleLighting)colors=[...originalColors];visible('restore');};
+const restore=()=>{log({event:'simulatedRestore',lightingProfile});armed=false;pending=false;profileRecoveryPending=false;pendingProfiles.delete(lightingProfile);sideOnlyProfiles.delete(lightingProfile);sideOwned=false;lighting=[...original];if(modelVisibleLighting)colors=[...originalColors];visible('restore');};
 setInterval(()=>{
  const generation=configuration().disconnect??0;
  if(generation>disconnectGeneration){disconnectGeneration=generation;connected=false;armed=false;log({event:'simulatedDisconnect'});send({event:'disconnected',needsRestore:pending});}
@@ -257,6 +257,7 @@ input.on('line',line=>{
   case 'nativeLighting':pending=true;pendingProfiles.add(lightingProfile);lighting[0]=request.mode;lighting[1]=request.brightness;lighting[2]=request.speed;lighting[4]=1;if(request.color)lighting.splice(6,3,...[1,3,5].map(i=>parseInt(request.color.slice(i,i+2),16)));answer(request,{verified:true,state:[...lighting]});break;
   case 'arm':if(pending&&!armed){reject(request,'A previous lighting backup exists.','RECOVERY_REQUIRED');break;}armed=true;pending=true;pendingProfiles.add(lightingProfile);lighting[0]=21;visible('arm');answer(request,state());break;
   case 'armConnectionWake':{
+   selectProfile();if(Object.hasOwn(request,'expectedProfile')&&request.expectedProfile!==lightingProfile){reject(request,'synthetic profile changed before wake','LIGHTING_PROFILE_CHANGED');break;}
    if(configuration().connectionWake!==true){reject(request,'Connection wake takeover is unavailable.','CONNECTION_WAKE_UNSUPPORTED');break;}
    const reusedJournal=pending,previousColors=[...colors];
    const custom=configuration().originalCustomColors,quietPreparation=reusedJournal&&Array.isArray(custom)&&custom.length===profile().keyCount*3&&custom.every(value=>Number.isInteger(value)&&value>=0&&value<=255);
@@ -277,16 +278,18 @@ input.on('line',line=>{
    visible('armConnectionWake',{reusedJournal,previousColors,quietPreparation});answer(request,{...state(),verified:true,quietPreparation});break;
   }
   case 'side':
-   if(request.restore){lighting.splice(9,8,...original.slice(9,17));if(modelVisibleLighting)colors=[...colors.slice(0,profile().keyCount),...originalColors.slice(profile().keyCount)];}
-   else{pending=true;pendingProfiles.add(lightingProfile);lighting[9]=2;lighting[10]=request.brightness;lighting.splice(14,3,...[1,3,5].map(i=>parseInt(request.color.slice(i,i+2),16)));if(modelVisibleLighting)colors=[...colors.slice(0,profile().keyCount),...sideColors(request.color,request.brightness)];}
-   visible('side');answer(request,{state:[...lighting]});break;
+   selectProfile();if(Object.hasOwn(request,'expectedProfile')&&request.expectedProfile!==lightingProfile){reject(request,'synthetic profile changed before side write','LIGHTING_PROFILE_CHANGED');break;}
+   if(configuration().failSide){if(configuration().sideRollback!==false)restore();reject(request,'simulated side write failure','SIDE_FAILED');break;}
+   if(request.restore){if(sideOnlyProfiles.has(lightingProfile)){pending=false;pendingProfiles.delete(lightingProfile);sideOnlyProfiles.delete(lightingProfile);sideOwned=false;}lighting.splice(9,8,...original.slice(9,17));if(modelVisibleLighting)colors=[...colors.slice(0,profile().keyCount),...originalColors.slice(profile().keyCount)];}
+   else{if(!pending)sideOnlyProfiles.add(lightingProfile);sideOwned=true;pending=true;pendingProfiles.add(lightingProfile);lighting[9]=2;lighting[10]=request.brightness;lighting.splice(14,3,...[1,3,5].map(i=>parseInt(request.color.slice(i,i+2),16)));if(modelVisibleLighting)colors=[...colors.slice(0,profile().keyCount),...sideColors(request.color,request.brightness)];}
+   visible('side');answer(request,{state:[...lighting],verified:true});break;
   case 'paint':{
    if(!armed){reject(request,'simulated NOT_ARMED');break;}
    const generation=configuration().failPaint??0;
    if(generation>failedGeneration){failedGeneration=generation;restore();log({event:'simulatedRollback'});reject(request,'simulated paint failure; original lighting restored');}
    else {const commit=()=>{const keyCount=profile().keyCount;colors=[...request.colors.slice(0,keyCount),...(modelVisibleLighting?colors.slice(keyCount):Array(profile().sideCount).fill('#000000'))];visible('paint');answer(request,{painted:keyCount});};if(configuration().paintDelayMs)setTimeout(commit,configuration().paintDelayMs);else commit();}break;
   }
-  case 'restore':if(!connected&&configuration().present===false){reject(request,'simulated not connected','DEVICE_NOT_FOUND');break;}connected=true;restore();answer(request,{...state(),restored:true,verified:true});break;
+  case 'restore':selectProfile();if(Object.hasOwn(request,'expectedProfile')&&request.expectedProfile!==lightingProfile){reject(request,'synthetic profile changed before whole restore','LIGHTING_PROFILE_CHANGED');break;}if(configuration().failWholeRestore){reject(request,'simulated whole restoration timeout','RESTORE_REQUIRED');break;}if(!connected&&configuration().present===false){reject(request,'simulated not connected','DEVICE_NOT_FOUND');break;}connected=true;restore();answer(request,{...state(),restored:true,verified:true});break;
   case 'disconnect':if(configuration().failDisconnect){reject(request,'原设置尚未恢复，模拟释放失败','RESTORE_REQUIRED');break;}if(!configuration().deferRestore)restore();connected=false;armed=false;answer(request,{...state(),unownedFunctionKeyHistory:configuration().unownedFunctionKeyHistory===true,unsafeWritesNeeded:configuration().unsafeWritesNeeded===true,historicalRecoveryLost:configuration().historicalRecoveryLost===true});break;
   case 'quit':restore();answer(request,{quitting:true});setTimeout(()=>process.exit(0),10);break;
   default:reject(request,'unsupported fake operation');
@@ -302,9 +305,10 @@ input.on('line',line=>{
     import {SHORTCUTS,describeAction} from ${JSON.stringify(codexURL+"?real")};
     export {describeAction};
     export class CodexAdapter {
+    observeAggregate(enabled){this.aggregateEnabled=enabled;}
     async start(){} async stop(){} async refresh(){return this.snapshot();}
     action(id,args){return describeAction(id,{...args,tasks:this.snapshot().tasks});}
-    snapshot(){const c=JSON.parse(readFileSync(${JSON.stringify(controlFile)},'utf8'));return {available:true,tasks:c.tasks??[],slots:[],shortcuts:SHORTCUTS,taskSource:{available:true},quota:{available:true,stale:false,buckets:[{id:'codex',windows:[{remainingPercent:80}]}]}};}
+    snapshot(){const c=JSON.parse(readFileSync(${JSON.stringify(controlFile)},'utf8'));return {aggregate:this.aggregateEnabled&&c.aggregate?{observedAt:Date.now(),...c.aggregate}:undefined,available:true,tasks:c.tasks??[],slots:[],shortcuts:SHORTCUTS,taskSource:{available:true},quota:{available:true,stale:false,buckets:[{id:'codex',windows:[{remainingPercent:80}]}]}};}
   }`,
   );
   const loader = path.join(dir, "loader.mjs");

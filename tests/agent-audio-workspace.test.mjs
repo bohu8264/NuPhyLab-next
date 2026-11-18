@@ -24,6 +24,7 @@ async function environment(mode){
     'lucide-react':Object.fromEntries(['Play','Square','Moon','ArrowUp','AudioLines','SlidersHorizontal','ArrowUpRight','ShieldCheck','RotateCcw','ChevronRight'].map(name=>[name,stub(name)])),
     '../../shared/agent-lighting-view.mjs':view,'../../shared/codex-lighting.mjs':codex,'../../shared/claude-lighting.mjs':claude,'../../shared/codex-keys.mjs':codexKeys,'../../shared/claude-keys.mjs':claudeKeys,'../../shared/layout.mjs':layouts,'../../shared/render-animation.mjs':rendering,
     '../../shared/device-status.mjs':{lightingUnavailableMessage:()=>''},'../../shared/audio-effects.mjs':{AUDIO_EFFECTS},
+    './AgentSideLighting':{AgentLightingZone:stub('AgentLightingZone'),AgentSideLighting:stub('AgentSideLighting')},
     './Keyboard':{Keyboard:stub('Keyboard')},'./StartupGuide':{useStartupCopy:()=>zh=>zh},'./CodexStatusColors':{CodexStatusColors:stub('CodexStatusColors')},'./ClaudeStatusColors':{ClaudeStatusColors:stub('ClaudeStatusColors')},'./ColorWheel':{ColorWheel:stub('ColorWheel')},
     './primitives':{Button:stub('Button'),Switch:stub('Switch'),run:promise=>promise},'./i18n':{t:value=>value},'./rangeStyle':{rangeStyle:()=>({})},'./connection-copy-v7':{connectionCopy:value=>value.zh},'./api':{readAppState:async()=>({settings:{}})},
     './useWorkspaceLayout':{useWorkspaceLayout:options=>{args.push(options);return workspace;}},
@@ -34,7 +35,7 @@ async function environment(mode){
 }
 
 for(const source of ['codex','claude'])for(const mode of ['split','flow'])test(`actual ${source} lighting ${mode} wires every geometry ref and keeps return navigation output-free`,async()=>{
-  const f=await environment(mode),component=(await f.ui.load(new URL('../ui/src/AgentLighting.tsx',import.meta.url))).exports.AgentLighting;
+  const f=await environment(mode),component=(await f.ui.load(new URL('../ui/src/AgentLighting.tsx',import.meta.url))).exports.BacklightLighting;
   const instance=f.ui.mount(component,{source,state:state(source,layouts.airLayout),command:f.command});
   assert.equal(instance.tree.props['data-workspace-layout'],mode);assert.equal(instance.tree.props.style,f.workspace.style);
   assert.equal(byClass(instance,'agent-light-heading').props.ref,f.workspace.headerRef);assert.equal(byClass(instance,'agent-light-grid').props.ref,f.workspace.gridRef);

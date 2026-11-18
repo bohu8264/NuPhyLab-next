@@ -1,0 +1,21 @@
+{
+  "version": "1.2.50",
+  "zh-CN": [
+    "Air75 V3 新增 USB 侧灯状态模式，可与背光模式切换。",
+    "侧灯跟踪当前任务集合，仅在完整、新鲜的成功状态下显示全部完成。",
+    "侧灯模式释放任务键，命令键可独立开关，原有映射与内容保留。",
+    "支持 Air75 V3 官方 2.0.0.7 的 USB 灯控与功能键，并提供升级后临时 F4 键位的确认恢复。",
+    "固件提醒仅建议已完成 Lab 兼容验证的版本；保留原设置，并提示配套接收器更新。",
+    "新固件下，无法确认能原样恢复的主灯颜色或已有自定义灯效会先停止接管；侧灯仍可使用。",
+    "功能中心新增 Dock 场景，可保存原始固定应用顺序，通过自定义快捷键切换场景。"
+  ],
+  "en": [
+    "Air75 V3 adds USB side-LED status mode alongside backlighting.",
+    "Side LEDs track the current task cohort; all-complete requires a fresh, complete set of successful results.",
+    "Side mode releases task keys and provides a separate command-key switch while preserving mappings and content.",
+    "Supports USB lighting and function keys on Air75 V3 firmware 2.0.0.7, with confirmed recovery of a temporary F4 assignment after upgrading.",
+    "Firmware prompts recommend only Lab-qualified releases, preserve current settings, and explain matching receiver updates.",
+    "On the new firmware, backlight control pauses before changing a main color or existing custom effect that cannot be restored exactly. Side lighting remains available.",
+    "Dock Scenes saves your original pinned apps and lets you switch between layouts with configurable shortcuts."
+  ]
+}

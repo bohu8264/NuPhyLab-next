@@ -13,7 +13,7 @@ async function fixture(language='zh-CN'){
  const ui=createVMEnvironment({
   'lucide-react':{},'./AmbientLightingPreferences':{AmbientLightingPreferences:()=>null},'./SelectionLab':{SelectionAPISettings:stub('SelectionAPISettings'),SelectionPermissionSettings:stub('SelectionPermissionSettings')},'./primitives':{Button,Modal:stub('Modal'),Switch:stub('Switch'),run:value=>value},
   './DurationField':{DurationField:stub('DurationField')},'../../shared/lighting-power.mjs':power,
-  './StartupGuide':{useStartupCopy:()=> (zh,en)=>language==='en'?en:zh,OFFICIAL_DRIVER_URL:'https://drive.nuphyio.com/#/setting'},'./codexKeys':{nativeCodexKeys:async()=>false},
+  './StartupGuide':{useStartupCopy:()=> (zh,en)=>language==='en'?en:zh,OFFICIAL_DRIVER_URL:'https://drive.nuphy.io/#/setting'},'./codexKeys':{nativeCodexKeys:async()=>false},
   './i18n':{useLanguage:()=>language,t:value=>value},'../../package.json':{version:'fixture'},'./api':{readAppState:async()=>null},
   './connection-copy-v7':{connectionCopy:value=>String(value??'')},
   './UpdatePreferences':{UpdatePreferences:stub('UpdatePreferences')},'../../shared/firmware-onboarding.mjs':firmwareOnboarding,
@@ -40,7 +40,7 @@ for(const language of ['zh-CN','en'])test(`actual lighting preferences show the 
  assert.ok(text.includes(language==='en'?'If inactive, sleep in 1 hour':'若无操作，将在此时间后休眠 1 小时'));
  assert.ok(text.includes(language==='en'?'Continued inactivity reaches idle sleep first.':'持续无操作时会先进入空闲休眠'));
  assert.ok(text.includes(language==='en'?'6 minutes without keyboard input':'6 分钟无键盘输入'));
- assert.equal(walkAll(f.instance.tree,node=>node.type==='a')[0].props.href,'https://drive.nuphyio.com/#/setting');
+ assert.equal(walkAll(f.instance.tree,node=>node.type==='a')[0].props.href,'https://drive.nuphy.io/#/setting');
  f.state.device.modelId='kick75';f.state.device.capabilities={boardSleepLease:true};f.instance.render();
  assert.ok(textOf(f.instance.tree).includes(language==='en'?"restores the keyboard's original sleep settings":"恢复键盘原来的休眠设置"));
  assert.ok(!textOf(f.instance.tree).includes(language==='en'?'6 minutes without keyboard input':'6 分钟无键盘输入'));

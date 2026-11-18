@@ -49,7 +49,9 @@ test('switching to Bluetooth restores USB mappings and verifies only scoped exte
 });
 
 test('Bluetooth runs task/custom keys and all command routes without USB; duplicate F11 and dictation releases remain correct',async t=>{
-  const s=await fakeService(t,{skipInitialConnect:true,present:false,bluetoothDevices:[device],permissions,tasks:[task]});
+  const s=await fakeService(t,{skipInitialConnect:true,present:false,bluetoothDevices:[device],permissions,tasks:[task],storedSettings:{sidebarFeatures:['studio','library','codex','game']}});
+  const features=await s.command({op:'settings',settings:{sidebarFeatures:['studio','library','codex','game']}});
+  assert.equal(features.ok,true,JSON.stringify(features));
   await s.command({op:'codexAdapt'});
   let state=await s.state();
   assert.equal(state.device.connected,false);assert.equal(state.bluetooth.connected,true);
@@ -113,7 +115,7 @@ test('Bluetooth permission denial or uncertain mapping acknowledgement never rep
 });
 
 test('Bluetooth disconnection releases held dictation, suspends shortcuts, and resumes the same bindings on reconnection',async t=>{
-  const s=await fakeService(t,{skipInitialConnect:true,present:false,bluetoothDevices:[device],permissions,tasks:[task]});
+  const s=await fakeService(t,{skipInitialConnect:true,present:false,bluetoothDevices:[device],permissions,tasks:[task],storedSettings:{sidebarFeatures:['studio','library','codex','game']}});
   await s.command({op:'codexAdapt'});
   await s.command({op:'codexBind',group:'command',index:5,code:'KeyZ'});
   await s.nativeKey({op:'codexKey',code:'F9',phase:'down'});

@@ -1,3 +1,4 @@
+import {AgentCohort} from '../shared/agent-cohort.mjs';
 // Reads local Claude Code session status for NuPhyLab.
 //
 // Two local read-only sources are combined: the hook spool this application
@@ -65,6 +66,8 @@ export class ClaudeCodeAdapter {
     this.watchTimer = null;
     this.lastPruneAt = -Infinity;
     this.appInstalled = true;
+    this.aggregateEnabled=false; this.aggregateEpoch=0; this.cohort=new AgentCohort({now:this.now});
+    this.spoolComplete=false;
     this.state = {
       available: false,
       reason: "Claude Code 接入尚未启动",
@@ -88,8 +91,9 @@ export class ClaudeCodeAdapter {
   track(ids) {
     this.trackedIds = [...new Set((ids ?? []).filter((value) => typeof value === "string" && value))].slice(0, 7);
   }
+  observeAggregate(enabled) {if(this.aggregateEnabled!==enabled){this.aggregateEnabled=enabled;this.aggregateEpoch++;this.cohort.reset();}}
   snapshot() {
-    return structuredClone(this.state);
+    return {...structuredClone(this.state),aggregate:this.cohort.snapshot()};
   }
   action(id, { session = null } = {}) {
     return describeClaudeAction(id, { session, appInstalled: this.appInstalled });
@@ -158,15 +162,18 @@ export class ClaudeCodeAdapter {
     }
   }
   async readSpool() {
-    const names = (await readdir(this.spoolDir))
+    this.spoolComplete=true;
+    const allNames = (await readdir(this.spoolDir))
       .filter((name) => name.endsWith(".jsonl") && /^[A-Za-z0-9_.:-]{1,80}\.jsonl$/.test(name))
-      .slice(0, MAX_FILES);
+      ;
+    this.spoolComplete=allNames.length<=MAX_FILES;
+    const names=allNames.slice(0,MAX_FILES);
     const sessions = new Map();
     for (const name of names) {
       const file = path.join(this.spoolDir, name);
       const id = name.slice(0, -6);
       let info;
-      try { info = await stat(file); } catch { continue; }
+      try { info = await stat(file); } catch { this.spoolComplete=false; continue; }
       const cached = this.cache.get(id);
       if (cached && cached.size === info.size && cached.mtimeMs === info.mtimeMs) {
         sessions.set(id, cached.events);
@@ -188,6 +195,7 @@ export class ClaudeCodeAdapter {
             }
           });
       } catch {
+        this.spoolComplete=false;
         if (cached) { sessions.set(id, cached.events); continue; }
         continue;
       }
@@ -215,6 +223,7 @@ export class ClaudeCodeAdapter {
   async refresh() {
     if (this.busy) return this.snapshot();
     this.busy = true;
+    const aggregateEpoch=this.aggregateEpoch;
     try {
       const now = this.now();
       const hooks = await this.hookStatus().catch((error) => ({
@@ -301,6 +310,11 @@ export class ClaudeCodeAdapter {
           Date.parse(b.updatedAt ?? "") - Date.parse(a.updatedAt ?? "") ||
           a.id.localeCompare(b.id),
       );
+      if (this.aggregateEnabled && aggregateEpoch===this.aggregateEpoch) this.cohort.observe({complete:hooks.installed && !spoolError && registry!==null && this.spoolComplete,
+        observedAt:now,tasks:tasks.map(task=>({id:task.id,eventAt:Date.parse(task.eventAt??'')||0,
+          signature:`${task.eventAt}:${task.status}:${task.events}`,explicitSuccess:false,
+          status:task.status==='awaitingApproval'||task.status==='awaitingInput'?'waiting'
+            :task.status==='ended'?'cancelled':task.status}))});
       this.state.tasks = tasks;
       this.state.hooks = hooks;
       this.state.taskSource = {

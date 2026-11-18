@@ -7,7 +7,7 @@ const MAX_LINE_BYTES = 1024 * 1024;
 // for the newest complete structural event, skipping large records in bounded
 // chunks. Never infer activity merely because the file has an open writer.
 export async function findLatestEvent(file, {
-  snapshot, previous, isEventLine, maxReadBytes = 4 * 1024 * 1024,
+  snapshot, previous, isEventLine, isValidLine = () => true, maxReadBytes = 4 * 1024 * 1024,
   maxSearchBytes = 32 * 1024 * 1024,
 }) {
   let search = previous ?? {
@@ -21,11 +21,13 @@ export async function findLatestEvent(file, {
     if (info.dev !== snapshot.dev || info.ino !== snapshot.ino || info.size < snapshot.size)
       throw new Error('event_file_changed');
     let {offset, fragment, discarding} = search;
+    let invalidEvents = search.invalidEvents === true;
     const floor = Math.max(0, search.end - maxSearchBytes);
     const stop = Math.max(floor, offset - maxReadBytes);
     const found = () => {
       if (discarding || !fragment.length) return null;
       const line = fragment.toString('utf8');
+      if (!isValidLine(line)) invalidEvents=true;
       return isEventLine(line) ? line : null;
     };
     while (offset > stop) {
@@ -39,12 +41,12 @@ export async function findLatestEvent(file, {
         const part = buffer.subarray(newline + 1, end);
         if (!discarding) {
           if (fragment.length + part.length > MAX_LINE_BYTES) {
-            fragment = Buffer.alloc(0); discarding = true;
+            fragment = Buffer.alloc(0); discarding = true; invalidEvents=true;
           } else if (part.length) fragment = Buffer.concat([part, fragment]);
         }
         if (newline < 0) break;
         const line = found();
-        if (line) return {done: true, line};
+        if (line) return {done: true, line, invalidEvents};
         fragment = Buffer.alloc(0); discarding = false; end = newline;
       }
       offset = start;
@@ -52,7 +54,7 @@ export async function findLatestEvent(file, {
     const line = offset === 0 ? found() : null;
     const done = offset === floor;
     return {offset, end:search.end, fragment:done ? Buffer.alloc(0) : fragment,
-      discarding, done, line};
+      discarding, done, line, invalidEvents};
   } finally { await handle.close(); }
 }
 
@@ -62,7 +64,7 @@ export async function findLatestEvent(file, {
 // poll's IO and retained fragment; unfinished work continues on the next poll.
 export async function readEventLines(file, {
   previous, tailBytes = 262144, maxReadBytes = 4 * 1024 * 1024,
-  onReset = () => {}, onLine = () => {},
+  onReset = () => {}, onLine = () => {}, onGap = () => {},
 } = {}) {
   const handle = await open(file, 'r');
   try {
@@ -87,7 +89,7 @@ export async function readEventLines(file, {
         if (!discarding) {
           const part = buffer.subarray(start, stop);
           if (fragment.length + part.length > MAX_LINE_BYTES) {
-            fragment = Buffer.alloc(0); discarding = true;
+            fragment = Buffer.alloc(0); discarding = true; onGap();
           } else if (part.length) fragment = Buffer.concat([fragment, part]);
         }
         if (stop === bytesRead) break;
@@ -95,6 +97,9 @@ export async function readEventLines(file, {
         fragment = Buffer.alloc(0); discarding = false; start = stop + 1;
       }
     }
-    return {file, dev:info.dev, ino:info.ino, size:info.size, mtimeMs:info.mtimeMs, offset, fragment, discarding};
+    const after = await handle.stat();
+    const settled = after.dev===info.dev && after.ino===info.ino && after.size===info.size && after.mtimeMs===info.mtimeMs &&
+      offset===info.size && fragment.length===0 && !discarding;
+    return {file, dev:info.dev, ino:info.ino, size:info.size, mtimeMs:info.mtimeMs, offset, fragment, discarding, settled};
   } finally { await handle.close(); }
 }

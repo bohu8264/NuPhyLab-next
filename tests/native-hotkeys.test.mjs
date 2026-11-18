@@ -21,6 +21,21 @@ sourceCheck.applyKeyConfiguration(["source":"claude","bindings":sourceBindings,"
 precondition(sourceCheck.typingCodesForCheck().isEmpty,"Claude keys must not acquire a Codex dictation audio pause")
 sourceCheck.applyKeyConfiguration(["source":"codex","bindings":sourceBindings,"dictationCodes":["F11"],"enabled":false])
 precondition(sourceCheck.typingCodesForCheck()==[103],"Codex dictation keeps its configured audio pause")
+// Command-only scope has six entries, while all/task scopes retain strict size checks.
+let scoped=AppDelegate()
+let commandBindings=sourceBindings.filter { item in ["F7","F8","F9","F10","F11","F12"].contains(item["code"] as? String ?? "") }
+scoped.applyKeyConfiguration(["source":"codex","bindingScope":"commands","bindings":commandBindings,"enabled":false])
+precondition(scoped.keyConfiguration.count==6,"command scope accepts six distinct bindings")
+precondition(!scoped.keyConfiguration.contains{$0.code=="F1"},"task keys are not reserved in side mode")
+scoped.applyKeyConfiguration(["source":"codex","bindingScope":"all","bindings":commandBindings,"enabled":false])
+precondition(scoped.keyConfiguration.isEmpty,"truncated all-key configuration fails closed")
+scoped.applyKeyConfiguration(["source":"codex","bindingScope":"none","bindings":[],"enabled":false])
+precondition(scoped.keyConfiguration.isEmpty && !scoped.configuredKeysEnabled,"empty scope releases all keys")
+let delayed=AppDelegate();delayed.hotkeysEnabled=true;delayed.keyConfiguration=[("F1",122)]
+delayed.carbonBindings[50]=delayed.keyConfiguration[0]
+delayed.keyConfiguration=[("F7",98)];delayed.carbonBindings.removeAll();delayed.carbonBindings[51]=delayed.keyConfiguration[0]
+precondition(!delayed.handleCarbonHotKey(50,down:true,eventTime:1),"late previous Carbon registration cannot become a new command")
+precondition(delayed.keyEventQueue.isEmpty,"stale notification dispatches nothing")
 let host=AppDelegate()
 host.hotkeysEnabled=true;host.keyConfiguration=[("F11",103)]
 func event(_ code:CGKeyCode=103,_ flags:CGEventFlags = .maskSecondaryFn,_ repeatValue:Int64=0)->CGEvent {
@@ -77,6 +92,7 @@ cross.hotkeysEnabled=true;deliver(.local,true,1_101_000_000)
 check(cross.keyEventQueue.count==4,"disable/re-enable retains seen event identities")
 let carbon=AppDelegate();carbon.hotkeysEnabled=true;carbon.keyConfiguration=[("F2",120)]
 carbon.carbonRegisteredCodes=["F2"]
+carbon.carbonBindings[1]=carbon.keyConfiguration[0]
 carbon.eventTapOwnershipOverride={true}
 check(carbon.handleCarbonHotKey(1,down:true,eventTime:4),"live tap consumes Carbon duplicate")
 check(carbon.handleCarbonHotKey(1,down:false,eventTime:4.2),"live tap consumes Carbon release")
@@ -115,6 +131,7 @@ check(missing2.id != missing.id,"a new invalid-clock gesture is not silently mer
 // No tap: Carbon is the only down owner when registration succeeded. Local
 // events can have unrelated stamps and arrive before/after the Carbon pair.
 let noTap=AppDelegate();noTap.hotkeysEnabled=true;noTap.keyConfiguration=[("F2",120)];noTap.carbonRegisteredCodes=["F2"];noTap.eventTapOwnershipOverride={false}
+noTap.carbonBindings[1]=noTap.keyConfiguration[0]
 func localF2(_ host:AppDelegate,_ down:Bool,_ stamp:UInt64,_ repeated:Bool=false){
  check(host.handleFunctionKey(120,down:down,repeated:repeated,modified:false,source:.local,eventTime:Double(stamp)/1_000_000_000,timestampNS:stamp),"local F2 consumed without generic fallthrough")
 }
@@ -133,6 +150,7 @@ check(localOnly.functionKeyCaptureDiagnostics()["localOnly"] as? [String] == ["F
 // A new tap may consume a Carbon-owned key-up: it must release that original ID.
 var tapAvailable=false
 let restart=AppDelegate();restart.hotkeysEnabled=true;restart.keyConfiguration=[("F2",120)];restart.carbonRegisteredCodes=["F2"];restart.eventTapOwnershipOverride={tapAvailable}
+restart.carbonBindings[1]=restart.keyConfiguration[0]
 _ = restart.handleCarbonHotKey(1,down:true,eventTime:50)
 let carbonHeldID=restart.keyEventQueue[0]["gestureId"] as? String
 tapAvailable=true

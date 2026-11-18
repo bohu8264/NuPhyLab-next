@@ -8,7 +8,7 @@ import {keyboardPermissions} from './keyboardPermissions';
 import {coalescePermissionRefresh,refreshPermissionSession,watchPermissionRefresh} from '../../shared/permission-refresh.mjs';
 import './settings-overlays-v6.css';
 
-export const OFFICIAL_DRIVER_URL='https://drive.nuphyio.com/#/setting';
+export const OFFICIAL_DRIVER_URL='https://drive.nuphy.io/#/setting';
 type Permission='inputMonitoring'|'accessibility';
 export type OfficialDriverResult={opened:boolean;url:string;browser?:string;browserBundleId?:string;browserSupportsUSB?:boolean;needsSupportedBrowser?:boolean;message?:string;manual?:boolean;safeReleased?:boolean;prepareError?:string};
 import {firmwarePrompt,currentFirmwareReady,firmwareUpdateSatisfied,type FirmwarePrompt} from '../../shared/firmware-onboarding.mjs';
@@ -40,11 +40,11 @@ export async function openOfficialDriver():Promise<OfficialDriverResult>{
   if(!result||typeof result!=='object'||!('opened' in result)||result.opened!==true)throw new Error('The official driver could not be opened.');
   return {...result,url:officialUpdateURL(result)} as OfficialDriverResult;
 }
-export function OfficialDriverAccess({compact=false}:{prepared?:boolean;compact?:boolean}){
+export function OfficialDriverAccess({compact=false,label}:{prepared?:boolean;compact?:boolean;label?:string}){
   const copy=useStartupCopy();const [busy,setBusy]=useState(false),[result,setResult]=useState<OfficialDriverResult|null>(null),[failed,setFailed]=useState(false);
   const open=async()=>{setBusy(true);setFailed(false);try{setResult(await openOfficialDriver());}catch{setFailed(true);}finally{setBusy(false);}};
   return <div className={`official-driver-access ${compact?'is-compact':''}`}>
-    <Button icon={<ArrowUpRight size={14}/>} busy={busy} onClick={()=>run(open())}>{copy('前往 NuPhyIO 更新','Update in NuPhyIO')}</Button>
+    <Button icon={<ArrowUpRight size={14}/>} busy={busy} onClick={()=>run(open())}>{label??copy('前往 NuPhyIO 更新','Update in NuPhyIO')}</Button>
     {result?.opened&&<p role="status">{copy('完成更新后，关闭 NuPhyIO，再返回软件。','After updating, close NuPhyIO and return here.')}</p>}
     {result?.prepareError&&<p className="error-text" role="alert">{copy('请关闭其他键盘设置程序，重新插拔键盘后再更新。','Close other keyboard apps and reconnect the cable before updating.')}</p>}
     {(failed||result?.manual)&&<p role="status">{copy('请使用 Chrome 或 Edge 打开：','Open this address in Chrome or Edge: ')}<a href={OFFICIAL_DRIVER_URL}>{OFFICIAL_DRIVER_URL}</a></p>}
@@ -112,8 +112,9 @@ export function StartupGuide({state,command,disabled=false}:{state:AppState|null
       <div className="settings-v6-firmware-guide">
         <h3>{firmware.model}</h3>
         <div className="settings-v6-firmware-row"><Clock size={16}/><div><strong>{copy('当前固件','Current firmware')}</strong><p>{firmware.current}</p></div></div>
-        <div className="settings-v6-firmware-row"><Clock size={16}/><div><strong>{copy('目标固件','Target firmware')}</strong><p>{firmware.target}</p></div></div>
-        <p>{firmware.latestUnverified?copy('官网有较新固件，但尚未完成 Lab 兼容验证。请在 NuPhyIO 查看此型号的可用版本；更新后 Lab 会重新检查兼容性。','A newer official firmware has not yet been verified with Lab. Check available versions for this model in NuPhyIO; Lab will check compatibility again after updating.'):copy('当前固件需要更新。完成更新后，关闭 NuPhyIO，再返回软件。','This firmware needs an update. After updating, close NuPhyIO and return here.')}</p>
+        <div className="settings-v6-firmware-row"><Clock size={16}/><div><strong>{firmware.officialLatest?copy('最新官方固件','Latest official firmware'):copy('最低支持固件','Minimum supported firmware')}</strong><p>{firmware.target}</p></div></div>
+        <p>{firmware.latestUnverified?copy('官网的最新固件尚未完成 Lab 兼容验证。请仅使用下列已支持版本；若 NuPhyIO 未提供该版本，请等待 Lab 兼容更新。','The latest official firmware is not yet verified with Lab. Use only the supported version shown below; if NuPhyIO does not offer it, wait for a compatible Lab update.'):copy('当前固件需要更新。完成更新后，关闭 NuPhyIO，再返回软件。','This firmware needs an update. After updating, close NuPhyIO and return here.')}</p>
+        {firmware.pairedReceiverUpdate&&<div className="overlay-notice" role="note"><Info size={14}/><div>{copy('使用 2.4G 时，键盘和接收器固件需要配套更新。在 NuPhyIO 的设置中，分别完成键盘与接收器更新；只更新一端可能无法连接。','For 2.4G, update both the keyboard and receiver firmware in NuPhyIO Settings. Updating only one may prevent the wireless connection.')}</div></div>}
         {(openFailed||driver?.manual||driver?.needsSupportedBrowser)&&<div className={openFailed?'overlay-error':'overlay-notice'} role={openFailed?'alert':'status'}><Info size={14}/><div>{copy('请使用 Chrome 或 Edge 打开：','Open this address in Chrome or Edge: ')}<a href={OFFICIAL_DRIVER_URL}>{OFFICIAL_DRIVER_URL}</a></div></div>}
         {driver?.prepareError&&<div className="overlay-error" role="alert">{copy('请关闭其他键盘设置程序，重新插拔键盘后再更新。','Close other keyboard apps and reconnect the cable before updating.')}</div>}
       </div>

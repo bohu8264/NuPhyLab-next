@@ -1,0 +1,27 @@
+.dock-scenes {display:grid;gap:18px;min-width:0;color:var(--text,#202020)}
+.dock-toolbar,.dock-actions,.dock-edit-actions {display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.dock-toolbar .switch-field {margin-right:auto}
+.dock-scenes .dock-scene-picker {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(155px,100%),1fr));gap:9px}
+.dock-scene-card {display:flex;align-items:center;min-width:0;gap:8px;padding:11px 12px;background:var(--panel,#fafafa);border:1px solid var(--line,#dedede);border-radius:9px;text-align:left}
+.dock-scene-card strong {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;flex:1}
+.dock-scene-card svg,.dock-scene-card kbd {flex-shrink:0}
+.dock-scene-card[aria-pressed="true"] {background:var(--hover,#eee);border-color:var(--muted,#999)}
+.dock-scene-card kbd {font:500 11px system-ui;padding:2px 5px;border-radius:4px;border:1px solid var(--line,#ddd)}
+.dock-preview {min-width:0;border:1px solid var(--line,#ddd);border-radius:12px;padding:18px}
+.dock-preview-header {display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-bottom:14px;border-bottom:1px solid var(--line,#ddd)}
+.dock-preview-header h2,.dock-preview-header p {margin:0;overflow-wrap:anywhere}
+.dock-preview-header h2 {font-size:19px}
+.dock-preview-header p,.dock-app-grid small {font-size:12px;color:var(--muted,#666)}
+.dock-app-grid {display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:14px 6px;padding-top:16px}
+.dock-app-grid>div {display:grid;justify-items:center;min-width:0;gap:4px}
+.dock-app-grid span {max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+.dock-app-icon {height:40px;width:40px;object-fit:contain}
+.dock-feedback {margin:0;overflow-wrap:anywhere}
+.dock-edit-actions {margin-bottom:12px}
+.dock-edit-list {list-style:none;margin:0;padding:0;max-height:45vh;overflow:auto}
+.dock-edit-list li {display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line,#ddd)}
+.dock-edit-list span {flex:1;min-width:0;overflow-wrap:anywhere}
+.dock-edit-list .dock-app-icon {width:28px;height:28px}
+.dock-edit-list button {display:grid;place-items:center;width:27px;height:27px}
+.dock-name {display:grid;gap:6px}
+.dock-name input {padding:8px;border:1px solid var(--line,#ccc);border-radius:6px;font:inherit}

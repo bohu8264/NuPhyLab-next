@@ -37,7 +37,7 @@ export function UpdatePreferences({state,command}:{state:AppState|null;command:C
     </section>
     <section className="lab-setting-panel lab-update-panel" aria-label={copy('键盘固件','Keyboard firmware')}>
       <div className="lab-setting-row"><div><h3>{copy('键盘固件','Keyboard firmware')}{update&&<span className="lab-firmware-update-label">{copy('有可用更新','Update available')}</span>}</h3><p role="status">{firmwareStatus}</p></div><Button disabled={!identified||fw?.checking} busy={checkingFirmware||fw?.checking} onClick={()=>run(checkFirmware())}>{copy('检查固件','Check firmware')}</Button></div>
-      {update&&<><p>{copy('请在 NuPhyIO 中选择当前键盘并按官方提示更新，完成后关闭 NuPhyIO 再返回。','Select this keyboard in NuPhyIO and follow its update instructions. Close NuPhyIO before returning.')}</p><OfficialDriverAccess compact/><a className="lab-update-address" href={OFFICIAL_DRIVER_URL}>{OFFICIAL_DRIVER_URL}</a></>}
+      {update&&<><p>{update.latestUnverified?copy('此固件尚未完成 NuPhy Lab 兼容验证。建议保留当前固件，等待 Lab 的兼容更新。','This firmware has not been verified with NuPhy Lab. Keep your current firmware and wait for a compatible Lab update.'):copy('请在 NuPhyIO 中选择当前键盘并按官方提示更新，完成后关闭 NuPhyIO 再返回。','Select this keyboard in NuPhyIO and follow its update instructions. Close NuPhyIO before returning.')}</p>{update.pairedReceiverUpdate&&<p>{copy('此版本的 2.4G 连接需要同时更新键盘和接收器，请按 NuPhyIO 的官方说明分别完成。','This version requires matching keyboard and receiver updates for 2.4G. Follow the NuPhyIO instructions for both.')}</p>}{!update.latestUnverified&&<OfficialDriverAccess compact/>}<a className="lab-update-address" href={OFFICIAL_DRIVER_URL}>{OFFICIAL_DRIVER_URL}</a></>}
     </section>
     {error&&<p className="settings-v6-note is-error" role="alert">{error}</p>}
   </div>;

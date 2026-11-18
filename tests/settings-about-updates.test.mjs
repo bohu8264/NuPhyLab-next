@@ -13,7 +13,7 @@ for(const language of ['zh-CN','en'])test(`merged About & updates keeps legacy l
  const ui=createVMEnvironment({
   'lucide-react':{},'./AmbientLightingPreferences':{AmbientLightingPreferences:()=>null},'./SelectionLab':{SelectionAPISettings:stub('SelectionAPISettings'),SelectionPermissionSettings:stub('SelectionPermissionSettings')},'./primitives':{Button:stub('Button'),Modal,Switch:stub('Switch'),run:value=>value},
   './DurationField':{DurationField:stub('DurationField')},'../../shared/lighting-power.mjs':power,
-  './StartupGuide':{useStartupCopy:()=> (zh,en)=>language==='en'?en:zh,OFFICIAL_DRIVER_URL:'https://drive.nuphyio.com/#/setting'},
+  './StartupGuide':{useStartupCopy:()=> (zh,en)=>language==='en'?en:zh,OFFICIAL_DRIVER_URL:'https://drive.nuphy.io/#/setting'},
   './i18n':{useLanguage:()=>language,t:value=>value},'../../package.json':{default:{version:'fixture-version'}},
   './api':{readAppState:async()=>null},'./connection-copy-v7':{connectionCopy:()=>''},
   './UpdatePreferences':{UpdatePreferences},'../../shared/firmware-onboarding.mjs':firmware,

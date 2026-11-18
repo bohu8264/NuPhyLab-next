@@ -688,3 +688,111 @@ test('normal tasks created by an assistant are visible while internal agents sta
  assert.deepEqual(snapshot.tasks.map(t=>t.id),['manual','created']);
  assert.equal(snapshot.tasks[1].status,'running');
 });
+
+test('aggregate reads beyond six visible tasks and includes child tasks without exposing them as slots',async t=>{
+ let now=baseTime+1000;
+ const rows=Array.from({length:9},(_,i)=>({id:`aggregate-${i}`,source:i===8?'subagent':'user',events:event('task_started')}));
+ const {home,file}=await fixture(t,{rows});
+ const adapter=new CodexAdapter({codexHome:home,maxTasks:6,enableQuota:false,now:()=>now,liveWriters:async()=>new Map(rows.map(r=>[r.id,{startedAt:baseTime-1000}]))});
+ t.after(()=>adapter.stop());adapter.observeAggregate(true);await adapter.start();
+ assert.equal(adapter.snapshot().tasks.length,6);assert.equal(adapter.snapshot().aggregate.count,9);assert.equal(adapter.snapshot().aggregate.status,'running');
+ now+=1000;for(let i=0;i<8;i++)await appendFile(file(rows[i].id),event('task_complete',now));await adapter.refresh();assert.equal(adapter.snapshot().aggregate.status,'running');
+ now+=1000;await appendFile(file(rows[8].id),event('task_complete',now));await adapter.refresh();assert.equal(adapter.snapshot().aggregate.status,'running');
+ now+=1000;await adapter.refresh();assert.equal(adapter.snapshot().aggregate.status,'completed');
+ adapter.observeAggregate(false);adapter.observeAggregate(true);now+=1000;await adapter.refresh();assert.equal(adapter.snapshot().aggregate.status,'idle');
+});
+
+test('a bounded aggregate index cannot certify all-complete when more rows exist',async()=>{
+ let now=baseTime+1000;const adapter=new CodexAdapter({enableQuota:false,now:()=>now,liveWriters:async()=>new Map()});
+ adapter.running=true;adapter.discoverDatabase=async()=>'/synthetic/index';adapter.metadata=async()=>({pinned:[]});
+ adapter.sql=async(_db,sql)=>sql.startsWith('PRAGMA')?['id','rollout_path','thread_source','updated_at'].map(name=>({name})):
+ Array.from({length:2000},(_,i)=>({id:`bound-${i}`,total_count:2001,rollout_path:'/unused',thread_source:'user',updated_ms:now}));
+ adapter.readTaskEvent=async row=>({signature:row.id,kind:'completed',status:'completed',eventAt:now,explicitSuccess:true});
+ adapter.observeAggregate(true);await adapter.pollTasks();now+=1000;await adapter.pollTasks();
+ assert.equal(adapter.snapshot().aggregate.complete,false);assert.notEqual(adapter.snapshot().aggregate.status,'completed');
+});
+
+test('partial event tails and bounded unread bytes cannot keep all-complete green',async t=>{
+ let now=baseTime+1000;const f=await fixture(t,{rows:[{id:'partial',events:event('turn_started')}]});
+ const a=new CodexAdapter({codexHome:f.home,enableQuota:false,now:()=>now,liveWriters:async()=>new Map([['partial',{startedAt:baseTime-1000}]])});t.after(()=>a.stop());a.observeAggregate(true);await a.start();
+ now+=1000;await appendFile(f.file('partial'),event('turn_complete',now));await a.pollTasks();now+=1000;await a.pollTasks();assert.equal(a.snapshot().aggregate.status,'completed');
+ now+=1000;const next=event('turn_started',now);await appendFile(f.file('partial'),next.slice(0,30));await a.pollTasks();assert.equal(a.snapshot().aggregate.complete,false);assert.notEqual(a.snapshot().aggregate.status,'completed');
+ await appendFile(f.file('partial'),next.slice(30));now+=1000;await a.pollTasks();assert.equal(a.snapshot().aggregate.status,'running');
+ now+=1000;await appendFile(f.file('partial'),event('turn_complete',now)+JSON.stringify({type:'compacted',payload:'x'.repeat(6000000)})+'\n');await a.pollTasks();assert.equal(a.snapshot().aggregate.complete,false);assert.notEqual(a.snapshot().aggregate.status,'completed');
+ now+=1000;await a.pollTasks();assert.equal(a.snapshot().aggregate.complete,false);await appendFile(f.file('partial'),event('turn_complete',now));now+=1000;await a.pollTasks();assert.equal(a.snapshot().aggregate.complete,true);assert.notEqual(a.snapshot().aggregate.status,'completed');now+=1000;await a.pollTasks();assert.equal(a.snapshot().aggregate.status,'completed');
+});
+test('only a recognized successful completion status proves task success',()=>{
+ for(const status of [null,12,{},false,'in_progress','pending','failed','canceled','unknown'])assert.equal(classifyEvents(event('turn_complete',baseTime,{status})).explicitSuccess,false);
+ for(const status of ['', 'completed','success','succeeded'])assert.equal(classifyEvents(event('turn_complete',baseTime,{status})).explicitSuccess,true);
+ assert.equal(classifyEvents(event('turn_complete',baseTime,{},'response_item')).explicitSuccess,false);
+});
+
+test('a malformed complete log line withdraws green until new valid structural evidence',async t=>{
+ let now=baseTime+1000;const f=await fixture(t,{rows:[{id:'broken',events:event('turn_started')}]});const a=new CodexAdapter({codexHome:f.home,enableQuota:false,now:()=>now,liveWriters:async()=>new Map([['broken',{startedAt:baseTime-1000}]])});t.after(()=>a.stop());a.observeAggregate(true);await a.start();
+ now+=1000;await appendFile(f.file('broken'),event('turn_complete',now));await a.pollTasks();now+=1000;await a.pollTasks();assert.equal(a.snapshot().aggregate.status,'completed');
+ await appendFile(f.file('broken'),'{broken json}\n');now+=1000;await a.pollTasks();assert.equal(a.snapshot().aggregate.complete,false);assert.notEqual(a.snapshot().aggregate.status,'completed');now+=1000;await a.pollTasks();assert.equal(a.snapshot().aggregate.complete,false);
+ await appendFile(f.file('broken'),event('turn_started',now));now+=1000;await a.pollTasks();assert.equal(a.snapshot().aggregate.status,'running');assert.equal(a.snapshot().aggregate.complete,true);
+});
+
+test('cold-start backwards discovery cannot certify a completion through newer corrupt or skipped records',async t=>{
+ const home=await mkdtemp(path.join(tmpdir(),'nuphylab-bootstrap-integrity-'));t.after(()=>rm(home,{recursive:true,force:true}));
+ const telemetry=n=>JSON.stringify({type:'compacted',payload:'x'.repeat(n)});
+ for(const shape of ['oversized','many','new-terminal']) {
+  const file=path.join(home,shape+'.jsonl');let now=baseTime,rows=[];
+  const a=new CodexAdapter({codexHome:home,enableQuota:false,now:()=>now,liveWriters:async()=>new Map()});
+  a.discoverDatabase=async()=>path.join(home,'fixture.sqlite');a.sql=async(_db,sql)=>sql.startsWith('PRAGMA')?[{name:'id'},{name:'rollout_path'}]:rows;
+  a.running=true;a.observeAggregate(true);const poll=async()=>{now+=1000;await a.pollTasks();return a.snapshot().aggregate;};
+  assert.equal((await poll()).status,'idle');const complete=event('task_complete',now).trim(),corrupt='{"type":"event_msg","payload":{"type":"turn_started"';
+  const tail=shape==='oversized'?[telemetry(1500000)]:Array(64).fill(telemetry(8192));
+  const lines=shape==='new-terminal'?[corrupt,...tail,complete]:[complete,corrupt,...tail];
+  await writeFile(file,lines.join('\n')+'\n');rows=[{id:shape,rollout_path:file,total_count:1}];
+  await poll();const result=await poll();
+  if(shape==='new-terminal'){assert.equal(result.status,'completed');assert.equal(result.complete,true);}
+  else{assert.equal(result.complete,false);assert.notEqual(result.status,'completed');}
+ }
+});
+
+test('missing history from before monitoring does not suppress current successful completion',async t=>{
+ let now=baseTime+1000;
+ const f=await fixture(t,{rows:[{id:'live',events:event('turn_started')},{id:'history'}]});
+ await rm(f.file('history'));
+ execFileSync('/usr/bin/sqlite3',[f.database,`UPDATE threads SET updated_at=${baseTime/1000-86400},recency_at_ms=${baseTime-86400000} WHERE id='history'`]);
+ const a=new CodexAdapter({codexHome:f.home,enableQuota:false,now:()=>now,liveWriters:async()=>new Map([['live',{startedAt:baseTime-1000}]])});
+ t.after(()=>a.stop());a.observeAggregate(true);await a.start();
+ assert.equal(a.snapshot().aggregate.complete,true);assert.equal(a.snapshot().aggregate.count,1);
+ now+=1000;await appendFile(f.file('live'),event('turn_complete',now));await a.pollTasks();
+ now+=1000;await a.pollTasks();assert.equal(a.snapshot().aggregate.status,'completed');
+ now+=3600000;await a.pollTasks();assert.equal(a.snapshot().aggregate.status,'completed');
+ // A new index update brings the missing task into the current scope.
+ execFileSync('/usr/bin/sqlite3',[f.database,`UPDATE threads SET recency_at_ms=${now} WHERE id='history'`]);
+ now+=1000;await a.pollTasks();assert.equal(a.snapshot().aggregate.complete,false);
+ assert.notEqual(a.snapshot().aggregate.status,'completed');
+});
+
+for(const condition of ['recent','live','inventory-unavailable','previously-observed','unreadable'])
+test(`missing or unreadable task stays uncertain when ${condition}`,async t=>{
+ let now=baseTime+1000;
+ const f=await fixture(t,{rows:[{id:'live',events:event('turn_started')},{id:'missing',events:condition==='unreadable'?'{broken json}\n':event('turn_started')}]});
+ if(condition!=='recent')execFileSync('/usr/bin/sqlite3',[f.database,`UPDATE threads SET updated_at=${baseTime/1000-86400},recency_at_ms=${baseTime-86400000} WHERE id='missing'`]);
+ const writers=new Map([['live',{startedAt:baseTime-1000}],...(condition==='live'?[['missing',{startedAt:baseTime-1000}]]:[])]);
+ const a=new CodexAdapter({codexHome:f.home,enableQuota:false,now:()=>now,liveWriters:async()=>condition==='inventory-unavailable'?null:writers});
+ t.after(()=>a.stop());a.observeAggregate(true);
+ if(condition==='previously-observed'){await a.start();assert.ok(a.cache.has('missing'));}
+ if(condition!=='unreadable')await rm(f.file('missing'));
+ await a.start();now+=1000;await appendFile(f.file('live'),event('turn_complete',now));await a.pollTasks();
+ now+=1000;await a.pollTasks();assert.equal(a.snapshot().aggregate.complete,false);assert.notEqual(a.snapshot().aggregate.status,'completed');
+});
+
+for(const values of [
+ {name:'missing timestamps',sql:'recency_at_ms=NULL,updated_at=NULL'},
+ {name:'zero timestamps',sql:'recency_at_ms=0,updated_at=0'},
+ {name:'old recency with current update',sql:`recency_at_ms=${baseTime-86400000},updated_at=${baseTime/1000}`},
+ {name:'current recency with old update',sql:`recency_at_ms=${baseTime},updated_at=${baseTime/1000-86400}`},
+ {name:'malformed age',sql:`recency_at_ms='unknown',updated_at=${baseTime/1000-86400}`},
+])test(`absent rollout cannot be excluded by ${values.name}`,async t=>{
+ let now=baseTime+1000;const f=await fixture(t,{rows:[{id:'live',events:event('turn_started')},{id:'missing'}]});await rm(f.file('missing'));
+ execFileSync('/usr/bin/sqlite3',[f.database,`UPDATE threads SET ${values.sql} WHERE id='missing'`]);
+ const a=new CodexAdapter({codexHome:f.home,enableQuota:false,now:()=>now,liveWriters:async()=>new Map([['live',{startedAt:baseTime-1000}]])});t.after(()=>a.stop());a.observeAggregate(true);await a.start();
+ now+=1000;await appendFile(f.file('live'),event('turn_complete',now));await a.pollTasks();now+=1000;await a.pollTasks();
+ assert.equal(a.snapshot().aggregate.complete,false);assert.notEqual(a.snapshot().aggregate.status,'completed');
+});

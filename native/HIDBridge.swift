@@ -399,7 +399,7 @@ enum USBKeyboardModel: String, CaseIterable {
     var minimumFirmware: String { self == .air75 ? "1.0.16.6" : qualifiedFirmware }
     func hasQualifiedFirmware(_ firmware:[UInt8]) -> Bool {
         guard firmware.count == 8,firmware[3] == 0xaa,firmware[5] == 0 else { return false }
-        return S4.firmwareVersion(firmware) == qualifiedFirmware
+        return S4.firmwareVersion(firmware) == qualifiedFirmware || (self == .air75 && S4.isAirLinkFirmware(firmware))
     }
     func supportsFunctionKeyAdaptation(_ firmware:[UInt8]) -> Bool {
         self != .air65 && S4.supportsPerKey(firmware,model:self)
@@ -424,7 +424,16 @@ enum S4 {
     // NuPhyIO's Air75 V3 capability table: per-key mode starts at 1.0.16.6;
     // preset shapes extend D5/D6 from 17 to 22 bytes at 1.0.17.6. Keep minor
     // releases open, but require the same protocol family and read-only probes.
+    // AIRLINK changes the wireless transport and USB serial, not these S4 USB
+    // routes. Exact 2.0.0.7 only: official binary + live read/write qualification.
+    static func isAirLinkFirmware(_ firmware:[UInt8]) -> Bool {
+        firmware.count == 8 && Array(firmware.prefix(6)) == [0,0,2,170,7,0]
+    }
+    static func hasAirPresetAliases(_ firmware:[UInt8]) -> Bool {
+        Array(firmware.prefix(6)) == [23,0,1,170,6,0] || isAirLinkFirmware(firmware)
+    }
     static func stateLength(_ firmware: [UInt8], model: USBKeyboardModel = .air75) -> Int? {
+        if model == .air75 && isAirLinkFirmware(firmware) {return 22}
         if model != .air75 && model != .kick75 { return model.hasQualifiedFirmware(firmware) ? 17 : nil }
         if model == .kick75 {
             guard firmware.count == 8, firmware[3] == 0xaa, firmware[2] == 4, firmware[1] == 0, [UInt8(15),18].contains(firmware[0]), firmware[4] == 6, firmware[5] == 0 else { return nil }
@@ -439,7 +448,7 @@ enum S4 {
         // D8 to UNKNOWN_COMMAND. Keep this independently qualified version
         // exact until another Kick firmware has been inspected and tested.
         if model != .air75 { return model.hasQualifiedFirmware(firmware) }
-        return stateLength(firmware, model: model) != nil && (firmware[1] > 0 || firmware[0] >= 16)
+        return isAirLinkFirmware(firmware) || (stateLength(firmware, model: model) != nil && (firmware[1] > 0 || firmware[0] >= 16))
     }
     static func renderedCustomByte(_ value: UInt8, index: Int, firmware: [UInt8], model: USBKeyboardModel = .air75) -> UInt8 {
         guard model == .air75, stateLength(firmware, model: model) == 22 else { return value }
@@ -494,7 +503,7 @@ enum S4 {
         var payload = Array(target.prefix(17))
         // 1.0.23.6 also mirrors the keyboard-owned preset shape at byte 5.
         // Retain its live value when committing the complete main/side prefix.
-        if model == .air75, Array(firmware.prefix(6)) == [23,0,1,170,6,0] { payload[5] = current[5] }
+        if model == .air75, hasAirPresetAliases(firmware) { payload[5] = current[5] }
         return [StateWriteSegment(address: 0, payload: payload)]
     }
     // 1.0.23.6 stores the main colour as byte HSV, with V scaled to 200.
@@ -528,6 +537,19 @@ enum S4 {
         }
         return result.map(UInt8.init)
     }
+    static func stableAirLinkMainColor(_ state:[UInt8],firmware:[UInt8],model:USBKeyboardModel) -> Bool {
+        guard model == .air75,isAirLinkFirmware(firmware),state.count == 22 else {return true}
+        let color=Array(state[6..<9])
+        return mainColorReadback(color)==color
+    }
+    static func requireRestorableMainColor(_ state:[UInt8],firmware:[UInt8],model:USBKeyboardModel,original:Bool=false) throws {
+        if original && model == .air75 && isAirLinkFirmware(firmware) && state.first == 21 {
+            throw failure("AIRLINK_ORIGINAL_MODE_UNVERIFIED", "请先在 NuPhyIO 选择一种原厂背光灯效；当前自定义灯效的亮度尚不能可靠恢复。侧灯仍可使用。")
+        }
+        guard stableAirLinkMainColor(state,firmware:firmware,model:model) else {
+            throw failure("AIRLINK_COLOR_RESTORE_UNVERIFIED", "当前固件的这组主灯颜色尚不能可靠恢复。可使用侧灯模式，或在 NuPhyIO 将主灯颜色设为白色后再启用背光。")
+        }
+    }
     static func exactMainColorInput(_ target: [UInt8]) throws -> [UInt8] {
         if mainColorReadback(target) == target { return target }
         // Bound the search to one hue quantization interval plus value rounding.
@@ -556,7 +578,7 @@ enum S4 {
         let unusedPaletteSlots = (model == .air75 && Array(firmware.prefix(6)) == [0x10, 0, 1, 0xaa, 6, 0]) || qualifiedAdditional
         // 1.0.23.6 D5 now mirrors shape at offset 5, but still never populates
         // offset 13. Its D6 dispatch table skips 13 (official binary 0x44424).
-        let unusedSidePalette = model == .air75 && Array(firmware.prefix(6)) == [23,0,1,0xaa,6,0]
+        let unusedSidePalette = model == .air75 && hasAirPresetAliases(firmware)
         return expected.indices.allSatisfy {
             (unusedPaletteSlots && ($0 == 5 || $0 == 13)) || (unusedSidePalette && $0 == 13) || expected[$0] == observed[$0]
         }
@@ -567,13 +589,13 @@ enum S4 {
         // The full comparator stays available for exact snapshot comparisons;
         // writes/restoration verify the fields this application actually owns.
         if length == 22 { ownedTarget.replaceSubrange(17..<22, with: observed[17..<22]) }
-        if model == .air75, Array(firmware.prefix(6)) == [23,0,1,170,6,0] { ownedTarget[5] = observed[5] }
+        if model == .air75, hasAirPresetAliases(firmware) { ownedTarget[5] = observed[5] }
         return statesMatch(ownedTarget, observed, firmware: firmware, model: model)
     }
     static func presetFieldsDiffer(_ saved: [UInt8], _ current: [UInt8], firmware: [UInt8], model: USBKeyboardModel = .air75) -> Bool {
         guard stateLength(firmware, model: model) == 22, saved.count == 22, current.count == 22 else { return false }
         return saved.suffix(5) != current.suffix(5) ||
-            (model == .air75 && Array(firmware.prefix(6)) == [23,0,1,170,6,0] && saved[5] != current[5])
+            (model == .air75 && hasAirPresetAliases(firmware) && saved[5] != current[5])
     }
     static func checksum(_ bytes: [UInt8]) -> UInt8 {
         bytes.dropFirst(4).reduce(UInt8(0)) { $0 &+ $1 }
@@ -693,6 +715,9 @@ struct LightingBackup: Codable, Equatable {
     var customColors: [UInt8]? = nil
     // Old releases always addressed Mac profile 0, even when Win was active.
     var lightingProfile: UInt8? = nil
+    // Legacy journals own both zones. New side-only leases never restore main
+    // settings or palettes, including rollback, reconnect and shutdown.
+    var sideOnly: Bool? = nil
 }
 
 // Mac and Win have separate lighting configurations. Retain the inactive
@@ -709,7 +734,7 @@ struct LightingJournals {
     func read(_ url: URL, serial: String) throws -> LightingBackup {
         do {
             let record = try JSONDecoder().decode(LightingBackup.self, from: Data(contentsOf: url))
-            guard record.schema == 1, record.vendorID == 0x19f5, record.productID == productID,
+            guard ((record.schema == 1 && record.sideOnly != true) || (record.schema == 2 && record.sideOnly == true && record.customColors == nil)), record.vendorID == 0x19f5, record.productID == productID,
                   S4.readableState(record.state, firmware: record.firmware, model: model), record.renderedColors.count == model.totalCount * 3,
                   record.customColors == nil || record.customColors?.count == model.keyCount * 3,
                   (record.lightingProfile ?? 0) <= 1 else {
@@ -974,6 +999,9 @@ final class Air75Device {
     private let testSerial: (() -> String)?
     private let testUptime: (() -> TimeInterval)?
     private var functionKeyDeadline: TimeInterval?
+    private var restoreExpectedProfile: UInt8?
+    private var profileRecoveryPending = false
+    private var recoveryProfile: UInt8?
     private var transactionUptime: TimeInterval {testUptime?() ?? ProcessInfo.processInfo.systemUptime}
     private var testConnected = false
     private(set) var firmware = [UInt8]()
@@ -1161,11 +1189,15 @@ final class Air75Device {
         throw failure("HID_TIMEOUT", "No valid \(String(format: "%02X", frame[1])) response. Stop other HID clients and reconnect; no blind write retry was performed.")
     }
     private func request(_ command: UInt8, length: Int, address: Int = 0, payload: [UInt8] = []) throws -> [UInt8] {
+        if [UInt8(0xb3),0xd6,0xd8,0xf5].contains(command), let expected = restoreExpectedProfile {
+            try refreshLightingProfile()
+            try requireExpectedLightingProfile(expected)
+        }
         if [UInt8(0xb3),0xd6,0xd8,0xf5].contains(command), !protocolReady {
             throw compatibilityError ?? failure("UNSUPPORTED_PROTOCOL", "键盘尚未通过兼容性检查，未修改任何键盘设置。请先通过 NuPhyIO 检查固件。")
         }
         if [UInt8(0xf3),0xf5].contains(command), !supportsBoardSleepLease {
-            throw failure("SLEEP_UNSUPPORTED", "Board sleep control requires a verified Air75 V3 1.0.23.6 or Kick75 4.0.18.6 with a nonempty serial.")
+            throw failure("SLEEP_UNSUPPORTED", "Board sleep control requires a qualified Air75 V3 or Kick75 USB firmware with a nonempty serial.")
         }
         let handle = [UInt8(0xd5),0xd6,0xd8].contains(command) ? lightingProfile : 0
         let frame = try S4.frame(command: command, length: length, address: address, payload: payload, handle: handle, key: key)
@@ -1192,15 +1224,17 @@ final class Air75Device {
         }
     }
     private func selectRecoveryProfile(reconnected: Bool = false) throws {
+        let changedProfile = recoveryProfile != nil && recoveryProfile != lightingProfile
+        defer { recoveryProfile = lightingProfile }
         try journals.migrateLegacy(serial: serial)
         if let saved = backup, (saved.lightingProfile ?? 0) != lightingProfile {
             // The old profile's durable journal stays on disk. Drop only the
             // live ownership, so a new session can use its own profile safely.
-            backup = nil; mutationAttempted = false; armed = false
+            backup = nil; mutationAttempted = false; armed = false; profileRecoveryPending = false
             firstPaintVerified = false; lastPaint = nil
         }
         if backup == nil, FileManager.default.fileExists(atPath: backupURL.path) {
-            backup = try loadBackup()
+            backup = try loadBackup(); profileRecoveryPending = changedProfile
         }
         if let saved = backup, Array(saved.firmware.prefix(6)) != Array(firmware.prefix(6)) {
             guard protocolReady, !mutationAttempted || reconnected else {
@@ -1309,7 +1343,7 @@ final class Air75Device {
         try requireConnected()
         if refreshIdentity { try identify() }
         guard supportsBoardSleepLease else {
-            throw failure("SLEEP_UNSUPPORTED", "Board sleep control requires a verified Air75 V3 1.0.23.6 or Kick75 4.0.18.6 with a nonempty serial.")
+            throw failure("SLEEP_UNSUPPORTED", "Board sleep control requires a qualified Air75 V3 or Kick75 USB firmware with a nonempty serial.")
         }
     }
     private func readBoardSleepInfo() throws -> [UInt8] {
@@ -1351,7 +1385,12 @@ final class Air75Device {
         }
         return observed
     }
-    func acquireBoardSleepLease() throws -> [String:Any] {
+    func acquireBoardSleepLease(expectedProfile: UInt8? = nil) throws -> [String:Any] {
+        try withSleepArmFailureCleanup {
+            try withExpectedLightingProfile(expectedProfile) { try acquireBoardSleepLeaseWithinProfile() }
+        }
+    }
+    private func acquireBoardSleepLeaseWithinProfile() throws -> [String:Any] {
         try requireBoardSleepSupport(refreshIdentity: sleepLeaseGeneration != connectionGeneration)
         if sleepMutationAttempted && !boardSleepJournal.exists {
             throw failure("SLEEP_BACKUP_MISSING", "This process changed board sleep but its original record is missing. No new baseline was captured.")
@@ -1391,6 +1430,12 @@ final class Air75Device {
         }
     }
     func releaseBoardSleepLease() throws -> [String:Any] {
+        // F3/F5 are device-global, not Mac/Win lighting fields. The exact
+        // product/serial/firmware and saved bytes below still fence recovery;
+        // a changed lighting profile must not strand a verified sleep lease.
+        let priorExpectedProfile = restoreExpectedProfile
+        restoreExpectedProfile = nil
+        defer { restoreExpectedProfile = priorExpectedProfile }
         guard boardSleepLeasePending else {
             return ["boardSleepLease":boardSleepLeaseStatus,"changed":false,"restored":false,"verified":true,"reason":"noBoardSleepLease"]
         }
@@ -1423,7 +1468,9 @@ final class Air75Device {
     }
     private func connectionSnapshot(state: [UInt8]? = nil) -> [String:Any] {
         var result: [String: Any] = ["connected": connected, "armed": armed, "needsRestore": recoveryPending,
-                                     "recoveryPending": recoveryPending, "deferredProfiles": deferredProfiles, "backupPath": backupURL.path,
+                                     "recoveryPending": recoveryPending, "sideRecoveryPending": backup?.sideOnly == true && !mutationAttempted,
+                                     "lightingRecoveryPending": profileRecoveryPending && backup != nil && !mutationAttempted,
+                                     "deferredProfiles": deferredProfiles, "backupPath": backupURL.path,
                                      "firmware": firmware, "ledCount": ledCount,"expectedLedCount":model.totalCount,
                                      "identified": connected && identified,"firmwareDetectionAvailable": connected && identified,
                                      "readOnly": !protocolReady,"protocolReady": protocolReady,
@@ -1461,6 +1508,7 @@ final class Air75Device {
     func readState() throws -> [UInt8] {
         if !protocolReady,let error=compatibilityError {throw error}
         try refreshLightingProfile()
+        try requireExpectedLightingProfile(restoreExpectedProfile)
         guard let length = S4.stateLength(firmware, model: model) else {
             throw failure("UNSUPPORTED_FIRMWARE", "暂不支持此固件，请检查 NuPhy Lab 更新。")
         }
@@ -1486,8 +1534,10 @@ final class Air75Device {
         try requireConnected();try identify()
         let geometry = try request(0xa0,length:8)
         guard model.validGeometry(geometry) else { throw failure("KEYMAP_UNSUPPORTED", "此键盘的键位结构尚不支持自动适配。") }
-        let active = try keyLayer(0xb2,Int(geometry[0])*4)
         let defaults = try [keyLayer(0xb1,0),keyLayer(0xb1,4)]
+        // Read the live table after the immutable defaults, so recovery cannot
+        // commit against a snapshot that predates those extra round trips.
+        let active = try keyLayer(0xb2,Int(geometry[0])*4)
         guard try request(0xa0,length:8) == geometry else { throw failure("KEYMAP_CHANGED", "键盘模式已改变，请重新适配。") }
         return ["mode":Int(geometry[0]),"active":active,"defaults":defaults,"locationId":locationId,
                 "firmwareVersion":S4.firmwareVersion(firmware),"readOnly":true,
@@ -1541,24 +1591,44 @@ final class Air75Device {
         }
         return record
     }
-    private func verifyFunctionKeyTransaction(_ saved:FunctionKeyBackup,_ journal:Data,_ generation:UInt64,_ location:Int) throws {
+    // Migration permits only restoring the proven factory F4 on the reviewed
+    // AIRLINK upgrade, after an explicit same-keyboard confirmation. It never
+    // rebinds a journal or enables automatic cross-firmware restoration.
+    private func isKnownAirFunctionKeyUpgrade(_ saved:FunctionKeyBackup,_ defaults:[[Int]],mode:Int?) -> Bool {
+        let serialTransition = saved.serial == "NuPhy Keybord 0720" &&
+            serial.range(of:"^[A-F0-9]{12}$",options:.regularExpression) != nil
+        return model == .air75 && mode == 0 && !serial.isEmpty && !saved.serial.isEmpty &&
+            saved.firmware == [23,0,1,170,6,0] && S4.isAirLinkFirmware(firmware) &&
+            serialTransition && saved.assignments == [FunctionKeyAssignment(position:4,target:61)] &&
+            defaults.count == 2 && defaults[0] == saved.original && validFunctionAssignments(saved,defaults)
+    }
+    private func verifyFunctionKeyTransaction(_ saved:FunctionKeyBackup,_ journal:Data,_ generation:UInt64,_ location:Int,recovery:FunctionKeyRecoveryPreview? = nil,expectedMac:[Int]? = nil) throws {
         try requireConnected();try readIdentity()
+        var identityOK = saved.serial==serial && saved.firmware==Array(firmware.prefix(6))
+        if let recovery {
+            let map = try readKeymap()
+            let defaults = map["defaults"] as? [[Int]] ?? []
+            identityOK = (map["active"] as? [Int]) == (expectedMac ?? recovery.mac) && recovery.saved == saved && recovery.journal == journal && recovery.serial == serial &&
+                recovery.generation == connectionGeneration && recovery.location == locationId &&
+                recovery.firmware == Array(firmware.prefix(6)) && isKnownAirFunctionKeyUpgrade(saved,defaults,mode:map["mode"] as? Int)
+        }
         guard protocolReady,model.supportsFunctionKeyAdaptation(firmware),generation==connectionGeneration,location==locationId,
-              ownsCurrentFunctionKeyLease,saved.serial==serial,
-              saved.firmware==Array(firmware.prefix(6)),try loadFunctionKeyBackup()==saved,
+              ownsCurrentFunctionKeyLease,identityOK,try loadFunctionKeyBackup()==saved,
               try Data(contentsOf:functionKeyBackupURL)==journal else {
             throw failure("KEY_LEASE_CHANGED","连接或原键位记录已改变，已停止修改并保留备份。")
         }
     }
-    private func writeFunctionKey(_ position:Int,_ value:Int,expected:Int,saved:FunctionKeyBackup,journal:Data,generation:UInt64,location:Int) throws {
+    private func writeFunctionKey(_ position:Int,_ value:Int,expected:Int,saved:FunctionKeyBackup,journal:Data,generation:UInt64,location:Int,recovery:FunctionKeyRecoveryPreview? = nil) throws {
         guard (0..<model.matrixKeyCount).contains(position),((58...69).contains(value) || factoryFunctionValues.contains(value)) else { throw failure("KEY_LEASE_INVALID", "Invalid F4 lease.") }
         // A multi-key transaction can yield to other control clients between
         // writes. Check the actual next slot, never reuse the first snapshot.
+        try verifyFunctionKeyTransaction(saved,journal,generation,location,recovery:recovery)
+        // The final slot read follows all metadata/default-table probes. Never
+        // leave more round trips between this precondition and the B3 commit.
         let current=try request(0xb2,length:2,address:position*2)
         guard current == [UInt8(expected>>8),UInt8(expected&255)] else {
             throw failure("KEY_LEASE_CHANGED","功能键已被重新配置，已停止修改并保留新配置。")
         }
-        try verifyFunctionKeyTransaction(saved,journal,generation,location)
         let bytes=[UInt8(value >> 8),UInt8(value & 255)]
         _ = try request(0xb3,length:2,address:position*2,payload:bytes)
         // The ACK can precede the keymap commit. Read again, never blind-retry a write.
@@ -1755,8 +1825,9 @@ final class Air75Device {
         let map=try readKeymap(),mac=try keyLayer(0xb2,0)
         let defaults=map["defaults"] as? [[Int]] ?? []
         let positionOK=validFunctionAssignments(saved,defaults)
-        let firmwareOK=saved.firmware==Array(firmware.prefix(6))
-        let serialOK=saved.serial==serial
+        let upgrade = isKnownAirFunctionKeyUpgrade(saved,defaults,mode:map["mode"] as? Int)
+        let firmwareOK=saved.firmware==Array(firmware.prefix(6)) || upgrade
+        let serialOK=saved.serial==serial || upgrade
         let positions=Set(saved.assignments.map{$0.position})
         let otherKeysOK=mac.count==saved.original.count && mac.indices.allSatisfy{positions.contains($0) || mac[$0]==saved.original[$0]}
         let valueOK=saved.assignments.allSatisfy{mac.indices.contains($0.position) && [$0.target,saved.original[$0.position]].contains(mac[$0.position])}
@@ -1764,8 +1835,8 @@ final class Air75Device {
         let protocolOK=protocolReady && model.supportsFunctionKeyAdaptation(firmware)
         let checks:[[String:Any]]=[
             ["id":"identity","label":"键盘型号、产品及键位结构与原记录一致","passed":true],
-            ["id":"firmware","label":"当前固件与原记录一致","passed":firmwareOK],
-            ["id":"serial","label":"USB 标识与原记录一致（仍需确认同一把实体键盘）","passed":serialOK],
+            ["id":"firmware","label":upgrade ? "该固件升级后的完整出厂键位已验证" : "当前固件与原记录一致","passed":firmwareOK],
+            ["id":"serial","label":upgrade ? "升级后的 USB 标识格式已验证（仍需确认同一把实体键盘）" : "USB 标识与原记录一致（仍需确认同一把实体键盘）","passed":serialOK],
             ["id":"position","label":"临时功能键的位置和原功能已验证","passed":positionOK],
             ["id":"otherKeys","label":"临时功能键以外的全部原键位保持一致","passed":otherKeysOK],
             ["id":"f4Value","label":"当前为已知临时键或原始功能","passed":valueOK],
@@ -1808,7 +1879,8 @@ final class Air75Device {
         let map=try readKeymap(),mac=try keyLayer(0xb2,0)
         let defaults=map["defaults"] as? [[Int]] ?? []
         let saved=try loadFunctionKeyBackup()
-        guard saved==preview.saved,Array(firmware.prefix(6))==preview.firmware,saved.firmware==preview.firmware,
+        let upgrade = isKnownAirFunctionKeyUpgrade(saved,defaults,mode:map["mode"] as? Int)
+        guard saved==preview.saved,Array(firmware.prefix(6))==preview.firmware,(saved.firmware==preview.firmware || upgrade),
               mac==preview.mac,validFunctionAssignments(saved,defaults),
               protocolReady,model.supportsFunctionKeyAdaptation(firmware),
               try Data(contentsOf:functionKeyBackupURL)==preview.journal else {
@@ -1821,8 +1893,21 @@ final class Air75Device {
             var expected=mac
             for item in saved.assignments where mac[item.position] == item.target {
                 guard try keyLayer(0xb2,0)==expected else {throw failure("KEY_RECOVERY_STALE","键盘配置已改变，请重新检查后确认。原备份已保留。")}
-                try writeFunctionKey(item.position,saved.original[item.position],expected:item.target,saved:saved,journal:preview.journal,generation:preview.generation,location:preview.location)
+                try writeFunctionKey(item.position,saved.original[item.position],expected:item.target,saved:saved,journal:preview.journal,generation:preview.generation,location:preview.location,recovery:upgrade ? preview : nil)
                 expected[item.position]=saved.original[item.position];writtenPositions.append(item.position)
+            }
+        }
+        if shouldWrite {try verifyFunctionKeyTransaction(saved,preview.journal,preview.generation,preview.location,recovery:upgrade ? preview : nil,expectedMac:saved.original)}
+        if upgrade {
+            // Archive-only recovery also rechecks the live switch and full map;
+            // an old cached lighting profile never authorizes a migration.
+            try readIdentity()
+            let finalMap=try readKeymap()
+            guard preview.serial==serial,preview.firmware==Array(firmware.prefix(6)),
+                  preview.generation==connectionGeneration,preview.location==locationId,
+                  isKnownAirFunctionKeyUpgrade(saved,finalMap["defaults"] as? [[Int]] ?? [],mode:finalMap["mode"] as? Int),
+                  finalMap["active"] as? [Int] == saved.original else {
+                throw failure("KEY_RECOVERY_STALE","键盘模式或配置已改变，原恢复记录已保留。")
             }
         }
         let restored=try keyLayer(0xb2,0)
@@ -1836,6 +1921,7 @@ final class Air75Device {
         let archive=directory.appendingPathComponent("function-key-confirmed-\(UUID().uuidString).json")
         let audit:[String:Any]=["action":preview.action,"sameKeyboardConfirmed":true,"originalPort":saved.locationId,
                                "currentPort":locationId,"model":model.rawValue,"firmware":S4.firmwareVersion(firmware),
+                               "firmwareUpgrade":upgrade,"originalFirmware":S4.firmwareVersion(saved.firmware+[0,0]),
                                "writtenPositions":writtenPositions,"verifiedKeymapEntries":restored.count,
                                "archive":archive.lastPathComponent,"confirmedAt":ISO8601DateFormatter().string(from:Date())]
         let auditData=try JSONSerialization.data(withJSONObject:audit,options:[.prettyPrinted,.sortedKeys])
@@ -1881,31 +1967,42 @@ final class Air75Device {
         }
         return record
     }
-    private func ensureBackup(requirePerKey: Bool = true) throws {
+    private func ensureBackup(requirePerKey: Bool = true, sideOnly: Bool = false, expectedProfile: UInt8? = nil) throws {
         _ = try requireConnected()
         if requirePerKey, model.globalPalette, !deferredProfiles.isEmpty {
             // Kick's D8 palette is global, while D5/D6 state is per profile.
             // Do not create a second profile's baseline from a leased palette.
             throw failure("RECOVERY_REQUIRED", "请先切回原 Mac/Win 档位恢复灯效，再控制另一档位。")
         }
-        if mutationAttempted, backup != nil { return }
+        if !sideOnly, backup?.sideOnly == true {
+            // Release the side lease before acquiring the main zone. Capture
+            // the user's current main settings, not the older side snapshot.
+            _ = try restoreSide()
+        }
+        if mutationAttempted, let retained=backup {
+            if !sideOnly {try S4.requireRestorableMainColor(retained.state,firmware:firmware,model:model,original:true)}
+            return
+        }
         guard !recoveryPending else {
             throw failure("RECOVERY_REQUIRED", "A previous lighting backup exists. Call restore before starting another lighting session.")
         }
         guard protocolReady, !requirePerKey || S4.supportsPerKey(firmware, model: model) else { throw failure("PER_KEY_UNSUPPORTED", "此固件尚不支持逐键灯效；Kick75 请通过 NuPhyIO 更新到 4.0.18.6，原生灯效仍可使用。") }
         let state = try readState()
+        try requireExpectedLightingProfile(expectedProfile)
+        if !sideOnly {try S4.requireRestorableMainColor(state,firmware:firmware,model:model,original:true)}
         let capturedProfile = lightingProfile
         guard state[9] <= 4 else { throw failure("UNSUPPORTED_SIDE_MODE", "The current side mode is outside the five stock modes; no configuration was changed.") }
-        if model == .air75 && state.count == 17 && state[0] == 21 && state[1] != 100 {
+        if !sideOnly && model == .air75 && state.count == 17 && state[0] == 21 && state[1] != 100 {
             throw failure("CUSTOM_BACKUP_LOSSY", "Another custom renderer is active below 100% brightness. Its original RAM values cannot be recovered exactly; select a stock effect first.")
         }
-        let colors = try readRGB()
+        let colors = sideOnly ? [UInt8](repeating: 0, count: model.totalCount * 3) : try readRGB()
         try refreshLightingProfile()
+        try requireExpectedLightingProfile(expectedProfile)
         guard capturedProfile == lightingProfile else {
             throw failure("LIGHTING_PROFILE_CHANGED", "键盘档位已改变，请重新播放灯效。")
         }
-        let record = LightingBackup(createdAt: ISO8601DateFormatter().string(from: Date()), productID: productID, serial: serial,
-                                    firmware: firmware, state: state, renderedColors: colors, lightingProfile: lightingProfile)
+        let record = LightingBackup(schema: sideOnly ? 2 : 1, createdAt: ISO8601DateFormatter().string(from: Date()), productID: productID, serial: serial,
+                                    firmware: firmware, state: state, renderedColors: colors, lightingProfile: lightingProfile, sideOnly: sideOnly ? true : nil)
         do {
             try FileManager.default.createDirectory(at: backupURL.deletingLastPathComponent(), withIntermediateDirectories: true,
                                                     attributes: [.posixPermissions: 0o700])
@@ -1928,6 +2025,10 @@ final class Air75Device {
         catch { throw failure("BACKUP_SAVE_FAILED", "No lighting was changed because the backup could not be saved: \(error.localizedDescription)") }
     }
     private func writeStateVerified(_ state: [UInt8]) throws {
+        // New AIRLINK D5 can expose either raw RGB cache or HSV reconstruction.
+        // Only invariant colors have identical meaning in both paths. Preserve
+        // exact verification, and refuse unsupported originals before takeover.
+        try S4.requireRestorableMainColor(state,firmware:firmware,model:model)
         try verifyLightingProfileForWrite()
         let expectedProfile = lightingProfile
         let current = try readState()
@@ -1953,6 +2054,60 @@ final class Air75Device {
         }
         diagnostic("D6 verify expected=\(state) actual=\(lastRead)")
         throw failure(S4.stateMismatchCode(expected: state, observed: lastRead), "D5 mismatch: expected \(state), observed \(lastRead).")
+    }
+    private func sideStateMatches(_ expected: [UInt8], _ observed: [UInt8]) -> Bool {
+        guard expected.count == observed.count, observed.count >= 17 else { return false }
+        var target = observed
+        target.replaceSubrange(9..<17, with: expected[9..<17])
+        return S4.ownedStateMatches(target, observed, firmware: firmware, model: model)
+    }
+    private func requireExpectedLightingProfile(_ expected: UInt8?) throws {
+        if let expected = expected, expected != lightingProfile {
+            throw failure("LIGHTING_PROFILE_CHANGED", "Keyboard profile changed since the caller's observation; lighting output was not applied.")
+        }
+    }
+    private func mergedExpectedLightingProfile(_ expected: UInt8?) throws -> UInt8? {
+        if let outer = restoreExpectedProfile, let inner = expected, outer != inner {
+            throw failure("LIGHTING_PROFILE_CHANGED", "Nested lighting recovery cannot change the original operation's profile.")
+        }
+        return expected ?? restoreExpectedProfile
+    }
+    private func withExpectedLightingProfile<T>(_ expected: UInt8?, _ action: () throws -> T) throws -> T {
+        let expected = try mergedExpectedLightingProfile(expected)
+        if expected != nil {
+            try requireConnected(); try refreshLightingProfile(); try requireExpectedLightingProfile(expected)
+        }
+        let prior = restoreExpectedProfile
+        restoreExpectedProfile = expected ?? prior
+        defer { restoreExpectedProfile = prior }
+        return try action()
+    }
+    private func writeSideStateVerified(_ state: [UInt8], expectedProfile: UInt8? = nil) throws {
+        try verifyLightingProfileForWrite()
+        try requireExpectedLightingProfile(expectedProfile)
+        let profile = lightingProfile
+        let payload = Array(state[9..<17])
+        try requireOwnedLightingProfile(profile)
+        // D6 supports an addressed side segment. Do not resend main fields even
+        // with their last read values: Fn adjustments can occur between reads.
+        let echo = try request(0xd6, length: payload.count, address: 9, payload: payload)
+        guard echo == payload else { throw failure("STATE_ACK_MISMATCH", "D6 did not echo the side payload.") }
+        for attempt in 0..<5 {
+            pump(0.12)
+            let observed = try readState()
+            try requireOwnedLightingProfile(profile)
+            if sideStateMatches(state, observed) { return }
+            if attempt == 4 { throw failure("RESTORE_STATE_MISMATCH", "Side state did not verify; backup retained.") }
+        }
+    }
+    private func finishSideLease(_ saved: LightingBackup) throws {
+        guard saved.sideOnly == true else { return }
+        guard !armed, try loadBackup() == saved else {
+            throw failure("INVALID_BACKUP", "The side recovery record changed; retained for review.")
+        }
+        do { try FileManager.default.removeItem(at: backupURL) }
+        catch { throw failure("BACKUP_CLEANUP_FAILED", "Verified side restoration could not remove its journal.") }
+        backup = nil; mutationAttempted = false
     }
     private func requireOwnedLightingProfile(_ expected: UInt8) throws {
         // readState() performs another A0 and may discover a physical switch
@@ -2003,8 +2158,10 @@ final class Air75Device {
             return ["armed": true, "state": next, "backupPath": backupURL.path, "verified": true]
         } catch { throw rollbackError(error) }
     }
-    func armConnectionWake() throws -> [String: Any] {
-        try withSleepArmFailureCleanup { try prepareConnectionWake() }
+    func armConnectionWake(expectedProfile: UInt8? = nil) throws -> [String: Any] {
+        try withSleepArmFailureCleanup {
+            try withExpectedLightingProfile(expectedProfile) { try prepareConnectionWake() }
+        }
     }
     private func prepareConnectionWake() throws -> [String: Any] {
         try requireConnected()
@@ -2028,10 +2185,15 @@ final class Air75Device {
                 throw failure("INVALID_BACKUP", "The original connection-wake recovery record changed or belongs to another firmware.")
             }
             backup = durable
+            if durable.sideOnly == true {
+                _ = try restoreSide()
+                current = try readState()
+                retainedOriginal = false
+            }
             // Empty serials use the existing verified restoration path. They do
             // not establish the physical identity needed for quiet continuation.
-            if serial.isEmpty || durable.serial.isEmpty {
-                _ = try restore()
+            if retainedOriginal && (serial.isEmpty || durable.serial.isEmpty) {
+                _ = try restore(expectedProfile:durable.lightingProfile ?? 0)
                 current = try readState()
                 retainedOriginal = false
             } else if durable.serial != serial {
@@ -2042,6 +2204,7 @@ final class Air75Device {
         guard let original = backup, try loadBackup() == original else {
             throw failure("INVALID_BACKUP", "The original connection-wake backup is not durably verified.")
         }
+        try S4.requireRestorableMainColor(original.state,firmware:firmware,model:model,original:true)
         let quietPreparation = retainedOriginal && original.customColors != nil
         var presetArchive: URL?
         if S4.presetFieldsDiffer(original.state, current, firmware: firmware, model: model) {
@@ -2214,41 +2377,73 @@ final class Air75Device {
             return ["verified":true,"changed":true,"state":try readState(),"armed":false,"needsRestore":true,"recoveryPending":true,"backupPath":backupURL.path]
         } catch { throw rollbackError(error) }
     }
-    func setSide(color: [UInt8], brightness: Int) throws -> [String: Any] {
+    func setSide(color: [UInt8], brightness: Int, expectedProfile: UInt8? = nil) throws -> [String: Any] {
         guard color.count == 3, (0...100).contains(brightness) else { throw failure("INVALID_SIDE", "side brightness must be an integer from 0 to 100.") }
-        var state = try readState()
+        let before = try readState()
+        try requireExpectedLightingProfile(expectedProfile)
+        var state = before
         state[9] = 2; state[10] = UInt8(brightness); state[12] = 0; state[13] = 0
         state.replaceSubrange(14..<17, with: color)
-        if S4.statesMatch(state, try readState(), firmware: firmware, model: model) { return ["sideIndependent": false, "changed": false, "state": state] }
-        try ensureBackup(requirePerKey: false)
+        let observed = try readState()
+        try requireExpectedLightingProfile(expectedProfile)
+        if sideStateMatches(state, observed) { return ["sideIndependent": false, "changed": false, "verified": true, "state": state] }
+        try ensureBackup(requirePerKey: false, sideOnly: true, expectedProfile: expectedProfile)
+        try requireExpectedLightingProfile(expectedProfile)
         mutationAttempted = true
         do {
-            try writeStateVerified(state)
+            try writeSideStateVerified(state, expectedProfile: expectedProfile)
             return ["sideIndependent": false, "changed": true, "state": state, "verified": true]
-        } catch { throw rollbackError(error) }
+        } catch {
+            let original=error
+            if (original as? BridgeError)?.code == "LIGHTING_PROFILE_CHANGED" { throw original }
+            do {
+                if backup?.sideOnly == true { _ = try restoreSide() }
+                else { try writeSideStateVerified(before) }
+            } catch { throw failure("RESTORE_REQUIRED", "Side write failed: \(original). Side restoration failed: \(error). Original journal retained.") }
+            throw failure((original as? BridgeError)?.code ?? "LIGHTING_FAILED", "\(original). Prior side state restored; main lighting unchanged.")
+        }
     }
-    func restoreSide() throws -> [String: Any] {
+    func restoreSide(expectedProfile: UInt8? = nil) throws -> [String: Any] {
         _ = try requireConnected()
+        if expectedProfile != nil { try refreshLightingProfile();try requireExpectedLightingProfile(expectedProfile) }
         guard let saved = backup else { return ["changed": false, "reason": "noBackup", "sideIndependent": false] }
+        try verifyLightingProfileForWrite()
         var state = try readState()
         state.replaceSubrange(9..<17, with: saved.state[9..<17])
-        if S4.statesMatch(state, try readState(), firmware: firmware, model: model) { return ["changed": false, "state": state, "sideIndependent": false] }
-        mutationAttempted = true
-        do {
-            try writeStateVerified(state)
-            return ["changed": true, "restored": true, "verified": true, "state": state, "sideIndependent": false]
-        } catch { throw rollbackError(error) }
+        let changed = !sideStateMatches(state, try readState())
+        if changed {
+            mutationAttempted = true
+            try writeSideStateVerified(state, expectedProfile: expectedProfile)
+        }
+        let observed = try readState()
+        try requireOwnedLightingProfile(saved.lightingProfile ?? 0)
+        guard sideStateMatches(state, observed) else { throw failure("RESTORE_STATE_MISMATCH", "Side restoration did not verify; backup retained.") }
+        try finishSideLease(saved)
+        return ["changed": changed, "restored": true, "verified": true, "state": observed, "sideIndependent": false, "needsRestore": recoveryPending]
     }
     private func rollbackError(_ original: Error) -> BridgeError {
         if let error = original as? BridgeError, error.code == "LIGHTING_PROFILE_CHANGED" { return error }
+        let retainedURL = backup.map { journals.url($0.lightingProfile ?? 0) } ?? backupURL
         do {
-            _ = try restore()
+            _ = try restore(expectedProfile:backup.map { $0.lightingProfile ?? 0 } ?? lightingProfile)
             return failure((original as? BridgeError)?.code ?? "LIGHTING_FAILED", "\(original). Original lighting was restored and verified.")
         } catch {
-            return failure("RESTORE_REQUIRED", "Lighting operation failed: \(original). Restoration also failed: \(error). Backup retained at \(backupURL.path).")
+            return failure("RESTORE_REQUIRED", "Lighting operation failed: \(original). Restoration also failed: \(error). Backup retained at \(retainedURL.path).")
         }
     }
-    func restore() throws -> [String: Any] {
+    func restore(expectedProfile: UInt8? = nil) throws -> [String: Any] {
+        let expectedProfile = try mergedExpectedLightingProfile(expectedProfile)
+        // Automatic cleanup belongs to the profile originally observed by the
+        // worker. Fence before sleep writes, journal selection, and every D6/D8.
+        // Explicit recovery without a profile keeps its current-profile meaning.
+        if expectedProfile != nil {
+            guard connected else { throw failure("DEVICE_NOT_FOUND", "Keyboard is not connected; recovery retained.") }
+            try refreshLightingProfile()
+            try requireExpectedLightingProfile(expectedProfile)
+        }
+        let priorExpectedProfile = restoreExpectedProfile
+        restoreExpectedProfile = expectedProfile
+        defer { restoreExpectedProfile = priorExpectedProfile }
         // Sleep can be the only mutation (for example, a failed RGB arm).
         // Release it even when there is no lighting journal to restore.
         var sleepResult: [String:Any] = [:]
@@ -2259,10 +2454,10 @@ final class Air75Device {
         if connected && !protocolReady {
             throw compatibilityError ?? failure("UNSUPPORTED_PROTOCOL","键盘兼容性尚未确认，恢复备份已保留，未修改键盘设置。")
         }
-        else if connected { try identify(); _ = try readState(); try selectRecoveryProfile() }
+        else if connected { try identify(); _ = try readState(); try requireExpectedLightingProfile(expectedProfile); try selectRecoveryProfile() }
         guard recoveryPending else {
             if let error = sleepFailure { throw error }
-            return ["restored": sleepResult["restored"] as? Bool ?? false, "reason": "noBackupForCurrentProfile", "verified": true, "needsRestore": false, "recoveryPending": false, "deferredProfiles": deferredProfiles,"boardSleepLease":boardSleepLeaseStatus,"sleepRestoration":sleepResult]
+            return ["restored": sleepResult["restored"] as? Bool ?? false, "reason": "noBackupForCurrentProfile", "verified": true, "needsRestore": false, "recoveryPending": false, "lightingProfile":lightingProfile, "deferredProfiles": deferredProfiles,"boardSleepLease":boardSleepLeaseStatus,"sleepRestoration":sleepResult]
         }
         let saved: LightingBackup
         if let current = backup { saved = current } else { saved = try loadBackup(); backup = saved }
@@ -2270,6 +2465,13 @@ final class Air75Device {
         guard Array(saved.firmware.prefix(6)) == Array(firmware.prefix(6)) else {
             throw failure("BACKUP_FIRMWARE_MISMATCH", "Firmware changed since the backup. Refusing to restore an unverified configuration.")
         }
+        if saved.sideOnly == true {
+            let result = try restoreSide(expectedProfile:expectedProfile)
+            if let error = sleepFailure { throw error }
+            return result.merging(["verification": "ownedSideState", "recoveryPending": recoveryPending, "lightingProfile":lightingProfile,
+                                   "deferredProfiles": deferredProfiles, "sleepRestoration": sleepResult]) { _, new in new }
+        }
+        try S4.requireRestorableMainColor(saved.state,firmware:firmware,model:model,original:true)
         let initialState = try readState()
         var presetArchive: URL?
         if S4.presetFieldsDiffer(saved.state, initialState, firmware: firmware, model: model) {
@@ -2345,14 +2547,17 @@ final class Air75Device {
         // A moving stock effect does not reproduce an old frame. Verify every
         // owned main/side field, plus D2 for original custom/off output. Preset
         // fields were never written and any differing original stays archived.
+        try refreshLightingProfile()
+        try requireExpectedLightingProfile(expectedProfile)
+        try requireOwnedLightingProfile(saved.lightingProfile ?? 0)
         guard try loadBackup() == saved else {
             throw failure("INVALID_BACKUP", "The active backup changed during restoration; retained for review.")
         }
         do { try FileManager.default.removeItem(at: backupURL) }
         catch { throw failure("BACKUP_CLEANUP_FAILED", "Lighting is verified restored, but the backup could not be removed: \(error.localizedDescription)") }
-        backup = nil; mutationAttempted = false; armed = false; firstPaintVerified = false; lastPaint = nil
+        backup = nil; mutationAttempted = false; armed = false; firstPaintVerified = false; lastPaint = nil; profileRecoveryPending = false
         if let error = sleepFailure { throw error }
-        return ["restored": true, "verified": true, "state": observed, "needsRestore": false, "recoveryPending": false, "deferredProfiles": deferredProfiles,
+        return ["restored": true, "verified": true, "state": observed, "needsRestore": false, "recoveryPending": false, "lightingProfile":lightingProfile, "deferredProfiles": deferredProfiles,
                 "boardSleepLease":boardSleepLeaseStatus,"sleepRestoration":sleepResult,
                 "verification": restoresOff ? "allLightsOff" : (saved.state[0] == 21 ? "ownedStateAndCustomColors" : "ownedMainAndSideState"),
                 "presetParametersPreserved": saved.state.count == 22,
@@ -2380,8 +2585,9 @@ final class Air75Device {
         // A failed restore must not trap the USB handle open. Keep the durable
         // journal and explicitly report deferred restoration after releasing it.
         if recoveryPending {
-            do { restored = try restore() }
-            catch { restored = ["restored": false, "verified": false, "error": String(describing: error)]; diagnostic("Disconnect recovery deferred: \(error)") }
+            let retainedURL = backup.map { journals.url($0.lightingProfile ?? 0) } ?? backupURL
+            do { restored = try restore(expectedProfile:backup.map { $0.lightingProfile ?? 0 } ?? lightingProfile) }
+            catch { restored = ["restored": false, "verified": false, "error": String(describing: error), "backupPath":retainedURL.path]; diagnostic("Disconnect recovery deferred: \(error)") }
         }
         closeTransport()
         return ["connected": false, "identified": false, "firmwareDetectionAvailable": false,
@@ -2416,6 +2622,7 @@ final class Air75Device {
             } catch { ok = false;diagnostic("BOARD SLEEP RESTORE REQUIRED: \(error)");emit(["event":"boardSleepRestoreFailed","error":String(describing:error),"backupPath":boardSleepJournal.url.path]) }
         }
         if mutationAttempted {
+            let retainedURL = backup.map { journals.url($0.lightingProfile ?? 0) } ?? backupURL
             do {
                 if !connected {
                     // USB removal makes restoration impossible. A validated
@@ -2425,10 +2632,10 @@ final class Air75Device {
                     _ = try journals.read(retainedURL, serial: serial)
                     emit(["event": "restoreDeferred", "reason": "disconnected", "backupPath": retainedURL.path])
                 } else {
-                    let result = try restore(); emit(["event": "restoredOnExit", "result": result])
+                    let result = try restore(expectedProfile:backup.map { $0.lightingProfile ?? 0 } ?? lightingProfile); emit(["event": "restoredOnExit", "result": result])
                 }
             }
-            catch { ok = false; diagnostic("RESTORE REQUIRED: \(error)"); emit(["event": "restoreFailed", "error": String(describing: error), "backupPath": backupURL.path]) }
+            catch { ok = false; diagnostic("RESTORE REQUIRED: \(error)"); emit(["event": "restoreFailed", "error": String(describing: error), "backupPath": retainedURL.path]) }
         }
         closeTransport()
         return ok
@@ -4174,6 +4381,12 @@ final class JSONServer {
         processing = false
         if stopping || inputEnded { finishShutdown() }
     }
+    private func expectedLightingProfile(_ command: [String:Any]) throws -> UInt8? {
+        guard let raw = command["expectedProfile"] else { return nil }
+        guard let value = raw as? NSNumber, CFGetTypeID(value) != CFBooleanGetTypeID(),
+              value.doubleValue == 0 || value.doubleValue == 1 else { throw failure("INVALID_PROFILE", "expectedProfile must be 0 or 1.") }
+        return UInt8(value.intValue)
+    }
     private func execute(_ command: [String: Any]) throws -> [String: Any] {
         guard let op = command["op"] as? String else { throw failure("INVALID_REQUEST", "Every line must include op and an id.") }
         switch op {
@@ -4183,9 +4396,13 @@ final class JSONServer {
         case "bluetoothDevices": return bluetooth.snapshot()
         case "openPermissionSettings": return try openPermissionSettings(command["permission"])
         case "arm": return try device.arm()
-        case "armConnectionWake": return try device.armConnectionWake()
+        case "armConnectionWake":
+            let expected = try expectedLightingProfile(command)
+            return try device.armConnectionWake(expectedProfile:expected)
         case "readBoardSleep": return try device.readBoardSleep()
-        case "acquireBoardSleepLease": return try device.acquireBoardSleepLease()
+        case "acquireBoardSleepLease":
+            let expected = try expectedLightingProfile(command)
+            return try device.acquireBoardSleepLease(expectedProfile:expected)
         case "releaseBoardSleepLease": return try device.releaseBoardSleepLease()
         case "paint": return try device.paint(parseColors(command["colors"], count: device.model.canvasCount), verify: command["verify"] as? Bool ?? false)
         case "readColors": return ["colors": hexColors(try device.readRGB()), "ledCount": device.ledCount,
@@ -4203,10 +4420,23 @@ final class JSONServer {
             let seconds = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: UInt32.max)!)
             return ["idleMs": seconds.isFinite && seconds >= 0 ? seconds * 1000 : NSNull(), "recordsKeys": false]
         case "side":
-            if command["restore"] as? Bool == true { return try device.restoreSide() }
+            var expectedProfile: UInt8? = nil
+            if let raw = command["expectedProfile"] {
+                guard let value = raw as? NSNumber, CFGetTypeID(value) != CFBooleanGetTypeID(),
+                      value.doubleValue == 0 || value.doubleValue == 1 else { throw failure("INVALID_SIDE", "expectedProfile must be 0 or 1.") }
+                expectedProfile = UInt8(value.intValue)
+            }
+            if command["restore"] as? Bool == true { return try device.restoreSide(expectedProfile: expectedProfile) }
             guard let color = command["color"] as? String else { throw failure("INVALID_SIDE", "side requires a color string.") }
-            return try device.setSide(color: parseColor(color), brightness: command["brightness"] as? Int ?? 60)
-        case "restore": return try device.restore()
+            return try device.setSide(color: parseColor(color), brightness: command["brightness"] as? Int ?? 60, expectedProfile: expectedProfile)
+        case "restore":
+            var expectedProfile: UInt8? = nil
+            if let raw = command["expectedProfile"] {
+                guard let value = raw as? NSNumber, CFGetTypeID(value) != CFBooleanGetTypeID(),
+                      value.doubleValue == 0 || value.doubleValue == 1 else { throw failure("INVALID_RESTORE", "expectedProfile must be 0 or 1.") }
+                expectedProfile = UInt8(value.intValue)
+            }
+            return try device.restore(expectedProfile:expectedProfile)
         case "disconnect":
             var keyErrors = [String]()
             do { _ = try adaptation.restore() } catch { keyErrors.append(String(describing: error)) }
@@ -4532,6 +4762,198 @@ func testFunctionKeyLifecycle(_ check:@escaping (Bool,String)throws->Void, model
               "clean disconnect explicitly retires USB firmware identity")
 }
 
+func testAirLinkColorGuard(_ check:@escaping (Bool,String)throws->Void) throws {
+    let fw:[UInt8]=[0,0,2,170,7,0,0,0]
+    for (name,color) in [("unstableArm",[64,0,14]),("unstableWake",[86,15,0]),("retainedWake",[64,0,14]),("retainedRestore",[64,0,14]),("customOriginal",[255,255,255]),("side",[64,0,14]),("stableRed",[64,0,0]),("stableCyan",[0,128,128]),("stableYellow",[255,255,0])] {
+        let dir=FileManager.default.temporaryDirectory.appendingPathComponent("nuphylab-airlink-color-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at:dir,withIntermediateDirectories:true)
+        defer {try? FileManager.default.removeItem(at:dir)}
+        var state:[UInt8]=[6,1,2,0,0,0,0,0,0,4,60,2,1,0,255,0,0,0,255,0,0,2]
+        state.replaceSubrange(6..<9,with:color.map(UInt8.init));if name=="customOriginal" {state[0]=21};let original=state
+        var palette=[UInt8](repeating:0,count:252),writes=[UInt8]()
+        let exchange:([UInt8]) throws -> [UInt8] = {frame in
+            let op=frame[1],n=Int(frame[4]),address=Int(frame[5])|Int(frame[6])<<8
+            let payload:[UInt8]
+            switch op {
+            case 0xa1:payload=fw
+            case 0xa0:payload=[0,8,4,6,16,130,0,0]
+            case 0xd1:payload=[104]
+            case 0xd5:payload=state
+            case 0xd2:
+                let rgb=S4.renderedCustomColors(palette,firmware:fw)+[UInt8](repeating:0,count:60)
+                payload=Array(rgb[address..<(address+n)])
+            case 0xd6:
+                payload=Array(frame[8..<(8+n)]);writes.append(op)
+                state.replaceSubrange(address..<(address+n),with:payload)
+                // AIRLINK activity can return raw cache, then HSV reconstruction.
+                // Accepted main colors must be exact in either representation.
+                if address<=6 && address+n>=9 {
+                    let raw=Array(state[6..<9])
+                    try check(S4.mainColorReadback(raw)==raw,"accepted AIRLINK D6 is invariant in both D5 branches")
+                    state.replaceSubrange(6..<9,with:S4.mainColorReadback(raw))
+                }
+            case 0xd8:
+                payload=Array(frame[8..<(8+n)]);writes.append(op)
+                for offset in stride(from:0,to:n,by:4) {let i=Int(payload[offset])*3;palette.replaceSubrange(i..<(i+3),with:payload[(offset+1)..<(offset+4)])}
+            default:throw failure("SELF_TEST","unexpected color guard request")
+            }
+            var reply=[UInt8](repeating:0,count:64);reply[0]=0xaa;reply[1]=op;reply.replaceSubrange(4..<8,with:frame[4..<8]);reply.replaceSubrange(8..<(8+n),with:payload);reply[3]=S4.checksum(reply);return reply
+        }
+        let device=Air75Device(backupURL:dir.appendingPathComponent("lighting.json"),testSerial:{"012345ABCDEF"},testExchange:exchange)
+        _ = try device.connect()
+        var retained:Data?
+        if name.hasPrefix("retained") {
+            let record=LightingBackup(createdAt:"test",serial:"012345ABCDEF",firmware:fw,state:original,renderedColors:[UInt8](repeating:0,count:312),lightingProfile:0)
+            let data=try JSONEncoder().encode(record);try data.write(to:device.backupURL);retained=data
+        }
+        if name.hasPrefix("unstable") || name.hasPrefix("retained") || name=="customOriginal" {
+            do {
+                if name=="unstableArm" {_ = try device.arm()}
+                else if name=="retainedRestore" {_ = try device.restore(expectedProfile:0)}
+                else {_ = try device.armConnectionWake(expectedProfile:0)}
+                throw failure("SELF_TEST","unsupported original color accepted")
+            } catch let error as BridgeError {try check(error.code==(name=="customOriginal" ? "AIRLINK_ORIGINAL_MODE_UNVERIFIED" : "AIRLINK_COLOR_RESTORE_UNVERIFIED"),"uncertain original refuses takeover before mutation")}
+            try check(writes.isEmpty && state==original,"uncertain original color causes zero D6/D8")
+            if let retained {try check(try Data(contentsOf:device.backupURL)==retained,"nonstable historical original remains byte identical")}
+        } else if name=="side" {
+            _ = try device.setSide(color:[24,40,56],brightness:15,expectedProfile:0)
+            _ = try device.restoreSide(expectedProfile:0)
+            try check(state==original && !device.recoveryPending,"side-only path preserves even a nonstable main RGB exactly")
+        } else {
+            _ = try device.armConnectionWake(expectedProfile:0);_ = try device.restore(expectedProfile:0)
+            try check(state==original && !device.recoveryPending,"stable non-gray color restores exact state in either D5 branch")
+        }
+    }
+}
+
+func testAirLinkKeyRecovery(_ check:@escaping (Bool,String)throws->Void) throws {
+    let model=USBKeyboardModel.air75
+    for scenario in ["restore","alreadyOriginal","wrongSerial","oldUnqualified","futureFirmware","otherKey","customF4","factoryDrift","staleToken","ignoredWrite","lateExternalEdit","modeChanged","modeBeforePreview","archiveModeChanged","archiveFinalModeChange","mapDriftDuringVerification","mapDriftDuringDefaults","unchangedSerial"] {
+    let dir=FileManager.default.temporaryDirectory.appendingPathComponent("nuphylab-confirmed-f4-test-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at:dir,withIntermediateDirectories:true)
+    defer {try? FileManager.default.removeItem(at:dir)}
+    var mac=Array(repeating:0,count:model.keymapKeyCount),win=mac
+    let factory=[105,106,32262,32263,32264,32278,172,174,171,168,170,169]
+    for i in 0..<12 {mac[i+1]=factory[i];win[i+1]=58+i}
+    let original=mac
+    var factoryMac=original,serial="NuPhy Keybord 0720"
+    let initialFirmware:[UInt8]=model == .kick75 ? [18,0,4,170,6,0,0,0] : [23,0,1,170,6,0,0,0]
+    var firmware=initialFirmware,port=1,writes=0,denyWrite=false
+    var mode:UInt8=0,slotSeen=false,poison=false,finalRace=false,identityReads=0
+    if scenario == "oldUnqualified" {firmware[0]=24}
+    let layerBytes=model.keymapKeyCount*2
+    let exchange:([UInt8]) throws -> [UInt8] = {frame in
+        let op=frame[1],n=Int(frame[4]),address=Int(frame[5])|Int(frame[6])<<8
+        let payload:[UInt8]
+        switch op {
+        case 0xa1:
+            if finalRace {
+                identityReads+=1
+                if identityReads==2 {
+                    if scenario=="archiveFinalModeChange" {mode=1}
+                    if scenario=="mapDriftDuringVerification" {mac[20]=77}
+                }
+            }
+            if poison && slotSeen {mac[4]=4;poison=false}
+            payload=firmware
+        case 0xa0:payload=[mode,8,4,6,model.columns,2,0,0]
+        case 0xd1:payload=[UInt8(model.totalCount)]
+        case 0xd5:payload=model == .kick75 ? [6,25,4,0,1,0,0,1,64,2,60,0,1,0,255,0,0] : [6,25,4,0,1,0,0,1,64,4,60,0,1,0,255,0,0,0,0,0,0,0]
+        case 0xd2:payload=Array(repeating:0,count:n)
+        case 0xb1,0xb2:
+            if finalRace && scenario=="mapDriftDuringDefaults" && identityReads>=2 && op==0xb1 {mac[20]=77}
+            if op == 0xb2 && address == 8 && n == 2 {slotSeen=true}
+            let layer=address/layerBytes,offset=address%layerBytes
+            let values=layer==4 ? win : op==0xb1 ? factoryMac : mac
+            let bytes=values.flatMap{[UInt8($0>>8),UInt8($0&255)]}
+            payload=Array(bytes[offset..<(offset+n)])
+        case 0xb3:
+            try check(address==8 && n==2 && frame[7]==0,"confirmed recovery writes only the physical Mac F4 position")
+            writes+=1;payload=Array(frame[8..<(8+n)])
+            if !denyWrite {mac[4]=Int(frame[8])<<8|Int(frame[9])}
+        default:throw failure("SELF_TEST","Unexpected confirmed recovery command")
+        }
+        var reply=Array(repeating:UInt8(0),count:64);reply[0]=0xaa;reply[1]=op
+        reply.replaceSubrange(4..<8,with:frame[4..<8]);reply.replaceSubrange(8..<(8+n),with:payload);reply[3]=S4.checksum(reply);return reply
+    }
+    let device=Air75Device(backupURL:dir.appendingPathComponent("lighting.json"),testModel:model,testLocation:{port},testSerial:{serial},testExchange:exchange)
+    _ = try device.connect();_ = try device.prepareFunctionKey()
+    let journal=device.functionKeyBackupURL,data=try Data(contentsOf:journal),before=writes
+    device.didRemove();firmware=[0,0,2,170,7,0,0,0];serial="012345ABCDEF"
+    if ["alreadyOriginal","archiveModeChanged","archiveFinalModeChange"].contains(scenario) {mac=original}
+    if scenario == "unchangedSerial" {serial="NuPhy Keybord 0720"}
+    if scenario == "wrongSerial" {serial="unexpected-new-identifier"}
+    if scenario == "futureFirmware" {firmware[0]=1}
+    if scenario == "otherKey" {mac[20]=77}
+    if scenario == "customF4" {mac[4]=4}
+    if scenario == "factoryDrift" {factoryMac[20]=77}
+    let connected=try device.connect()
+    try check(writes==before,"AIRLINK \(scenario): reconnect never blindly restores an old firmware key")
+    if scenario == "futureFirmware" {
+        try check(connected["protocolReady"] as? Bool == false && device.hasFunctionKeyBackup,"unreviewed future AIRLINK firmware stays read-only with history retained")
+        continue
+    }
+    try check(connected["protocolReady"] as? Bool == true && (connected["capabilities"] as? [String:Any])?["perKey"] as? Bool == true,"AIRLINK \(scenario): exact reviewed firmware passes read-only probes")
+    try check(device.hasFunctionKeyBackup && (try Data(contentsOf:journal))==data,"cross-firmware original-looking keymap still requires explicit same-board confirmation")
+    if scenario == "modeBeforePreview" {mode=1}
+    let preview=try device.previewFunctionKeyRecovery()
+    let eligible=["restore","alreadyOriginal","staleToken","ignoredWrite","lateExternalEdit","modeChanged","archiveModeChanged","archiveFinalModeChange","mapDriftDuringVerification","mapDriftDuringDefaults"].contains(scenario)
+    try check(preview["canConfirm"] as? Bool == eligible,"AIRLINK \(scenario): exact firmware/serial scheme/full default and current keymaps gate explicit recovery")
+    if !eligible {
+        try check((try Data(contentsOf:journal))==data && writes==before,"AIRLINK \(scenario): mismatch never changes the journal or keys")
+        continue
+    }
+    do {_ = try device.confirmFunctionKeyRecovery(["token":preview["token"]!,"sameKeyboard":false]);throw failure("SELF_TEST","upgrade inferred same board")}
+    catch let error as BridgeError {try check(error.code=="KEY_RECOVERY_CONFIRMATION" && writes==before,"AIRLINK recovery requires explicit same-board confirmation")}
+    if scenario == "staleToken" {
+        device.didRemove();port+=1;_ = try device.connect()
+        do {_ = try device.confirmFunctionKeyRecovery(["token":preview["token"]!,"sameKeyboard":true]);throw failure("SELF_TEST","stale upgrade confirmation accepted")}
+        catch let error as BridgeError {try check(error.code != "SELF_TEST" && writes==before && (try Data(contentsOf:journal))==data,"USB change invalidates upgrade confirmation before any write")}
+        continue
+    }
+    if scenario == "ignoredWrite" {
+        denyWrite=true
+        do {_ = try device.confirmFunctionKeyRecovery(["token":preview["token"]!,"sameKeyboard":true]);throw failure("SELF_TEST","ignored upgraded restore accepted")}
+        catch let error as BridgeError {try check(error.code=="KEY_LEASE_VERIFY" && (try Data(contentsOf:journal))==data,"ignored AIRLINK B3 retains the full old journal for recovery")}
+        denyWrite=false
+    }
+    let fresh=try device.previewFunctionKeyRecovery()
+    if ["lateExternalEdit","modeChanged","archiveModeChanged","archiveFinalModeChange","mapDriftDuringVerification","mapDriftDuringDefaults"].contains(scenario) {
+        if scenario == "lateExternalEdit" {slotSeen=false;poison=true}
+        else if ["archiveFinalModeChange","mapDriftDuringVerification","mapDriftDuringDefaults"].contains(scenario) {finalRace=true;identityReads=0}
+        else {mode=1}
+        let beforeAttempt=writes
+        do {_ = try device.confirmFunctionKeyRecovery(["token":fresh["token"]!,"sameKeyboard":true]);throw failure("SELF_TEST","racing upgrade edit accepted")}
+        catch let error as BridgeError {
+            try check(error.code != "SELF_TEST" && (try Data(contentsOf:journal))==data,"upgrade race retains original journal and never reports success")
+            if scenario == "lateExternalEdit" {try check(mac[4]==4,"late independent F4 edit is never overwritten by delayed metadata probes")}
+            else {try check(writes==beforeAttempt,"profile or full-map change invalidates upgraded restore/archive before B3")}
+        }
+        continue
+    }
+    let result=try device.confirmFunctionKeyRecovery(["token":fresh["token"]!,"sameKeyboard":true])
+    if scenario == "alreadyOriginal" {try check(writes==before && result["writesPerformed"] as? Bool == false,"confirmed already-original upgrade archives without B3")}
+    try check(result["verified"] as? Bool == true && mac==original && !device.hasFunctionKeyBackup,"AIRLINK \(scenario): only F4 restored, all 98 entries read back")
+    let history=journal.deletingLastPathComponent().appendingPathComponent("key-recovery-history")
+    let archives=try FileManager.default.contentsOfDirectory(at:history,includingPropertiesForKeys:nil).filter{!$0.lastPathComponent.hasSuffix("audit.json")}
+    try check(archives.count==1 && (try Data(contentsOf:archives[0]))==data,"confirmed upgrade archives original bytes, never rewrites the old serial or firmware")
+    _ = try device.prepareFunctionKey();_ = try device.restoreFunctionKey()
+    try check(mac==original && !device.hasFunctionKeyBackup,"fresh AIRLINK F4 lease and automatic same-firmware restoration work normally")
+    _ = try device.disconnect()
+    }
+    let fw:[UInt8]=[0,0,2,170,7,0,0,0]
+    try check(S4.stateLength(fw)==22 && S4.supportsPerKey(fw) && USBKeyboardModel.air75.supportsBoardSleep(fw),"reviewed AIRLINK state/colour/sleep capabilities")
+    for unknown:[UInt8] in [[1,0,2,170,7,0,0,0],[0,1,2,170,7,0,0,0],[0,0,2,170,8,0,0,0],[0,0,2,170,7,1,0,0]] {
+        try check(S4.stateLength(unknown)==nil && !S4.supportsPerKey(unknown) && !USBKeyboardModel.air75.hasQualifiedFirmware(unknown),"future AIRLINK variants are not implicitly qualified")
+    }
+    var a:[UInt8]=[6,25,2,0,0,2,0,0,0,4,60,2,1,17,255,0,0,2,255,0,0,94],b=a
+    b[5]=3;b[13]=99;b[17]=3;b[21]=93
+    let plan=try S4.stateWritePlan(a,current:b,firmware:fw)
+    try check(plan.count==1 && plan[0].payload.count==17 && plan[0].payload[5]==3,"AIRLINK prefix writes preserve live preset aliases and never send unowned extension bytes")
+    try check(S4.ownedStateMatches(a,b,firmware:fw),"AIRLINK owned comparison ignores only documented keyboard-owned fields")
+    a[10]=61;try check(!S4.ownedStateMatches(a,b,firmware:fw),"AIRLINK verification still detects an incorrect side brightness")
+}
+
 func testFunctionKeyRecoveryLifecycle(_ check:@escaping (Bool,String)throws->Void,model:USBKeyboardModel) throws {
     let dir=FileManager.default.temporaryDirectory.appendingPathComponent("nuphylab-confirmed-f4-test-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at:dir,withIntermediateDirectories:true)
@@ -4853,7 +5275,7 @@ func testBoardSleepLifecycle(_ check: (Bool, String) throws -> Void) throws {
             durableBeforeMutation = saved.original == original
         }
     }
-    let acquired = try device.acquireBoardSleepLease()
+    let acquired = try device.acquireBoardSleepLease(expectedProfile:0)
     try check(durableBeforeMutation && acquired["verified"] as? Bool == true && board.sleep == [0,6,30,97],"complete original sleep info is durable before the enable-only write")
     try check((acquired["boardSleepLease"] as? [String:Any])?["ownsChanges"] as? Bool == true && !device.recoveryPending,"sleep ownership is independent of an RGB journal")
     let savedBytes = try Data(contentsOf:device.boardSleepJournal.url), writes = board.writes.count
@@ -4865,6 +5287,27 @@ func testBoardSleepLifecycle(_ check: (Bool, String) throws -> Void) throws {
     _ = try device.restore()
     try check(board.sleep == original && !device.boardSleepLeasePending && !device.recoveryPending,"ordinary restore releases a sleep-only lease without an RGB backup")
     try check(board.frames.filter{$0[1] == 0xf5}.allSatisfy{$0[4] == 1 && $0[5] == 0 && $0[6] == 0 && $0[7] == 0},"all F5 routes are global address-zero one-byte writes")
+
+    for changedIdentity in [false,true] {
+        let splitBoard=Board(),split=try make(splitBoard),originalSleep=splitBoard.sleep
+        _ = try split.acquireBoardSleepLease(expectedProfile:0)
+        let recordURL=split.boardSleepJournal.url,record=try Data(contentsOf:split.boardSleepJournal.url)
+        splitBoard.profile=1
+        if changedIdentity {
+            // A physical USB replacement creates a new transport/identity;
+            // changing only the fixture callback cannot mutate a live handle.
+            split.didRemove();splitBoard.serial="different-physical-keyboard"
+            splitBoard.sleep=originalSleep;_ = try split.connect()
+        }
+        do {_ = try split.armConnectionWake(expectedProfile:0);throw failure("SELF_TEST","stale wake profile accepted")}
+        catch let error as BridgeError {try check(error.code == (changedIdentity ? "SLEEP_RESTORE_REQUIRED":"LIGHTING_PROFILE_CHANGED"),"wake preflight error (changedIdentity=\(changedIdentity)): \(error)")}
+        try check(!splitBoard.frames.contains{$0[1]==0xd6 || $0[1]==0xd8},"failed wake preflight never writes either lighting profile")
+        if changedIdentity {
+            try check(splitBoard.writes==[0] && splitBoard.sleep==originalSleep && (try Data(contentsOf:recordURL))==record,"sleep recovery refuses a replacement identity and retains the original")
+        } else {
+            try check(splitBoard.sleep==originalSleep && splitBoard.writes==[0,1] && !split.boardSleepLeasePending,"wake preflight returns the board-global sleep lease after a profile switch")
+        }
+    }
 
     let disabled = Board();disabled.sleep[0] = 0
     let off = try make(disabled), offResult = try off.acquireBoardSleepLease()
@@ -5156,6 +5599,225 @@ func testConnectionWakeLifecycle(_ check: (Bool, String) throws -> Void) throws 
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent("nuphylab-connection-wake-test-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:true)
     defer {try? FileManager.default.removeItem(at:directory)}
+    // Whole cleanup uses the same caller-profile boundary as side cleanup.
+    // Switch before entry and at every geometry probe of an actual restore.
+    var restoreProbeCount = 0
+    for switchProbe in 0...64 {
+        if switchProbe>0 && switchProbe>restoreProbeCount {break}
+        let mac=Board(),win=Board();win.profile=1
+        var selected:UInt8=0,probes=0,injecting=false
+        var writes=[UInt8]()
+        let scoped=Air75Device(backupURL:directory.appendingPathComponent("scoped-whole-\(switchProbe).json"),testExchange:{frame in
+            if injecting && frame[1]==0xa0 {probes+=1;if probes==switchProbe {selected=1}}
+            if injecting && [UInt8(0xd6),0xd8,0xf5].contains(frame[1]) {writes.append(frame[7])}
+            return try (selected==0 ? mac:win).exchange(frame)
+        })
+        _ = try scoped.connect();_ = try scoped.arm();selected=1;_ = try scoped.status();_ = try scoped.arm()
+        let winState=win.state,winPalette=win.palette
+        selected=0;_ = try scoped.status()
+        let macJournal=try Data(contentsOf:scoped.journals.url(0)),winJournal=try Data(contentsOf:scoped.journals.url(1))
+        injecting=true
+        if switchProbe==0 { // Establish the full success-path probe count.
+            _ = try scoped.restore(expectedProfile:0);restoreProbeCount=probes
+            try check(probes<=64,"all whole-restore geometry probes are covered")
+            try check(writes.allSatisfy{$0==0},"scoped whole restore only writes expected profile")
+        } else if switchProbe<=restoreProbeCount {
+            do {_ = try scoped.restore(expectedProfile:0);throw failure("SELF_TEST","stale whole cleanup accepted")}
+            catch let error as BridgeError {try check(error.code=="LIGHTING_PROFILE_CHANGED","whole cleanup rejects a profile change at probe \(switchProbe)")}
+            try check(writes.allSatisfy{$0==0} && win.state==winState && win.palette==winPalette,"whole cleanup cannot write the newly selected profile")
+            try check((try Data(contentsOf:scoped.journals.url(0)))==macJournal && (try Data(contentsOf:scoped.journals.url(1)))==winJournal,"both profile originals survive interrupted cleanup")
+        }
+        injecting=false;selected=0;_ = try scoped.status();_ = try scoped.restore(expectedProfile:0)
+        selected=1;_ = try scoped.status()
+        // A stale observed profile must reject before selecting the Win record.
+        let before=win.state,record=try Data(contentsOf:scoped.journals.url(1))
+        do {_ = try scoped.restore(expectedProfile:0);throw failure("SELF_TEST","stale whole restore accepted Win")}
+        catch let error as BridgeError {try check(error.code=="LIGHTING_PROFILE_CHANGED","cached old profile is rejected before cleanup")}
+        try check(win.state==before && (try Data(contentsOf:scoped.journals.url(1)))==record,"stale whole restore preserves the other active journal")
+        _ = try scoped.restore() // Explicit unscoped recovery keeps its semantics.
+        try check(!scoped.recoveryPending && scoped.deferredProfiles.isEmpty,"both scoped and explicit cleanup finish their own records")
+    }
+    do {
+        let mac=Board(),win=Board();win.profile=1;var selected:UInt8=0,failNextPaint=false
+        var unexpectedWrites=[UInt8]()
+        let rollback=Air75Device(backupURL:directory.appendingPathComponent("scoped-rollback.json"),testExchange:{frame in
+            if failNextPaint && frame[1]==0xd8 {failNextPaint=false;selected=1;throw failure("HID_TIMEOUT","isolated switch after failed paint")}
+            if selected==1 && [UInt8(0xd6),0xd8,0xf5].contains(frame[1]) {unexpectedWrites.append(frame[7])}
+            return try (selected==0 ? mac:win).exchange(frame)
+        })
+        _ = try rollback.connect();_ = try rollback.arm();selected=1;_ = try rollback.status();_ = try rollback.arm()
+        let winState=win.state,winPalette=win.palette,winJournal=try Data(contentsOf:rollback.journals.url(1))
+        selected=0;_ = try rollback.status();_ = try rollback.restore(expectedProfile:0);_ = try rollback.arm();unexpectedWrites.removeAll();failNextPaint=true
+        do {_ = try rollback.paint([UInt8](repeating:93,count:252),verify:true);throw failure("SELF_TEST","failed paint accepted")}
+        catch let error as BridgeError {try check(error.code=="RESTORE_REQUIRED","rollback retains its failure when the observed profile changed")}
+        try check(unexpectedWrites.isEmpty && win.state==winState && win.palette==winPalette && (try Data(contentsOf:rollback.journals.url(1)))==winJournal,"automatic paint rollback never restores the other profile")
+        selected=0;_ = try rollback.status();_ = try rollback.restore(expectedProfile:0)
+        selected=1;_ = try rollback.status();_ = try rollback.restore(expectedProfile:1)
+    }
+    for switchProbe in 1...5 {
+        let mac=Board(),win=Board();win.profile=1;var selected=0,probes=0,injecting=false
+        var writes=[UInt8]()
+        let wake=Air75Device(backupURL:directory.appendingPathComponent("scoped-startup-\(switchProbe).json"),testExchange:{frame in
+            if injecting && frame[1]==0xa0 {probes+=1;if probes==switchProbe {selected=1}}
+            if injecting && [UInt8(0xd6),0xd8,0xf5].contains(frame[1]) {writes.append(frame[7])}
+            return try (selected==0 ? mac:win).exchange(frame)
+        })
+        _ = try wake.connect();let original=win.state;injecting=true
+        do {_ = try wake.armConnectionWake(expectedProfile:0);throw failure("SELF_TEST","stale startup accepted")}
+        catch let error as BridgeError {try check(error.code=="LIGHTING_PROFILE_CHANGED" || error.code=="RESTORE_REQUIRED","startup profile switch rejected")}
+        try check(writes.allSatisfy{$0==0} && win.state==original,"startup cannot mutate a different profile")
+        injecting=false;selected=1;_ = try wake.status();writes.removeAll();injecting=true
+        do {_ = try wake.acquireBoardSleepLease(expectedProfile:0);throw failure("SELF_TEST","stale sleep acquisition accepted")}
+        catch let error as BridgeError {try check(error.code=="LIGHTING_PROFILE_CHANGED","sleep lease is fenced before F5")}
+        try check(writes.isEmpty,"wrong-profile startup sleep lease sends no writes")
+    }
+    // Old journals omit lightingProfile: that means Mac, even if a later
+    // failed probe observes Win. Rollback, disconnect and exit must retain both
+    // originals and never turn a failed Mac operation into a verified Win one.
+    for ending in ["scoped", "disconnect", "shutdown"] {
+        let mac=Board(),win=Board();win.profile=1
+        var selected:UInt8=0,faultArmed=false,enteredWake=false,d5Failed=false
+        var writes=[UInt8]()
+        func exchange(_ frame:[UInt8]) throws -> [UInt8] {
+            if faultArmed && selected==0 && frame[1]==0xd6 {enteredWake=true}
+            if enteredWake && frame[1]==0xa0 {selected=1}
+            if enteredWake && selected==1 && frame[1]==0xd5 && !d5Failed {
+                d5Failed=true;throw failure("HID_TIMEOUT","isolated first read on new profile")
+            }
+            if faultArmed && [UInt8(0xd6),0xd8,0xf5].contains(frame[1]) {writes.append(frame[7])}
+            return try (selected==0 ? mac:win).exchange(frame)
+        }
+        let url=directory.appendingPathComponent("legacy-profile-\(ending).json")
+        let seed=Air75Device(backupURL:url,testExchange:exchange)
+        _ = try seed.connect();_ = try seed.arm();selected=1;_ = try seed.status();_ = try seed.arm()
+        let winState=win.state,winPalette=win.palette,winURL=seed.journals.url(1),macURL=seed.journals.url(0)
+        let winBytes=try Data(contentsOf:winURL)
+        var legacy=try seed.journals.read(macURL,serial:"self-test");legacy.lightingProfile=nil
+        let macBytes=try JSONEncoder().encode(legacy);try macBytes.write(to:macURL)
+        selected=0
+        let device=Air75Device(backupURL:url,testExchange:exchange)
+        _ = try device.connect();faultArmed=true
+        do {
+            _ = try device.armConnectionWake(expectedProfile:ending=="scoped" ? 0:nil)
+            throw failure("SELF_TEST","legacy profile startup accepted")
+        } catch let error as BridgeError {
+            try check(error.code=="LIGHTING_PROFILE_CHANGED" || error.code=="RESTORE_REQUIRED","legacy wake cannot report successful wrong-profile recovery")
+            if ending != "scoped" {try check(error.message.contains(macURL.path),"legacy rollback diagnostic retains the original Mac path")}
+        }
+        try check(enteredWake && (ending=="scoped" || d5Failed),"legacy startup reaches the cross-profile failure")
+        if ending=="disconnect" {
+            let result=try device.disconnect(),restoration=result["restoration"] as? [String:Any]
+            try check(restoration?["verified"] as? Bool==false && restoration?["backupPath"] as? String==macURL.path,"disconnect defers the legacy Mac record with its original path")
+        } else if ending=="shutdown" {
+            try check(!device.shutdown(),"exit preserves unverified legacy recovery")
+        }
+        try check(writes.allSatisfy{$0==0} && win.state==winState && win.palette==winPalette,"legacy recovery never mutates Win")
+        try check((try Data(contentsOf:macURL))==macBytes && (try Data(contentsOf:winURL))==winBytes,"legacy failure keeps both profile records byte-identical")
+    }
+    // An existing ordinary canvas owns its main lease independently. Side
+    // errors may restore side fields only, never disarm or overwrite its RGB.
+    for failedRestores in [0,1] {
+        let ordinary=Board();var failures=0
+        let shared=Air75Device(backupURL:directory.appendingPathComponent("shared-side-\(failedRestores).json"),testExchange:{frame in
+            if failures>0 && frame[1]==0xd6 && frame[5]==9 {failures-=1;throw failure("HID_TIMEOUT","synthetic side timeout")}
+            return try ordinary.exchange(frame)
+        })
+        _ = try shared.connect();_ = try shared.arm()
+        var frame=[UInt8](repeating:0,count:252);frame.replaceSubrange(0..<3,with:[41,82,123])
+        _ = try shared.paint(frame,verify:true)
+        let main=Array(ordinary.state.prefix(9)),palette=ordinary.palette,journal=try Data(contentsOf:shared.backupURL)
+        failures=1+failedRestores
+        do {_ = try shared.setSide(color:[29,95,185],brightness:47);throw failure("SELF_TEST","accepted side failure")}
+        catch let error as BridgeError {try check(error.code == (failedRestores==0 ? "HID_TIMEOUT":"RESTORE_REQUIRED"),"side rollback reports its real result")}
+        try check(shared.armed && Array(ordinary.state.prefix(9))==main && ordinary.palette==palette,"side failure never changes ordinary main output or armed owner")
+        try check(try Data(contentsOf:shared.backupURL)==journal,"side error preserves the original main recovery journal")
+        _ = try shared.restoreSide()
+        try check(shared.armed && shared.recoveryPending && ordinary.palette==palette,"successful side cleanup also leaves main owner intact")
+        _ = try shared.restore()
+    }
+    do {
+        let mac=Board(),win=Board();win.profile=1;var selected:UInt8=0
+        let switched=Air75Device(backupURL:directory.appendingPathComponent("returned-side.json"),testExchange:{frame in try (selected==0 ? mac:win).exchange(frame)})
+        _ = try switched.connect();let macSide=Array(mac.state[9..<17]),winSide=Array(win.state[9..<17])
+        _ = try switched.setSide(color:[29,95,185],brightness:47);mac.state[1]=25
+        let record=try switched.journals.read(switched.backupURL,serial:"self-test")
+        try check(record.schema==2 && record.sideOnly==true,"side journal uses schema 2, which legacy schema-1 readers reject")
+        selected=1;_ = try switched.status();_ = try switched.setSide(color:[70,110,90],brightness:40);win.state[1]=33
+        selected=0;let macStatus=try switched.status()
+        try check(macStatus["sideRecoveryPending"] as? Bool == true && switched.deferredProfiles == [1],"return exposes this profile's dormant side lease without consuming the other")
+        _ = try switched.restoreSide()
+        try check(mac.state[1]==25 && Array(mac.state[9..<17])==macSide,"returned Mac side restoration preserves current main settings")
+        _ = try switched.setSide(color:[100,10,10],brightness:30);_ = try switched.restoreSide()
+        selected=1;let winStatus=try switched.status()
+        try check(winStatus["sideRecoveryPending"] as? Bool == true,"Win recovery remains separately available")
+        _ = try switched.restoreSide()
+        try check(win.state[1]==33 && Array(win.state[9..<17])==winSide && !switched.recoveryPending && switched.deferredProfiles.isEmpty,"both profile journals recover only their own side fields")
+    }
+    // A side command belongs to the worker's observed profile, including its
+    // first-ever write when no journal exists yet. Check every preflight edge.
+    for switchProbe in 1...5 {
+        let mac=Board(),win=Board();win.profile=1;var selected=0,probes=0,inject=false
+        var sideWrites=0
+        let scoped=Air75Device(backupURL:directory.appendingPathComponent("first-side-profile-\(switchProbe).json"),testExchange:{frame in
+            if inject && frame[1]==0xa0 {probes+=1;if probes==switchProbe {selected=1}}
+            if frame[1]==0xd6 {sideWrites+=1}
+            return try (selected==0 ? mac:win).exchange(frame)
+        })
+        _ = try scoped.connect();let macState=mac.state,winState=win.state;inject=true
+        do {_ = try scoped.setSide(color:[111,158,133],brightness:47,expectedProfile:0);throw failure("SELF_TEST","stale first profile write was accepted")}
+        catch let error as BridgeError {try check(error.code=="LIGHTING_PROFILE_CHANGED","profile-fenced side command rejects transition at preflight \(switchProbe)")}
+        try check(sideWrites==0 && mac.state==macState && win.state==winState,"stale first side observation never writes either profile")
+        inject=false;_ = try scoped.status()
+        _ = try scoped.setSide(color:[29,95,185],brightness:47,expectedProfile:1)
+        try check(sideWrites==1 && Array(win.state[14..<17])==[29,95,185],"fresh new-profile observation can acquire its own side lease")
+        _ = try scoped.restoreSide(expectedProfile:1)
+    }
+    // Production side leases: independent main adjustments survive every
+    // release path. This board is an in-memory transport, never real HID.
+    for end in ["off", "disconnect", "shutdown", "reconnect", "rollback", "promote", "wake"] {
+        let sideBoard = Board()
+        var failSideWrite = false
+        let base = directory.appendingPathComponent("side-scope-\(end).json")
+        let sideDevice = Air75Device(backupURL:base,testExchange:{ frame in
+            if failSideWrite && frame[1] == 0xd6 {
+                failSideWrite = false
+                throw failure("HID_TIMEOUT", "simulated one failed side write")
+            }
+            return try sideBoard.exchange(frame)
+        })
+        _ = try sideDevice.connect()
+        let originalSide = Array(sideBoard.state[9..<17]), originalPalette = sideBoard.palette
+        _ = try sideDevice.setSide(color:[29,95,185],brightness:47)
+        try check(try sideDevice.journals.read(sideDevice.backupURL,serial:"self-test").sideOnly == true,
+                  "side operation durably owns only side state")
+        sideBoard.state[1] = 25
+        switch end {
+        case "off": _ = try sideDevice.restoreSide(); _ = try sideDevice.disconnect()
+        case "disconnect": _ = try sideDevice.disconnect()
+        case "shutdown": try check(sideDevice.shutdown(), "side-only shutdown succeeds")
+        case "reconnect":
+            sideDevice.didRemove()
+            let recovered = Air75Device(backupURL:base,testExchange:sideBoard.exchange)
+            _ = try recovered.connect(); _ = try recovered.restore()
+            try check(!recovered.recoveryPending,"restarted side journal completes")
+        case "rollback":
+            failSideWrite = true
+            do { _ = try sideDevice.setSide(color:[100,10,10],brightness:30);throw failure("SELF_TEST","failed side write accepted") }
+            catch let error as BridgeError {try check(error.code=="HID_TIMEOUT","failed side mutation rolls back its zone only")}
+        case "promote":
+            _ = try sideDevice.arm()
+            try check(try sideDevice.journals.read(sideDevice.backupURL,serial:"self-test").sideOnly != true,"main acquisition creates a new whole lease")
+            _ = try sideDevice.restore()
+        default: _ = try sideDevice.armConnectionWake(); _ = try sideDevice.restore()
+        }
+        try check(sideBoard.state[1] == 25,"\(end) preserves user's newer main brightness")
+        try check(Array(sideBoard.state[9..<17]) == originalSide,"\(end) restores original side fields")
+        if end == "promote" || end == "wake" {
+            try check(S4.renderedCustomColors(sideBoard.palette,firmware:sideBoard.firmware) == S4.renderedCustomColors(originalPalette,firmware:sideBoard.firmware),"\(end) preserves rendered custom palette after normal main-zone acquisition")
+        } else {try check(sideBoard.palette == originalPalette,"\(end) leaves exact main palette untouched")}
+
+        if end != "reconnect" {try check(!sideDevice.recoveryPending,"\(end) finishes side journal without later main restoration")}
+    }
     let board = Board()
     let device = Air75Device(backupURL:directory.appendingPathComponent("original.json"),testExchange:board.exchange)
     let connection = try device.connect()
@@ -6135,8 +6797,10 @@ func selfTest() throws {
     try testSharedFunctionInputLifecycle(check)
     try testConnectionRecoveryProbes(check)
     try testIdentifiedReadOnlyLifecycle(check)
-    try testConnectionWakeLifecycle(check)
     try testBoardSleepLifecycle(check)
+    try testConnectionWakeLifecycle(check)
+    try testAirLinkColorGuard(check)
+    try testAirLinkKeyRecovery(check)
     try testFirmwareUpgradeLifecycle(check)
     try testFunctionKeyLifecycle(check)
     for model in USBKeyboardModel.allCases where model != .air75 && model != .air65 {try testFunctionKeyLifecycle(check,model:model)}
@@ -6146,6 +6810,21 @@ func selfTest() throws {
 }
 
 let arguments = Array(CommandLine.arguments.dropFirst())
+if arguments.contains("--self-test-firmware-update") {
+    do {
+        var count=0
+        let check:(Bool,String) throws -> Void = {value,message in
+            guard value else {throw failure("SELF_TEST",message)};count+=1
+        }
+        try testAirLinkColorGuard(check)
+        try testAirLinkKeyRecovery(check)
+        for model in USBKeyboardModel.allCases where model != .air65 {try testFunctionKeyLifecycle(check,model:model)}
+        try testFunctionKeyRecoveryLifecycle(check,model:.air75)
+        try testFunctionKeyRecoveryLifecycle(check,model:.kick75)
+        try testFirmwareUpgradeLifecycle(check)
+        emit(["ok":true,"selfTest":"firmware-update-passed","checks":count,"hardwareOpened":false,"inputMonitorOpened":false]);Darwin.exit(0)
+    } catch {diagnostic("\(error)");Darwin.exit(1)}
+}
 if arguments.contains("--self-test") {
     do { try selfTest(); Darwin.exit(0) } catch { diagnostic("\(error)"); Darwin.exit(1) }
 }

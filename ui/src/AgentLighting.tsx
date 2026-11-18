@@ -1,3 +1,6 @@
+import {agentLightZone} from '../../shared/agent-cohort.mjs';
+import {AgentSideLighting} from './AgentSideLighting';
+import {useAgentPreviewFit} from './useAgentPreviewFit';
 import {keyboardGeometry} from './keyboard-geometry';
 import {useEffect,useState,type CSSProperties} from 'react';
 import {Moon,ArrowUp} from 'lucide-react';
@@ -17,7 +20,7 @@ import type {AgentSource} from './AgentSourceSwitch';
 import './creation-experience-v7.css';
 import {useWorkspaceLayout} from './useWorkspaceLayout';
 import './agent-audio-workspace.css';
-export function AgentLighting({source,state,command,focusColors,serviceUnknown=false,onSelectTasks,onSetup}:{source:AgentSource;state:AppState|null;command:Command;focusColors?:boolean;serviceUnknown?:boolean;onSelectTasks?:()=>void;onSetup?:()=>void}) {
+export function BacklightLighting({source,state,command,focusColors,serviceUnknown=false,onSelectTasks,onSetup}:{source:AgentSource;state:AppState|null;command:Command;focusColors?:boolean;serviceUnknown?:boolean;onSelectTasks?:()=>void;onSetup?:()=>void}) {
   const copy=useStartupCopy();
   const view=resolveAgentLightingView(source,state,{serviceUnknown});
   const {settings,tasks,slots,whole,ownsOutput:ownsAgentOutput,showing:showingAgentOutput,selectedId:controlId,wholeTask,ambientTask}=view;
@@ -90,4 +93,11 @@ export function AgentLighting({source,state,command,focusColors,serviceUnknown=f
       <div className="agent-light-switches"><Switch label={t('当前任务灯光呼吸')} checked={settings[`${source}SelectedPulse`]!==false} onChange={value=>set({[`${source}SelectedPulse`]:value})}/>{!whole&&<Switch label={t('命令键运行流光')} checked={settings[`${source}Ambient`]===true} onChange={value=>set({[`${source}Ambient`]:value})}/>}</div>
     </fieldset></div>
   </section>;
+}
+
+export function AgentLighting(props:Parameters<typeof BacklightLighting>[0]) {
+ const model=props.state?.device.modelId??getLayoutModel();
+ const geometry=keyboardGeometry[model];
+ const preview=useAgentPreviewFit(geometry.width/geometry.height);
+ return <div className="agent-light-workspace" ref={preview.ref} style={preview.style}>{agentLightZone(props.state?.settings??{},props.source,props.state?.device.modelId)==='side'?<AgentSideLighting {...props}/>:<BacklightLighting {...props}/>}</div>;
 }

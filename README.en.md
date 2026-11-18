@@ -8,7 +8,7 @@ It includes drawing, animation, key-triggered effects, games, audio-reactive lig
 
 ## Feature Center and Library
 
-For new users, the sidebar starts with Lighting Studio, Library and AI Assistant. Upgrading keeps entries for tools already used or enabled; you can remove them at any time. Open **Feature Center** to add Lighting Games, Typing Sounds, Music Mode, Smart Selection, Drag Convert or Keyboard Pocket. The three default entries can also be removed. Feature Center, Device and Settings always remain available. Removing a tool turns it and its shortcuts off while retaining its content and preferences. Re-add it, then enable it when needed.
+For new users, the sidebar starts with Lighting Studio, Library and AI Assistant. Upgrading keeps entries for tools already used or enabled; you can remove them at any time. Open **Feature Center** to add Lighting Games, Typing Sounds, Music Mode, Smart Selection, Drag Convert, Keyboard Pocket, Voice Input or Dock Scenes. The three default entries can also be removed. Feature Center, Device and Settings always remain available. Removing a tool turns it and its shortcuts off while retaining its content and preferences. Re-add it, then enable it when needed.
 
 **Library** brings lighting and music together, with All, Lighting and Music filters. Music Mode opens this same library. Editing and saving updates the original work. If its editor is not in the sidebar, choose **Add Music Mode & edit** or **Add Lighting Studio & edit**. Music works support preview, duplication, renaming, project export and recovery from Recently deleted. Export WAV audio from the music editor.
 
@@ -32,6 +32,12 @@ If the keyboard needs a firmware update, follow the NuPhyIO reminder, close the 
 
 See [keyboard compatibility](docs/KEYBOARD_COMPATIBILITY.md) for firmware requirements and validation coverage. AIR65 V3 has no physical function row and does not offer automatic F1–F12 takeover.
 
+## Dock Scenes
+
+Add **Dock Scenes** in **Feature Center**. The first opening saves your pinned apps and their order as **All**. Select Design, Entertainment or a custom scene, add or remove apps and drag to reorder them, then choose **Apply to Dock**. Use **All** to return to the original saved layout.
+
+The **Scene shortcuts** switch starts off. Choose **Set shortcut**, press and release a combination in the dialog to save it, then enable shortcuts. Each scene can have its own binding. Removing the feature in Feature Center turns shortcuts off and retains scenes and bindings. [User guide](docs/DOCK_SCENES.md)
+
 ## Automatic backlight
 
 Enable automatic backlighting in **Settings → Lighting and sleep** to turn Lab lighting off or keep a faint glow in bright surroundings, brighten smoothly in dim surroundings, and optionally learn manual brightness preferences per keyboard model. It starts off, requires ambient-light support on the Mac, and applies only to compatible per-key lighting played by Lab over USB. Unavailable readings or a closed lid fall back to manual brightness. [Full guide](docs/AMBIENT_BACKLIGHT.md)
@@ -51,6 +57,10 @@ Recordings and edits autosave locally. Duplicate, rename or restore deleted work
 If a work is deleted or restored while a save is pending, saving from the old page pauses. Export the current project as a backup before using **Window → Recover Performance Page** to reopen the saved work.
 
 ## AI Assistant
+
+On **Status lights**, choose **Backlight** or **Side LEDs**. Backlighting can show several tasks separately or follow one task across the keyboard. AIR75 V3 USB side LEDs summarize the current batch from the selected source, including tasks outside the task keys. They stay green when every task has explicitly succeeded and show white when there is no current batch. Command keys have their own switch and can also be used in side-light mode.
+
+The keyboard preview scales to the available window space. If an original effect or main color on official 2.0.0.7 cannot be restored reliably, follow the prompt to choose a stock backlight effect and set its main color to white in NuPhyIO, then retry, or use side-light mode. [Release and compatibility details](docs/RELEASE_1.2.50.md)
 
 Enable Codex mode in AI Assistant to use the default command keys:
 
@@ -84,7 +94,7 @@ For spoken questions, enable **Hold to speak** and allow Microphone and Speech R
 
 Selected text, questions and any enabled images needed for the selected action are sent to your configured model service. API keys stay in the local Keychain. Selection and voice are disabled by default for new users.
 
-[Full setup and usage](docs/SELECTION.md) · [Models, images and permissions](docs/SELECTION_R2.md) · [Interface and translation languages](docs/SELECTION_LANGUAGES.md) · [What's new in 1.2.49](docs/RELEASE_1.2.49.md)
+[Full setup and usage](docs/SELECTION.md) · [Models, images and permissions](docs/SELECTION_R2.md) · [Interface and translation languages](docs/SELECTION_LANGUAGES.md) · [What's new in 1.2.50](docs/RELEASE_1.2.50.md)
 
 ## Voice Input
 
@@ -102,9 +112,11 @@ The feature starts off, and automatic copying and pasting require Accessibility 
 
 ## Updates and compatibility
 
+For AIR75 V3, open NuPhyIO from **Device → Firmware management** or the side-light page. Export the keyboard configuration first and choose an official version matching the model and layout. Close NuPhyIO when finished, reconnect in Lab and check keys and lighting.
+
 NuPhy Lab includes signed in-app updates. It checks for new releases automatically, or you can choose **Check for Updates** in the application menu or **Settings → About & updates**. Artwork, drafts and settings are retained. Users on 1.1.x need to install the current app once manually.
 
-Lighting requires USB. AIR75 V3 also supports Bluetooth shortcut control. The current keyboard layouts are ANSI.
+Lighting uses USB and the current keyboard layouts are ANSI. AIR75 V3 supports official firmware 2.0.0.7.
 
 Diagnostics stay on the Mac. Update checks do not upload task contents, artwork or keyboard input.
 

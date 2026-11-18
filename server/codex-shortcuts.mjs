@@ -231,6 +231,7 @@ export class CodexKeyGestures {
 // transitions. Gate it at the shared boundary before a toggle reaches Codex.
 export class PhysicalPressGate {
   constructor(now=Date.now){this.now=now;this.held=new Set();this.last=new Map();this.gestures=new Map();this.activeGestures=new Map();}
+  seen(code,gestureId){return gestureId!==undefined && this.gestures.has(`${code}:${gestureId}`);}
   down(code,gestureId){
     if(gestureId!==undefined){
       if(typeof gestureId!=='string'||!gestureId.length||gestureId.length>160||!/^[A-Za-z0-9:._-]+$/.test(gestureId))throw new Error('按键手势无效');

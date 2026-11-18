@@ -4,6 +4,24 @@
 // separately compiled/checked using the production SelectionFeatureFactory.
 import AppKit
 import WebKit
+
+// Host-only tests must never import the user's Dock or register system hotkeys.
+@MainActor final class DockScenesFeature {
+ weak var window: NSWindow?
+ weak var web: WKWebView?
+ var english = false
+ var allowSwitch: () -> Bool = { false }
+ let isApplying = false
+ let isRecording = false
+
+ init(directory: URL, legacy: URL) {}
+ func setAdded(_ added: Bool) {}
+ func refreshIfOpen() {}
+ func handle(_ body: [String: Any], reply: (Any?, String?) -> Void) {
+  reply(nil, "Dock boundary fixture")
+ }
+}
+
 // Unrelated host tests must not start ambient sensors. Production sampling and
 // lifecycle are compiled separately by ambient-lighting-native.test.mjs.
 final class AmbientLightMonitor {

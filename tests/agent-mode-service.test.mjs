@@ -164,7 +164,7 @@ test('Restore explicitly exits the mode and does not reclaim the original lighti
 });
 
 test('game, trigger and key recording keep their safe temporary mode pause and truthful ownership',async t=>{
-  const s=await fixture(t);await mode(s);
+  const s=await fixture(t);await s.ok({op:'settings',settings:{sidebarFeatures:[...(await s.state()).settings.sidebarFeatures,'game']}});await mode(s);
   await s.ok({op:'gameStart',gameType:'snake',speed:4});let state=await s.state();
   assert.equal(state.settings.codexEnabled,true);assert.equal(state.codex.keys.enabled,false);assert.equal(state.codex.lighting.ownsOutput,false);assert.equal(state.codex.lighting.pausedReason,'game');
   await s.ok({op:'gameStop'});state=await s.state();assert.equal(state.codex.lighting.ownsOutput,true);

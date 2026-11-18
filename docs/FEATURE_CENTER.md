@@ -6,9 +6,13 @@
 
 新用户默认看到灯光创作、作品库、AI 助手。打开侧栏底部的 **功能中心**，找到需要的功能并点击 **添加**，入口就会出现在侧栏。
 
-灯光游戏、模拟声浪、演奏模式、智能框选、拖拽转换、键盘口袋和语音输入均可按需添加。默认的三个入口也可以移除。功能中心、设备和设置始终保留，移除所有功能后也能重新添加。
+灯光游戏、模拟声浪、演奏模式、智能框选、拖拽转换、键盘口袋、语音输入和 Dock 场景均可按需添加。默认的三个入口也可以移除。功能中心、设备和设置始终保留，移除所有功能后也能重新添加。
 
 升级会保留已使用或已启用的功能入口。**移除会关闭功能及其快捷键**，同时停止当前功能的运行。作品、口袋内容、快捷键配置和其他偏好仍会保留。重新添加后保持关闭，请在页面按需开启。
+
+### Dock 场景
+
+添加 **Dock 场景** 后，从侧栏打开，选择场景查看固定应用预览，再点击 **应用到 Dock** 切换。首次打开保存的 **全部** 可恢复原固定应用布局。**场景快捷键** 初次使用时关闭；设置各场景的组合键后再开启。移回功能中心会关闭快捷键，重新添加后请按需开启。[使用说明](DOCK_SCENES.md)
 
 ### 统一查看与继续创作
 
@@ -32,9 +36,13 @@
 
 New users start with Lighting Studio, Library and AI Assistant. Open **Feature Center** at the bottom of the sidebar, find a tool and choose **Add** to show it in the sidebar.
 
-Add Lighting Games, Typing Sounds, Music Mode, Smart Selection, Drag Convert, Keyboard Pocket and Voice Input as needed. You can also remove the three default entries. Feature Center, Device and Settings always stay available, even when all optional entries have been removed.
+Add Lighting Games, Typing Sounds, Music Mode, Smart Selection, Drag Convert, Keyboard Pocket, Voice Input and Dock Scenes as needed. You can also remove the three default entries. Feature Center, Device and Settings always stay available, even when all optional entries have been removed.
 
 Upgrading keeps entries for tools you already use or have enabled. **Remove turns the tool and its shortcuts off** and stops its current activity. Works, Pocket contents, shortcut bindings and other preferences remain intact. Re-adding keeps it off until you enable it on its page.
+
+### Dock Scenes
+
+Add **Dock Scenes**, open it from the sidebar, select a scene to preview its pinned apps, then choose **Apply to Dock**. **All** restores the original list saved on first opening. The **Scene shortcuts** switch starts off. Set a combination for each scene, then enable shortcuts. Removing the feature turns shortcuts off; re-add it and enable them when needed. [User guide](DOCK_SCENES.md)
 
 ### Browse and continue creating
 

@@ -3,6 +3,7 @@
 ## 安装与使用 / Install and use
 
 - [功能中心与统一作品库 / Feature Center and unified Library](FEATURE_CENTER.md)
+- [Dock 场景与可选快捷键 / Dock Scenes and optional shortcuts](DOCK_SCENES.md)
 
 - [直接下载最新版安装包 / Download the latest installer](https://github.com/bohu8264/NuPhyLab-next/releases/latest/download/NuPhyLab-macOS-AppleSilicon.dmg)
 - [中文 / English 首页](../README.md)
@@ -29,6 +30,8 @@
 - [第三方声明 / Third-party notices](../THIRD_PARTY_NOTICES.md)
 
 ## 分版记录 / Version history
+
+- [1.2.50 发行说明 / Release notes](RELEASE_1.2.50.md)
 
 - [1.2.49 发行说明 / Release notes](RELEASE_1.2.49.md)
 

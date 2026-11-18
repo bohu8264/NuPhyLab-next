@@ -304,6 +304,7 @@ const outputIntents=[
 ];
 for(const [name,intent,mode] of outputIntents) test(`${name} cancels startup promptly and repeated connect cannot replay it`,async t=>{
   const service=await fixture(t,{storedSettings:{brightness:100}});
+  if(name==='gameStart')await ok(service,{op:'settings',settings:{sidebarFeatures:[...(await service.state()).settings.sidebarFeatures,'game']}});
   await ok(service,{op:'connect'});
   const first=await playing(service);
   await until(service.operations,ops=>ops.some(nonblackGray),'startup did not commit a visible frame');
@@ -396,6 +397,7 @@ test('ordinary artwork settings cancel reconnection wake and return its original
 
 test('gamePause during a reconnection startup cancels white output and retains the paused game',async t=>{
   const service=await fixture(t,{storedSettings:{autoConnect:true,brightness:100}});
+  await ok(service,{op:'settings',settings:{sidebarFeatures:[...(await service.state()).settings.sidebarFeatures,'game']}});
   await playing(service);
   await ok(service,{op:'gameStart',gameType:'snake',speed:1});
   await ok(service,{op:'gamePause',paused:true});
@@ -628,3 +630,458 @@ test('uncertain or still-pending native wake rollback cannot automatically rearm
         &&operation.recoveryPending&&!operation.armed),'the retained journal must remain visible in status');
     });
 });
+
+for(const connectionWakeFailure of ['unverifiedRollback','pendingAfterVerifiedRollback'])test(`side status and quota stay stopped after ${connectionWakeFailure} until verified recovery`,async t=>{
+ const service=await fixture(t,{...coloredPendingControl,sideWholeZone:true,aggregate:{status:'running',complete:true,fresh:true,count:9},connectionWakeFailure,
+  storedSettings:{codexEnabled:true,codexLightZone:'side',brightness:100,quotaSideEnabled:true}});
+ assert.equal((await service.command({op:'connect'})).ok,false);await wait(350);
+ const writes=(await service.operations()).filter(op=>['arm','paint','side','nativeLighting','restore'].includes(op.op));
+ const state=await service.state();assert.equal(state.device.recoveryPending,true);assert.equal(state.device.armed,false);assert.deepEqual(writes,[]);assert.equal(state.codex.lighting.side.ownsOutput,false);
+ await service.configure({connectionWakeFailure:null});await ok(service,{op:'restore'});const mark=(await service.operations()).length;
+ await ok(service,{op:'agentMode',source:'codex',enabled:true});
+ await until(service.state,s=>s.codex.lighting.side.ownsOutput,'side did not resume after verified explicit restoration');
+ assert.ok((await service.operations()).slice(mark).some(o=>o.op==='side'&&o.color));
+});
+
+for(const stage of ['arm','frame'])test(`failed ${stage} retains its original profile barrier when error status observes another profile`,async t=>{
+ const fixtureURL=new URL('./helpers/fake-service.mjs',import.meta.url),original=await readFile(fixtureURL,'utf8');
+ const profileRead='const selectProfile=()=>{const next=configuration().lightingProfile??0;';
+ const wakeError="    log({event:'simulatedWakeRollback',verified,connected,armed,recoveryPending:pending,needsRestore:pending});";
+ const paintBefore='   const generation=configuration().failPaint??0;';
+ assert.ok(original.includes(profileRead)&&original.includes(wakeError)&&original.includes(paintBefore));
+ const source=original.replaceAll('import.meta.url',JSON.stringify(fixtureURL.href)).replace("'../../shared/codex-keys.mjs'",JSON.stringify(new URL('../../shared/codex-keys.mjs',fixtureURL).href))
+  .replace(profileRead,'let failureProfile=null; const selectProfile=()=>{const next=(configuration().startupRace?failureProfile:null)??configuration().lightingProfile??0;')
+  .replace(wakeError,wakeError+"\n    if(configuration().startupRace==='arm'){failureProfile=1;selectProfile();}")
+  .replace(paintBefore,paintBefore+"\n   if(generation>failedGeneration&&configuration().startupRace==='frame'){failedGeneration=generation;armed=false;pending=true;pendingProfiles.add(lightingProfile);failureProfile=1;selectProfile();reject(request,'generated unverified frame rollback','RESTORE_REQUIRED');break;}");
+ const {fakeService:injectable}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+ const s=await injectable(t,{skipInitialConnect:true,modelId:'air75-v3',firmwareVersion:'1.0.23.6',readProbeVerified:true,connectionWake:true,outputIdentity:identity,sideWholeZone:true,initialRecoveryPending:true,aggregate:{status:'running',complete:true,fresh:true,count:9},startupRace:stage,connectionWakeFailure:stage==='arm'?'unverifiedRollback':null,storedSettings:{...settings,codexEnabled:true,codexLightZone:'side',brightness:100}});
+ const result=await s.command({op:'connect'});assert.equal(result.ok,stage==='frame');
+ if(stage==='frame'){await playing(s);await s.configure({failPaint:1});}
+ const win=await until(s.state,v=>v.device.lightingProfile===1,'new Win profile missing',6500);assert.equal(win.device.recoveryPending,false);assert.notEqual(win.codex.lighting.side.pausedReason,'recovery');
+ const mark=(await s.operations()).length;await s.configure({startupRace:false,lightingProfile:0,connectionWakeFailure:null});
+ await until(s.state,v=>v.device.lightingProfile===0,'Mac return missing',6500);await wait(250);
+ const mac=await s.state();assert.equal(mac.device.recoveryPending,true);assert.equal(mac.codex.lighting.side.ownsOutput,false);assert.equal(mac.codex.lighting.side.pausedReason,'recovery');
+ assert.ok(!(await s.operations()).slice(mark).some(o=>o.op==='restore'));
+ await ok(s,{op:'restore'});await ok(s,{op:'agentMode',source:'codex',enabled:true});await until(s.state,v=>v.codex.lighting.side.ownsOutput,'original-profile explicit recovery did not release barrier');
+});
+
+for(const initial of ['idle','running'])for(const ending of ['final frame','stop command'])test(`failed whole restoration at startup ${ending} with ${initial} tasks still blocks side output`,async t=>{
+ const service=await fixture(t,{sideWholeZone:true,aggregate:{status:initial,complete:true,fresh:true,count:initial==='running'?1:0},
+  storedSettings:{codexEnabled:true,codexLightZone:'side',quotaSideEnabled:false}});
+ await ok(service,{op:'connect'});
+ await until(service.state,s=>s.connectionWake.status==='playing','wake never starts');
+ await service.configure({failWholeRestore:true});
+ if(ending==='stop command')assert.equal((await service.command({op:'stop'})).ok,false);
+ const failed=await until(service.state,s=>s.connectionWake.status==='cancelled'&&Boolean(s.playback.lastError),'wake handoff did not fail',8000);
+ assert.equal(failed.device.recoveryPending,true);
+ assert.deepEqual((await service.operations()).filter(o=>o.op==='side'&&o.color),[],'side cannot light before whole handoff is verified');
+ const mark=(await service.operations()).length;
+ await service.configure({aggregate:{status:'running',complete:true,fresh:true,count:1}});await wait(400);
+ const state=await service.state();
+ assert.deepEqual((await service.operations()).slice(mark).filter(o=>o.op==='side'&&o.color),[]);
+ assert.equal(state.codex.lighting.side.ownsOutput,false);
+ assert.equal(state.codex.lighting.side.pausedReason,'recovery');
+ await service.configure({failWholeRestore:false});await ok(service,{op:'restore'});
+ await ok(service,{op:'agentMode',source:'codex',enabled:true});
+ await until(service.state,s=>s.codex.lighting.side.ownsOutput,'side did not resume after explicit handoff recovery');
+});
+
+test('a task already running at startup receives side output only after whole restoration verifies',async t=>{
+ const service=await fixture(t,{sideWholeZone:true,aggregate:{status:'running',complete:true,fresh:true,count:1},
+  storedSettings:{codexEnabled:true,codexLightZone:'side',quotaSideEnabled:false}});
+ await ok(service,{op:'connect'});
+ const state=await until(service.state,s=>s.connectionWake.status==='completed'&&s.codex.lighting.side.ownsOutput,'startup did not hand off verified side output',8000);
+ const ops=await service.operations(),restore=ops.findIndex(o=>o.op==='restore'),side=ops.findIndex(o=>o.op==='side'&&o.color);
+ assert.ok(restore>=0&&side>restore,'side color must follow the whole restore');
+ assert.equal(state.device.armed,false);
+});
+
+for(const failedRestore of [false,true])test(`enabling side mode mid-startup waits for verified main handoff (restore failure=${failedRestore})`,async t=>{
+ const service=await fixture(t,{sideWholeZone:true,aggregate:{status:'running',complete:true,fresh:true,count:1},
+  storedSettings:{codexEnabled:false,codexLightZone:'side',quotaSideEnabled:false}});
+ await ok(service,{op:'connect'});
+ await until(service.state,s=>s.connectionWake.status==='playing','startup never starts');
+ await service.configure({failWholeRestore:failedRestore});
+ await ok(service,{op:'agentMode',source:'codex',enabled:true});
+ const state=await until(service.state,s=>failedRestore?s.codex.lighting.side.pausedReason==='recovery':s.codex.lighting.side.ownsOutput,'cancelled startup handoff did not settle');
+ const ops=await service.operations(),side=ops.filter(o=>o.op==='side'&&o.color);
+ if(failedRestore) {
+  assert.deepEqual(side,[],'side remains dark throughout pending cancellation and failed handoff');
+  assert.equal(state.device.recoveryPending,true);assert.equal(state.codex.lighting.side.ownsOutput,false);
+ } else {
+  assert.ok(ops.findIndex(o=>o.op==='side'&&o.color)>ops.findIndex(o=>o.op==='restore'));
+  assert.equal(state.device.armed,false);
+ }
+ await service.configure({failWholeRestore:false});
+});
+
+for(const delivery of ['signed','command'])test(`an empty task slot during startup does not block later AI backlight frames (${delivery})`,async t=>{
+ const running={id:'running-before-wake',title:'Isolated task',status:'running'};
+ const service=await fixture(t,{tasks:[running],permissions:{inputMonitoring:true,accessibility:true,canPostEvents:true},
+  storedSettings:{codexEnabled:true,codexKeyAdaptation:true,codexLightZone:'backlight',codexLightMode:'whole',codexWholeTaskId:running.id,codexTaskSource:'recent',brightness:100,codexBrightness:100}});
+ await ok(service,{op:'connect'});
+ await until(service.state,s=>s.connectionWake.status==='playing','healthy startup did not start');
+ const empty=delivery==='signed'?await service.nativeKey({op:'codexKey',code:'F6'}):await service.command({op:'codexKey',code:'F6'});
+ assert.equal(empty.ok,false);assert.match(empty.error,/暂无可用任务/);
+ const inherited=await until(service.state,s=>s.playback.mode==='agent'&&s.colors.includes('#304ffe'),'AI did not inherit healthy startup');
+ const mark=(await service.operations()).length;
+ await service.configure({tasks:[{...running,status:'completed'}]});
+ const done=await until(service.state,s=>s.colors.includes('#00ff4c'),'healthy task color froze after an unrelated key error');
+ assert.notDeepEqual(done.colors,inherited.colors);
+ assert.ok((await service.operations()).slice(mark).some(o=>o.op==='paint'));
+});
+
+test('wake returns its board-global sleep lease when the following profile-scoped preparation is rejected',async t=>{
+const fixtureURL = new URL('./helpers/fake-service.mjs', import.meta.url);
+const original = await readFile(fixtureURL, 'utf8');
+const profile = 'const selectProfile=()=>{const next=configuration().lightingProfile??0;';
+const state = 'const state=()=>({...configuration().outputIdentity,';
+const capabilities = 'const state=()=>(';
+const wake = "  case 'armConnectionWake':{";
+const restore = "const restore=()=>{log(";
+for (const marker of [profile,state,capabilities,wake,restore]) assert.ok(original.includes(marker), marker);
+const fixture = original
+  .replaceAll('import.meta.url', JSON.stringify(fixtureURL.href))
+  .replace("'../../shared/codex-keys.mjs'", JSON.stringify(new URL('../../shared/codex-keys.mjs', fixtureURL).href))
+  .replace(profile, 'let sleepFlag=1,sleepPending=false,switchedForSleep=null;const selectProfile=()=>{const next=switchedForSleep??configuration().lightingProfile??0;')
+  .replace(state, state + 'boardSleepLease:{pending:sleepPending,ownsChanges:sleepPending,enabled:sleepFlag===1},')
+  .replace('capabilities:{...(configuration().consumerBridge?', 'capabilities:{boardSleepLease:true,...(configuration().consumerBridge?')
+  .replace(restore, "const restore=()=>{if(sleepPending){sleepFlag=1;sleepPending=false;log({event:'sleepReturned'});}log(")
+  .replace(wake, `  case 'acquireBoardSleepLease':{
+    selectProfile();
+    if(request.expectedProfile!==lightingProfile){reject(request,'synthetic wrong profile at F5','LIGHTING_PROFILE_CHANGED');break;}
+    sleepFlag=0;sleepPending=true;log({event:'sleepDisabled',profile:lightingProfile});
+    if(configuration().flipAfterSleep)switchedForSleep=1;
+    answer(request,{verified:true,boardSleepLease:state().boardSleepLease});
+    break;
+  }
+  case 'releaseBoardSleepLease':sleepFlag=1;sleepPending=false;log({event:'sleepReturned'});answer(request,{verified:true,boardSleepLease:state().boardSleepLease});break;
+` + wake);
+const {fakeService} = await import('data:text/javascript;base64,' + Buffer.from(fixture).toString('base64'));
+
+  const service = await fakeService(t, {
+    skipInitialConnect:true, modelId:'air75-v3', firmwareVersion:'1.0.23.6',
+    connectionWake:true, readProbeVerified:true, sideWholeZone:true, flipAfterSleep:true,
+    outputIdentity:{transport:'USB',vendorId:0x19f5,productId:0x1028,ledCount:104,keyLedCount:84,
+      protocolReady:true,locationId:0x12300000,serialNumber:'isolated-sleep-split',backupPath:'/isolated/original.json'},
+    storedSettings:{autoConnect:false,codexEnabled:false,quotaSideEnabled:false},
+  });
+  const connect = await service.command({op:'connect'});
+  assert.equal(connect.ok,false);
+  await wait(200);
+  const final = await service.state();
+  const ops = await service.operations();
+  const arm = ops.find(op=>op.op==='armConnectionWake');
+  const acquire = ops.find(op=>op.op==='acquireBoardSleepLease');
+  assert.equal(acquire.expectedProfile,0);
+  assert.equal(arm.expectedProfile,0);
+  assert.equal(final.device.lightingProfile,1);
+  assert.equal(final.device.armed,false);
+  assert.equal(final.device.recoveryPending,false);
+  assert.equal(final.device.boardSleepLease.enabled,true);
+  assert.equal(final.device.boardSleepLease.pending,false);
+  assert.ok(ops.some(op=>op.event==='sleepReturned'));
+  assert.equal(ops.filter(op=>op.op==='releaseBoardSleepLease').length,1);
+  assert.equal(ops.some(op=>['arm','paint','side','restore'].includes(op.op)),false);
+});
+
+{
+
+const first = Array(84).fill('#123456');
+const second = Array(84).fill('#cc7711');
+
+for (const recovery of ['duringPlay','explicitImmediate','explicitAfterPoll']) {
+  test(`new animation progresses after verified prior wake restoration, ${recovery}`,async t=>{
+    const service = await fakeService(t,{
+      skipInitialConnect:true, sideWholeZone:true, connectionWake:true, readProbeVerified:true,
+      firmwareVersion:'1.0.23.6', connectionWakeFailure:'unverifiedRollback',
+      outputIdentity:{transport:'USB',vendorId:0x19f5,productId:0x1028,
+        ledCount:104,keyLedCount:84,protocolReady:true,locationId:0x11000000,serialNumber:'isolated-artwork'},
+      storedSettings:{autoConnect:false,codexEnabled:false,quotaSideEnabled:false,
+        brightness:100,lightDurationMs:0,lightIdleMs:0},
+    });
+    const failedWake = await service.command({op:'connect'});
+    assert.equal(failedWake.status,400);
+    const failed = await service.state();
+    assert.equal(failed.device.recoveryPending,true);
+    assert.equal(failed.device.armed,false);
+    await service.configure({connectionWakeFailure:null});
+    const start = (await service.operations()).length;
+    if (recovery!=='duringPlay') assert.equal((await service.command({op:'restore'})).ok,true);
+    if (recovery==='explicitAfterPoll') await wait(450);
+    const animation = {effect:'frames',speed:4,loop:true,frames:[
+      {colors:first,duration:330},{colors:second,duration:330},
+    ]};
+    const play = await service.command({op:'play',colors:first,animation});
+    assert.equal(play.ok,true,JSON.stringify(play));
+    const started = await service.state();
+    assert.equal(started.device.armed,true);
+    assert.equal(started.playback.playing,true);
+    // Ensure the frame timer has time for several full cycles and a hardware
+    // status poll. The ordinary work should not need another user operation.
+    await wait(recovery==='explicitAfterPoll' ? 1050 : 5200);
+    const ended = await service.state();
+    const operations = (await service.operations()).slice(start);
+    const restore = operations.findIndex(entry=>entry.op==='restore');
+    const arm = operations.findIndex(entry=>entry.op==='arm');
+    const paint = operations.filter(entry=>entry.op==='paint');
+    assert.ok(restore>=0 && arm>restore);
+    assert.ok(operations.some(entry=>entry.event==='simulatedRestore' && entry.lightingProfile===0));
+    const frameColors = [...new Set(paint.map(entry=>entry.colors[0]))];
+    console.log(JSON.stringify({recovery,verifiedRestoreBeforeArm:true,armed:ended.device.armed,
+      playing:ended.playback.playing,oldUsbSessionUnchanged:failed.device.connectionSessionId===ended.device.connectionSessionId,
+      framesBefore:started.playback.framesSent,framesAfter:ended.playback.framesSent,
+      polls:operations.filter(entry=>entry.op==='status').length,firstKeyColors:frameColors}));
+    assert.equal(ended.device.armed,true);
+    assert.equal(ended.playback.playing,true);
+    assert.ok(frameColors.includes('#123456') && frameColors.includes('#cc7711'),
+      'verified restoration must let the new ordinary animation emit both frames');
+  });
+}
+}
+
+{
+
+const fixtureURL = new URL('./helpers/fake-service.mjs', import.meta.url);
+const original = await readFile(fixtureURL, 'utf8');
+const sideFailure = '   if(configuration().failSide){';
+assert.ok(original.includes(sideFailure));
+const injected = original.replaceAll('import.meta.url', JSON.stringify(fixtureURL.href))
+  .replace("'../../shared/codex-keys.mjs'", JSON.stringify(new URL('../../shared/codex-keys.mjs', fixtureURL).href))
+  .replace(sideFailure, `   if(configuration().failTaskSide && request.color==='#3976da'){
+     log({event:'isolatedVerifiedSideRollback', profile:lightingProfile, armed, pending});
+     reject(request,'Side verification failed. Prior side state restored; main lighting unchanged.','LIGHTING_FAILED');break;
+   }
+` + sideFailure);
+const {fakeService} = await import('data:text/javascript;base64,' + Buffer.from(injected).toString('base64'));
+
+const idle = {status:'idle', complete:true, fresh:true, count:0};
+const running = {status:'running', complete:true, fresh:true, count:1};
+const identity = {transport:'USB', vendorId:0x19f5, productId:0x1028, ledCount:104, keyLedCount:84,
+  protocolReady:true, locationId:0x10200000, serialNumber:'isolated-handoff-side-rollback'};
+const frameA = Array(84).fill('#123456');
+const frameB = Array(84).fill('#aabbcc');
+const animation = {effect:'frames', speed:4, loop:true, frames:[{colors:frameA,duration:500},{colors:frameB,duration:500}]};
+const ok = async (service, request) => {
+  const result = await service.command(request);
+  assert.equal(result.ok,true,JSON.stringify(result));
+};
+
+for (const failTaskSide of [false,true]) {
+  test(`first task-side transfer after an ordinary reconnect preserves healthy backlight, fault=${failTaskSide}`, async t => {
+    const service = await fakeService(t, {
+      skipInitialConnect:true, modelId:'air75-v3', firmwareVersion:'1.0.23.6',
+      readProbeVerified:true, connectionWake:true, sideWholeZone:true, outputIdentity:identity,
+      aggregate:idle, recordVisibleWrites:true,
+      storedSettings:{autoConnect:false,codexEnabled:true,codexLightZone:'side',quotaSideEnabled:false,
+        brightness:100,lightDurationMs:0,lightIdleMs:0},
+    });
+    await ok(service,{op:'connect'});
+    const first = await until(service.state, value=>value.connectionWake.status==='playing','first wake did not play');
+    await ok(service,{op:'play',colors:frameA,animation});
+    await until(service.state, value=>value.playback.mode==='animation' && value.playback.playing,'art animation is not playing');
+    await ok(service,{op:'settings',settings:{autoConnect:true}});
+    await service.configure({disconnect:1,present:false});
+    await until(service.state, value=>!value.device.connected,'physical removal did not appear');
+    await service.configure({present:true});
+    const second = await until(service.state,value=>value.connectionWake.status==='playing','second wake did not play');
+    assert.notEqual(second.connectionWake.sessionId,first.connectionWake.sessionId);
+    await service.configure({aggregate:running,failTaskSide});
+    if (failTaskSide) await until(service.operations, ops=>ops.some(op=>op.event==='isolatedVerifiedSideRollback'),'post-handoff side error was not reached',8500);
+    else await until(service.state, state=>state.connectionWake.status==='completed' && state.codex.lighting.side.ownsOutput,'positive handoff did not acquire side',8500);
+    await wait(140);
+    const before = await service.state();
+    const mark = (await service.operations()).length;
+    await service.configure({failTaskSide:false,aggregate:running});
+    await wait(800);
+    const final = await service.state();
+    const operations = await service.operations();
+    const rollback = operations.find(op=>op.event==='isolatedVerifiedSideRollback');
+    const newPaints = operations.slice(mark).filter(op=>op.op==='paint').length;
+    const newSide = operations.slice(mark).filter(op=>op.op==='side' && op.color).length;
+    console.log(JSON.stringify({failTaskSide, before:{wake:before.connectionWake.status, mode:before.playback.mode,
+      playing:before.playback.playing, armed:before.device.armed, pending:before.device.recoveryPending,
+      sideReason:before.codex.lighting.side.pausedReason}, rollback, newPaints, newSide,
+      final:{playing:final.playback.playing, sideOwned:final.codex.lighting.side.ownsOutput}}));
+    if (failTaskSide) assert.ok(rollback && rollback.armed===true && rollback.pending===true);
+    assert.equal(final.playback.playing,true,'a confirmed side-only rollback must not stop the healthy resumed main artwork');
+    assert.ok(newPaints>0,'the resumed artwork must continue emitting frames');
+    assert.equal(final.codex.lighting.side.ownsOutput,true,'a fresh ordinary side update may retry after verified side rollback');
+  });
+}
+}
+
+{
+
+const fixtureURL = new URL('./helpers/fake-service.mjs', import.meta.url);
+const original = await readFile(fixtureURL, 'utf8');
+const profileState = 'const state=()=>({...configuration().outputIdentity,';
+const priorJournal = 'pendingProfiles.add(lightingProfile);\nlet colors=';
+const capability = 'capabilities:{...(configuration().consumerBridge?';
+const wake = "  case 'armConnectionWake':{";
+const restoreStart = "  case 'restore':selectProfile();";
+for (const marker of [profileState,priorJournal,capability,wake,restoreStart]) assert.ok(original.includes(marker), marker);
+const injected = original.replaceAll('import.meta.url', JSON.stringify(fixtureURL.href))
+  .replace("'../../shared/codex-keys.mjs'", JSON.stringify(new URL('../../shared/codex-keys.mjs', fixtureURL).href))
+  .replace(priorJournal, 'pendingProfiles.add(lightingProfile);if(pending)sideOnlyProfiles.add(lightingProfile);\nlet sleepPending=false;const sleepLease=()=>({supported:true,pending:sleepPending,active:sleepPending,ownsChanges:sleepPending});\nlet colors=')
+  .replace(profileState, `${profileState}boardSleepLease:sleepLease(),`)
+  .replace(capability, 'capabilities:{boardSleepLease:true,...(configuration().consumerBridge?')
+  .replace(wake, `  case 'acquireBoardSleepLease':sleepPending=true;answer(request,{verified:true,boardSleepLease:sleepLease()});break;
+  case 'releaseBoardSleepLease':
+   if(configuration().failWakeBeforeJournalUpgrade){reject(request,'Board sleep restoration timed out; original record retained.','SLEEP_RESTORE_REQUIRED');break;}
+   sleepPending=false;answer(request,{verified:true,boardSleepLease:sleepLease()});break;
+${wake}
+   if(configuration().failWakeBeforeJournalUpgrade){reject(request,'Initial native read and subsequent sleep restoration failed; originals retained.','SLEEP_RESTORE_REQUIRED');break;}`)
+  .replace(restoreStart, `${restoreStart}
+   if(sideOnlyProfiles.has(lightingProfile)) {
+    sleepPending=false;restore();
+    const sleepRestoration={verified:true,restored:true,boardSleepLease:sleepLease()};
+    const result={verified:true,restored:true,needsRestore:false,recoveryPending:false,lightingProfile,deferredProfiles:[],sleepRestoration};
+    if(configuration().topLevelSleepReceipt)result.boardSleepLease=sleepLease();
+    log({event:'isolatedSideOnlyRestore',result});answer(request,result);break;
+   }`);
+const {fakeService} = await import('data:text/javascript;base64,'+Buffer.from(injected).toString('base64'));
+
+const running = {status:'running',complete:true,fresh:true,count:1};
+const identity = {transport:'USB',vendorId:0x19f5,productId:0x1028,ledCount:104,keyLedCount:84,
+  protocolReady:true,locationId:0x10200000,serialNumber:'isolated-nested-sleep-receipt'};
+const ok = async (service, request) => {
+  const result = await service.command(request);
+  assert.equal(result.ok,true,JSON.stringify(result));
+};
+
+for (const topLevelSleepReceipt of [true,false]) {
+  test(`side-only plus global sleep reinstated by first explicit recovery, top-level receipt=${topLevelSleepReceipt}`,async t=>{
+    const service = await fakeService(t,{
+      skipInitialConnect:true,modelId:'air75-v3',firmwareVersion:'1.0.23.6',readProbeVerified:true,connectionWake:true,
+      sideWholeZone:true,outputIdentity:identity,initialRecoveryPending:true,failWakeBeforeJournalUpgrade:true,
+      aggregate:running,topLevelSleepReceipt,storedSettings:{autoConnect:false,codexEnabled:true,codexLightZone:'side',quotaSideEnabled:false},
+    });
+    const connect = await service.command({op:'connect'});
+    assert.equal(connect.ok,false);
+    const blocked = await service.state();
+    assert.equal(blocked.device.sideRecoveryPending,true);
+    assert.equal(blocked.device.boardSleepLease.pending,true);
+    await service.configure({failWakeBeforeJournalUpgrade:false});
+    const marker = (await service.operations()).length;
+    await ok(service,{op:'restore'});
+    const justRestored = await service.state();
+    await ok(service,{op:'agentMode',source:'codex',enabled:true});
+    await service.configure({aggregate:running});
+    await until(service.state,state=>state.device.boardSleepLease.pending===false,'successful sleep recovery not reflected by status',7000);
+    await wait(200);
+    const settled = await service.state();
+    const operations = (await service.operations()).slice(marker);
+    const receipt = operations.find(op=>op.event==='isolatedSideOnlyRestore')?.result;
+    assert.equal(receipt?.sleepRestoration.boardSleepLease.pending,false);
+    assert.equal(operations.filter(op=>op.op==='restore').length,1);
+    const firstPass = {reason:settled.codex.lighting.side.pausedReason,owned:settled.codex.lighting.side.ownsOutput,
+      sideWrites:operations.filter(op=>op.op==='side'&&op.color).length};
+    if (!firstPass.owned) {
+      await ok(service,{op:'restore'});
+      await ok(service,{op:'agentMode',source:'codex',enabled:true});
+      await service.configure({aggregate:running});
+      await until(service.state,state=>state.codex.lighting.side.ownsOutput,'second explicit restore did not reopen side');
+    }
+    console.log(JSON.stringify({topLevelSleepReceipt,verifiedNativeReceipt:receipt,
+      pendingSleepImmediately:justRestored.device.boardSleepLease.pending,pendingSleepAfterStatus:settled.device.boardSleepLease.pending,
+      pendingSideAfterStatus:settled.device.sideRecoveryPending,firstPass,ownedAfterFallback:(await service.state()).codex.lighting.side.ownsOutput}));
+    assert.equal(firstPass.owned,true,'first complete native recovery must clear the startup barrier');
+  });
+}
+}
+
+{
+
+const fixtureURL=new URL('./helpers/fake-service.mjs',import.meta.url);
+const original=await readFile(fixtureURL,'utf8');
+const pending='pending=initial.initialRecoveryPending===true;if(pending)pendingProfiles.add(lightingProfile);';
+const state='const state=()=>({...configuration().outputIdentity,';
+const wake="  case 'armConnectionWake':{";
+const restore="case 'restore':selectProfile();";
+for(const marker of [pending,state,wake,restore]) assert.ok(original.includes(marker),marker);
+const source=original
+  .replaceAll('import.meta.url',JSON.stringify(fixtureURL.href))
+  .replace("'../../shared/codex-keys.mjs'",JSON.stringify(new URL('../../shared/codex-keys.mjs',fixtureURL).href))
+  .replace(pending,pending+`
+    if(pending)sideOnlyProfiles.add(lightingProfile);
+    let sleepPending=false;
+    const sleepLease=()=>({pending:sleepPending,ownsChanges:sleepPending,originalEnable:sleepPending?1:null});
+  `)
+  .replace(state,state+'boardSleepLease:sleepLease(),')
+  .replace('capabilities:{...(configuration().consumerBridge?', 'capabilities:{boardSleepLease:true,...(configuration().consumerBridge?')
+  .replace(wake,`  case 'acquireBoardSleepLease':sleepPending=true;answer(request,{verified:true,boardSleepLease:sleepLease()});break;
+  case 'releaseBoardSleepLease':{
+   if(configuration().failStartupCleanup){reject(request,'simulated F5 restoration failed','SLEEP_RESTORE_REQUIRED');break;}
+   sleepPending=false;answer(request,{verified:true,boardSleepLease:sleepLease()});break;
+  }
+`+wake+`
+   if(configuration().failStartupCleanup && sideOnlyProfiles.has(lightingProfile)){
+    // Side restoration in native wake preparation fails before the main lease
+    // starts, alongside an F5 restoration failure. Both old originals remain.
+    reject(request,'Side restoration and board sleep restoration failed. Originals retained.','SLEEP_RESTORE_REQUIRED');break;
+   }
+`)
+  .replace(restore,restore+`
+   if(sideOnlyProfiles.has(lightingProfile) && request.expectedProfile===undefined){
+    // Match frozen Air75Device.restore's sideOnly success shape exactly:
+    // its verified boardSleepLease status is inside sleepRestoration only.
+    const released=sleepPending;
+    sleepPending=false;
+    restore();
+    const result={changed:true,restored:true,verified:true,state:[...lighting],sideIndependent:false,
+      needsRestore:false,recoveryPending:false,verification:'ownedSideState',lightingProfile,deferredProfiles:[],
+      sleepRestoration:{restored:released,verified:true,boardSleepLease:sleepLease()}};
+    if(configuration().includeTopLevelSleep)result.boardSleepLease=sleepLease();
+    log({event:'reviewVerifiedSideSleepReply',result});
+    answer(request,result);break;
+   }
+`);
+const {fakeService}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+
+test('verified side-only and sleep recovery admits immediate ordinary playback', {concurrency:true}, async t=>{
+ await Promise.all([false,true].map(includeTopLevelSleep=>t.test(includeTopLevelSleep?'top-level metadata control':'exact frozen JSON wire shape',async sub=>{
+  const s=await fakeService(sub,{skipInitialConnect:true,modelId:'air75-v3',firmwareVersion:'1.0.23.6',
+    connectionWake:true,readProbeVerified:true,sideWholeZone:true,initialRecoveryPending:true,failStartupCleanup:true,
+    includeTopLevelSleep,
+    outputIdentity:{transport:'USB',vendorId:0x19f5,productId:0x1028,ledCount:104,keyLedCount:84,
+      protocolReady:true,locationId:0x12300000,serialNumber:'isolated-r12-side-sleep',backupPath:'/isolated/original.json'},
+    storedSettings:{autoConnect:false,codexEnabled:false,quotaSideEnabled:false,lightDurationMs:0,lightIdleMs:0,brightness:100},
+  });
+  const bad=await s.command({op:'connect'});
+  assert.equal(bad.ok,false);
+  const failed=await s.state();
+  assert.equal(failed.device.armed,false);
+  assert.equal(failed.device.recoveryPending,true);
+  assert.equal(failed.device.sideRecoveryPending,true);
+  assert.equal(failed.device.boardSleepLease.pending,true);
+  await s.configure({failStartupCleanup:false});
+  const repaired=await s.command({op:'restore'});
+  assert.equal(repaired.ok,true,JSON.stringify(repaired));
+  const record=(await s.operations()).find(op=>op.event==='reviewVerifiedSideSleepReply').result;
+  assert.equal(record.recoveryPending,false);
+  assert.equal(record.sleepRestoration.verified,true);
+  assert.equal(record.sleepRestoration.boardSleepLease.pending,false);
+  assert.equal(Object.hasOwn(record,'boardSleepLease'),includeTopLevelSleep);
+  const afterRestore=await s.state();
+  assert.equal(afterRestore.device.recoveryPending,false);
+  assert.equal(afterRestore.device.boardSleepLease.pending,false);
+  const a=Array(84).fill('#123456'),b=Array(84).fill('#216543');
+  const play=await s.command({op:'play',colors:a,animation:{effect:'frames',speed:4,loop:true,
+    frames:[{colors:a,duration:240},{colors:b,duration:240}]}});
+  assert.equal(play.ok,true,JSON.stringify(play));
+  const afterPlay=await s.state();
+  const mark=(await s.operations()).length;
+  await wait(950);
+  const final=await s.state();
+  const paints=(await s.operations()).slice(mark).filter(op=>op.op==='paint');
+  assert.equal(final.device.armed,true);
+  assert.equal(final.playback.playing,true);
+  assert.ok(final.playback.framesSent>afterPlay.playback.framesSent && paints.length>0);
+  console.log(JSON.stringify({includeTopLevelSleep,sideRestored:record.restored,sleepRestored:record.sleepRestoration.restored,
+    workerSleepPendingAfterRestore:afterRestore.device.boardSleepLease.pending,
+    armed:final.device.armed,playing:final.playback.playing,framesAfterPlay:afterPlay.playback.framesSent,
+    frames950msLater:final.playback.framesSent,subsequentPaintRequests:paints.length}));
+ })));
+});
+}

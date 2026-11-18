@@ -8,13 +8,13 @@ A macOS lighting studio for **NuPhy AIR65 / AIR75 / AIR100 V3, NODE75 / NODE100 
 
 ## 功能中心与作品库
 
-新用户的侧栏默认显示灯光创作、作品库和 AI 助手。升级时会保留已使用或已开启的功能入口，之后可以自行移除。打开 **功能中心**，按需添加灯光游戏、模拟声浪、演奏模式、智能框选、拖拽转换、键盘口袋和语音输入；默认的三项也可以移除。功能中心、设备和设置始终保留。移除会关闭功能及其快捷键，已有内容和配置保留。重新添加后，请按需手动开启。
+新用户的侧栏默认显示灯光创作、作品库和 AI 助手。升级时会保留已使用或已开启的功能入口，之后可以自行移除。打开 **功能中心**，按需添加灯光游戏、模拟声浪、演奏模式、智能框选、拖拽转换、键盘口袋、语音输入和 Dock 场景；默认的三项也可以移除。功能中心、设备和设置始终保留。移除会关闭功能及其快捷键，已有内容和配置保留。重新添加后，请按需手动开启。
 
 **作品库** 统一展示灯光和演奏作品，支持全部、灯光和演奏筛选。演奏模式中的作品库按钮进入同一个库；编辑并保存会更新原作品。编辑器尚未添加时，可直接选择“添加演奏模式并编辑”或“添加灯光创作并编辑”。演奏作品支持试听、复制、改名、工程导出及最近删除恢复；WAV 音频在演奏编辑页导出。
 
 ## Feature Center and Library
 
-For new users, the sidebar starts with Lighting Studio, Library and AI Assistant. Upgrading keeps entries for tools already used or enabled; you can remove them at any time. Open **Feature Center** to add Lighting Games, Typing Sounds, Music Mode, Smart Selection, Drag Convert, Keyboard Pocket or Voice Input. The three default entries can also be removed. Feature Center, Device and Settings always remain available. Removing a tool turns it and its shortcuts off while retaining its content and preferences. Re-add it, then enable it when needed.
+For new users, the sidebar starts with Lighting Studio, Library and AI Assistant. Upgrading keeps entries for tools already used or enabled; you can remove them at any time. Open **Feature Center** to add Lighting Games, Typing Sounds, Music Mode, Smart Selection, Drag Convert, Keyboard Pocket, Voice Input or Dock Scenes. The three default entries can also be removed. Feature Center, Device and Settings always remain available. Removing a tool turns it and its shortcuts off while retaining its content and preferences. Re-add it, then enable it when needed.
 
 **Library** brings lighting and music together, with All, Lighting and Music filters. Music Mode opens this same library. Editing and saving updates the original work. If its editor is not in the sidebar, choose **Add Music Mode & edit** or **Add Lighting Studio & edit**. Music works support preview, duplication, renaming, project export and recovery from Recently deleted. Export WAV audio from the music editor.
 
@@ -50,11 +50,35 @@ The installer is signed with NuPhy's Developer ID and notarized by Apple.
 
    The app checks for updates automatically. You can also use **Settings → About & updates → Check for Updates**. Users on 1.1.x need to install the current version once manually.
 
-灯效需要 USB 连接；AIR75 V3 另支持蓝牙快捷控制。需要更新键盘固件时，请按软件指引前往 NuPhyIO。
+灯效使用 USB 连接。AIR75 V3 ANSI 支持官方 2.0.0.7 固件；需要更新时，可从「设备 → 固件管理」前往 NuPhyIO。
 
-Lighting requires USB. AIR75 V3 also supports Bluetooth shortcut control. Follow the app's NuPhyIO guidance if a firmware update is needed.
+Lighting uses USB. AIR75 V3 ANSI supports official firmware 2.0.0.7. Open **Device → Firmware management** for NuPhyIO update guidance.
 
 各型号固件与兼容范围 / Model-specific firmware and compatibility: [键盘兼容性 / Keyboard compatibility](docs/KEYBOARD_COMPATIBILITY.md)。AIR65 V3 无实体 F 区，不提供 F1–F12 自动接管。/ AIR65 V3 has no physical function row and does not offer automatic F1–F12 takeover.
+
+## Dock 场景 / Dock Scenes
+
+在 **功能中心** 添加 **Dock 场景**。首次打开会将当前固定应用和顺序保存为 **全部**；可编辑设计、娱乐或自建场景的应用列表，拖动排序，再点击 **应用到 Dock** 切换。选择 **全部** 可回到首次保存的布局。
+
+Add **Dock Scenes** in **Feature Center**. The first opening saves your pinned apps and their order as **All**. Edit Design, Entertainment or a custom scene, drag to reorder apps, then choose **Apply to Dock**. Use **All** to return to the original saved layout.
+
+场景快捷键初次使用时关闭。为场景录入组合键后，开启 **场景快捷键** 即可使用。功能移回功能中心会关闭快捷键，场景和绑定保留。
+
+Scene shortcuts start off. Record a combination for a scene, then enable **Scene shortcuts**. Removing the feature in Feature Center turns shortcuts off and retains scenes and bindings.
+
+[Dock 场景使用说明 / Dock Scenes guide](docs/DOCK_SCENES.md)
+
+## AIR75 V3 USB 状态灯 / AIR75 V3 USB status lights
+
+打开 **AI 助手 → 状态灯**，选择 **背光模式** 或 **侧灯模式**。背光可分别显示多个任务，或用全键盘跟随一个任务；侧灯显示当前来源的整体任务状态。全部明确成功后保持绿色，没有本轮任务时显示白色。命令键有独立开关，侧灯模式下也可按需使用。
+
+Open **AI Assistant → Status lights** and choose **Backlight** or **Side LEDs**. Backlighting can show several tasks separately or follow one task across the keyboard. Side LEDs summarize the current batch from the selected source, staying green after every task explicitly succeeds and showing white when there is no current batch. Command keys have their own switch and can be used in side-light mode.
+
+状态灯页面会按窗口可用空间缩放键盘预览。官方 2.0.0.7 的原灯效或主色若无法可靠恢复，请按提示在 NuPhyIO 选择原厂背光灯效、将主色设为白色后重试，或使用侧灯模式。
+
+The status-light page scales the keyboard preview to the available window space. If the original effect or main color on official 2.0.0.7 cannot be restored reliably, follow the prompt to choose a stock backlight effect and set its main color to white in NuPhyIO, then retry, or use side-light mode.
+
+[1.2.50 更新说明 / What's new in 1.2.50](docs/RELEASE_1.2.50.md) · [键盘兼容性 / Keyboard compatibility](docs/KEYBOARD_COMPATIBILITY.md)
 
 ## 自动感光背光 / Automatic backlight
 
@@ -148,7 +172,7 @@ Choose **Reply**, select the other person’s message, and optionally say your p
 
 Selected text and questions are sent to your configured model service. Images are included only when enabled and needed for the selected action. API keys are stored in the local Keychain.
 
-[设置与使用 / Setup and usage](docs/SELECTION.md) · [界面与翻译语言 / Interface and translation languages](docs/SELECTION_LANGUAGES.md) · [1.2.49 更新说明 / What's new in 1.2.49](docs/RELEASE_1.2.49.md)
+[设置与使用 / Setup and usage](docs/SELECTION.md) · [界面与翻译语言 / Interface and translation languages](docs/SELECTION_LANGUAGES.md) · [1.2.50 更新说明 / What's new in 1.2.50](docs/RELEASE_1.2.50.md)
 
 ## 语音输入 / Voice Input
 

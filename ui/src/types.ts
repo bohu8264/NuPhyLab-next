@@ -120,6 +120,9 @@ export type AppState = {
   lightPower?: {sleeping:boolean;reason:"duration"|"idle"|null;remainingMs:number|null;idleMs:number;systemIdleAvailable:boolean|null};
   connectionWake?: {active:boolean;status:string;elapsedMs:number;durationMs:number;sessionId:string|null};
   firmware?: {
+    latestSupported?:boolean|null;
+    pairedReceiverUpdate?:boolean;
+    releaseNotes?:Record<string,string[]>|null;
     modelId?: KeyboardModel | null;
     modelName?: string;
     minimumRequired?: string | null;

@@ -1,7 +1,7 @@
 import additional from './additional-keyboards.json' with {type:'json'};
 // Product identity, RGB addresses and matrix positions are separate contracts.
 export const KEYBOARD_MODELS = Object.freeze({
-  'air75-v3': Object.freeze({name:'Air75 V3',vendorId:0x19f5,productIds:[0x1028],keyCount:84,sideCount:20,canvasCount:84,rows:6,columns:16,extraKeys:2,qualifiedFirmware:'1.0.23.6',minimumVersion:'1.0.16.6',businessId:'1930212869851615233',globalPalette:false,functionRow:true,unmappedIndices:[83]}),
+  'air75-v3': Object.freeze({name:'Air75 V3',vendorId:0x19f5,productIds:[0x1028],keyCount:84,sideCount:20,canvasCount:84,rows:6,columns:16,extraKeys:2,qualifiedFirmware:'2.0.0.7',qualifiedFirmwares:Object.freeze(['1.0.23.6','2.0.0.7']),minimumVersion:'1.0.16.6',businessId:'1930212869851615233',globalPalette:false,functionRow:true,unmappedIndices:[83]}),
   kick75: Object.freeze({name:'Kick75',vendorId:0x19f5,productIds:[0x1026,0x1027],keyCount:80,sideCount:5,canvasCount:84,rows:6,columns:15,extraKeys:2,qualifiedFirmware:'4.0.18.6',minimumVersion:'4.0.18.6',businessId:'1930094363885735938',globalPalette:true,functionRow:true,unmappedIndices:[80,81,82,83]}),
   ...Object.fromEntries(Object.entries(additional).map(([id,profile])=>[id,Object.freeze(profile)])),
 });

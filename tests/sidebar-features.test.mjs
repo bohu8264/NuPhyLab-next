@@ -16,7 +16,7 @@ test('fresh profile has three entries; an explicitly empty sidebar survives rest
 });
 test('legacy migration keeps active tools and saved music without rewriting their data; explicit removals are not re-added',async t=>{
  const dir=await temp(t);await mkdir(path.join(dir,'keyboard-pocket'));await mkdir(path.join(dir,'voice-input'));await mkdir(path.join(dir,'music-works'));
- const files={'voice-input/settings.json':{shortcutKeyCode:61},'library.json':{version:1,scenes:[],settings:{language:'en',codexEnabled:true},gameBestScores:{snake:10}},'selection-preferences.json':{enabled:true,actions:['reply']},'typing-sound-preferences.json':{enabled:true,volume:41},'keyboard-pocket/pockets.json':{slots:[{id:'user-file'}]},'music-works/test.json':{userWork:'not read by navigation'},'drag-convert.json':{enabled:true}};
+ const files={'dock-scenes-shortcuts.json':true,'voice-input/settings.json':{shortcutKeyCode:61},'library.json':{version:1,scenes:[],settings:{language:'en',codexEnabled:true},gameBestScores:{snake:10}},'selection-preferences.json':{enabled:true,actions:['reply']},'typing-sound-preferences.json':{enabled:true,volume:41},'keyboard-pocket/pockets.json':{slots:[{id:'user-file'}]},'music-works/test.json':{userWork:'not read by navigation'},'drag-convert.json':{enabled:true}};
  for(const [file,data] of Object.entries(files))await writeFile(path.join(dir,file),JSON.stringify(data));
  const before=await Promise.all(Object.keys(files).map(file=>readFile(path.join(dir,file))));const store=await new Store(dir).load();
  assert.deepEqual(store.data.settings.sidebarFeatures,FEATURE_IDS);assert.equal(store.data.settings.language,'en');assert.equal(store.data.settings.codexEnabled,true);

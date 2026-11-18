@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createVMEnvironment} from './helpers/source-ui-vm.mjs';
 
-const expected='https://drive.nuphyio.com/#/setting';
+const expected='https://drive.nuphy.io/#/setting';
 async function fixture(reply){
  const requests=[];
  const ui=createVMEnvironment({'lucide-react':{},'./codexKeys':{nativeCodexRequest:async request=>{requests.push(request);return reply;}},

@@ -1,0 +1,11 @@
+.firmware-management{display:grid;gap:24px;color:#222}
+.firmware-management-device{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:0;padding:16px;background:#f5f5f5;border-radius:12px}
+.firmware-management-device dt{color:#777;font-size:12px;margin-bottom:5px}
+.firmware-management-device dd{margin:0;font-weight:600;overflow-wrap:anywhere}
+.firmware-management section+section{border-top:1px solid #e8e8e8;padding-top:20px}
+.firmware-management h3{font-size:16px;margin:0}
+.firmware-management p{font-size:14px;line-height:1.65;margin:8px 0 12px;color:#666}
+.firmware-management summary{margin-top:16px;font-size:13px;cursor:pointer;color:#555}
+.firmware-management ol{padding-left:20px;color:#666;font-size:13px;line-height:1.7}
+.firmware-management li+li{margin-top:6px}
+@media(max-width:460px){.firmware-management-device{grid-template-columns:1fr}}

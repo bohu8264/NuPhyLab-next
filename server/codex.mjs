@@ -1,4 +1,5 @@
-import { access, readdir, open, realpath } from "node:fs/promises";
+import {AgentCohort} from '../shared/agent-cohort.mjs';
+import { access, readdir, open, realpath, lstat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -22,6 +23,20 @@ const label = (value, fallback = "") =>
     : fallback;
 const validId = (value) =>
   typeof value === "string" && /^[a-zA-Z0-9_-]{1,160}$/.test(value);
+
+// ENOENT from realpath also includes dangling links. Only absent components
+// under a verified, ordinary directory chain establish missing history.
+async function confirmedMissing(root, relative) {
+  const parts=relative.split(path.sep); let current=root;
+  for (let i=0;i<parts.length;i++) {
+    current=path.join(current,parts[i]);
+    try {
+      const info=await lstat(current);
+      if (info.isSymbolicLink() || (i<parts.length-1 && !info.isDirectory())) return false;
+    } catch (error) { return error?.code==='ENOENT'; }
+  }
+  return false;
+}
 
 import { STATUS_COLORS } from "../shared/codex-lighting.mjs";
 import { readLiveWriters } from "./codex-writers.mjs";
@@ -306,6 +321,7 @@ export function classifyEvents(
     if (requestId && (type.endsWith("_output") || /(?:approval|permission)_(?:response|result)/.test(type))) pending.delete(requestId);
     last = {
       kind,
+      explicitSuccess: (!Object.hasOwn(payload,'status') || typeof payload.status==='string') && event.type==='event_msg' && ['task_complete','turn_complete','turn_completed'].includes(type) && ['', 'completed','succeeded','success'].includes(state),
       eventAt: Number.isFinite(eventAt) ? eventAt : null,
       signature: createHash("sha256").update(line).digest("hex"),
       pendingKind: kind === "needsInput" ? (/approval|permission/.test(type) ? "approval" : "response") : null,
@@ -569,6 +585,9 @@ export class CodexAdapter {
     this.maxTasks = clamp(Math.trunc(maxTasks), 6, 100);
     this.tailBytes = clamp(Math.trunc(tailBytes), 4096, 1_048_576);
     this.activeWindowMs = clamp(activeWindowMs, 1_000, 60_000);
+    this.aggregateEnabled = false; this.aggregateEpoch = 0;
+    this.aggregateScopeEvidence = new Set(); this.aggregateScopeOverflow = false;
+    this.cohort = new AgentCohort({now});
     this.trackedIds = [];
     this.cache = new Map();
     this.writerState = null;
@@ -602,8 +621,13 @@ export class CodexAdapter {
     this.updateSlots();
   }
   track(ids) { this.trackedIds = [...new Set((ids ?? []).filter(validId))].slice(0,7); }
+  observeAggregate(enabled) {
+    if (this.aggregateEnabled === enabled) return;
+    this.aggregateEnabled = enabled; this.aggregateEpoch++; this.cohort.reset();
+    this.aggregateScopeEvidence = new Set(); this.aggregateScopeOverflow = false;
+  }
   snapshot() {
-    return structuredClone(this.state);
+    return {...structuredClone(this.state), aggregate:this.cohort.snapshot()};
   }
   action(id, params = {}) {
     return describeAction(id, {
@@ -690,7 +714,7 @@ export class CodexAdapter {
     const { stdout } = await execFileAsync(
       this.sqlitePath,
       ["-readonly", "-json", "-cmd", ".timeout 250", database, statement],
-      { timeout: 3_000, maxBuffer: 1_048_576, encoding: "utf8" },
+      { timeout: 3_000, maxBuffer: this.aggregateEnabled ? 8_388_608 : 1_048_576, encoding: "utf8" },
     );
     return stdout.trim() ? JSON.parse(stdout) : [];
   }
@@ -737,6 +761,7 @@ export class CodexAdapter {
   async pollTasks() {
     if (!this.running || this.tasksBusy) return;
     this.tasksBusy = true;
+    const aggregateEnabled=this.aggregateEnabled, aggregateEpoch=this.aggregateEpoch, scopeEvidence=this.aggregateScopeEvidence;
     try {
       const database = await this.discoverDatabase();
       if (!database) throw new Error("no_database");
@@ -755,6 +780,10 @@ export class CodexAdapter {
       const recency = timeParts.length
         ? `COALESCE(${[...timeParts, "0"].join(", ")})`
         : "0";
+      // Sorting fallbacks are not evidence of age. Inspect every available
+      // real timestamp, including creation, before excluding missing history.
+      const scopeTimeColumns=['recency_at_ms','updated_at_ms','recency_at','updated_at','created_at_ms','created_at'].filter(column=>columns.has(column));
+      const scopeTimeSelect=aggregateEnabled?scopeTimeColumns.map(column=>`${column} AS scope_${column},`).join(' '):'';
       const titleParts = ["name", "title"]
         .filter((column) => columns.has(column))
         .map((column) => `NULLIF(${column}, '')`);
@@ -763,7 +792,7 @@ export class CodexAdapter {
         : "'未命名任务'";
       const filters = [
         columns.has("archived") ? "COALESCE(archived, 0) = 0" : "1 = 1",
-        columns.has("thread_source")
+        columns.has("thread_source") && !aggregateEnabled
           ? "COALESCE(thread_source, 'user') IN ('user', 'agent_created_thread')"
           : "1 = 1",
       ];
@@ -772,13 +801,49 @@ export class CodexAdapter {
       const preferred = preferredIds.length ? `CASE WHEN id IN (${preferredIds.map(id => "'"+id+"'").join(",")}) THEN 0 ELSE 1 END,` : "";
       const rows = await this.sql(
         database,
-        `SELECT id, rollout_path, ${titleExpr} AS task_title, ${recency} AS updated_ms, ${columns.has("is_pinned") ? "is_pinned" : "0"} AS is_pinned, ${columns.has("section_position") ? "section_position" : "NULL"} AS section_position FROM threads WHERE ${filters.join(" AND ")} ORDER BY ${preferred} is_pinned DESC, section_position ASC, updated_ms DESC LIMIT ${this.maxTasks};`,
+        `SELECT id, rollout_path, ${aggregateEnabled ? "COUNT(*) OVER() AS total_count," : ""} ${scopeTimeSelect} ${columns.has("thread_source") ? "thread_source," : ""} ${titleExpr} AS task_title, ${recency} AS updated_ms, ${columns.has("is_pinned") ? "is_pinned" : "0"} AS is_pinned, ${columns.has("section_position") ? "section_position" : "NULL"} AS section_position FROM threads WHERE ${filters.join(" AND ")} ORDER BY ${preferred} is_pinned DESC, section_position ASC, updated_ms DESC LIMIT ${aggregateEnabled ? 2000 : this.maxTasks};`,
       );
-      this.writerState = await this.liveWriters(this.codexHome, rows.map(row => row.id));
-      const tasks = [];
+      if(!this.running || this.aggregateEpoch!==aggregateEpoch)return;
+      const writers = await this.liveWriters(this.codexHome, rows.map(row => row.id));
+      if(!this.running || this.aggregateEpoch!==aggregateEpoch)return;
+      this.writerState = writers;
+      const tasks = [], aggregateTasks=[];
+      let aggregateComplete=rows.length===0 || Number(rows[0].total_count)===rows.length;
       for (const row of rows) {
-        if (!validId(row.id)) continue;
-        const result = await this.readTaskEvent(row);
+        if (!validId(row.id)) { aggregateComplete=false; continue; }
+        const result = await this.readTaskEvent(row,aggregateEpoch);
+        if(!this.running || this.aggregateEpoch!==aggregateEpoch)return;
+        if (aggregateEnabled) {
+          // Imported/deleted history can retain database rows long after its
+          // local rollout is gone. It is outside this observation batch only
+          // when it predates monitoring, has never been observed here, and a
+          // successful writer inventory confirms that no process owns it.
+          // Recent, previously observed, unreadable or live missing tasks
+          // still prevent an all-complete result.
+          const scopeTimes=scopeTimeColumns.filter(column=>row[`scope_${column}`]!==null&&row[`scope_${column}`]!==undefined)
+            .map(column=>({value:row[`scope_${column}`],scale:column.endsWith('_ms')?1:1000}));
+          const confirmedOld=scopeTimes.length>0&&scopeTimes.every(({value,scale})=>
+            Number.isFinite(value)&&value>0&&Number.isFinite(value*scale)&&value*scale<this.cohort.startedAt-60_000);
+          const positivelyRecent=scopeTimes.some(({value,scale})=>Number.isFinite(value)&&value>0&&
+            Number.isFinite(value*scale)&&value*scale>=this.cohort.startedAt-60_000);
+          if (positivelyRecent || this.writerState?.has(row.id) || this.cache.has(row.id)) {
+            if(scopeEvidence.size<4096)scopeEvidence.add(row.id);
+            else if(!scopeEvidence.has(row.id))this.aggregateScopeOverflow=true;
+          }
+          const historicalMissing = result.unavailableReason==='missing' && confirmedOld &&
+            this.writerState instanceof Map && !this.writerState.has(row.id) &&
+            !this.cohort.members.has(row.id) && !scopeEvidence.has(row.id);
+          if (!historicalMissing) {
+            if (result.scopeComplete!==true || !result.signature || !Number.isFinite(result.eventAt) || result.status === 'unknown') aggregateComplete=false;
+            // A temporary read failure is not a newer task event. Retain the
+            // last genuine event clock so restored logs can recover normally.
+            aggregateTasks.push({id:row.id,signature:result.signature??`unreadable:${row.id}`,eventAt:result.eventAt??this.cohort.seen.get(row.id)?.eventAt??0,
+              status:result.kind==='completed'?(result.explicitSuccess?'succeeded':'unknown')
+                :result.kind==='idle'?'cancelled':result.status==='needsInput'?'waiting':result.status,
+              explicitSuccess:result.explicitSuccess===true});
+          }
+        }
+        if (aggregateEnabled && row.thread_source && !['user','agent_created_thread'].includes(row.thread_source)) continue;
         const isUnread = metadata.unread ? metadata.unread.has(row.id) : null;
         const status =
           result.status === "completed" && isUnread === false
@@ -798,9 +863,11 @@ export class CodexAdapter {
           evidence: result.evidence,
         });
       }
-      if (!this.running) return;
+      if (!this.running || this.aggregateEpoch!==aggregateEpoch) return;
       tasks.sort((a,b) => Date.parse(b.updatedAt ?? "") - Date.parse(a.updatedAt ?? ""));
-      this.state.tasks = tasks;
+      this.state.tasks = tasks.slice(0,this.maxTasks);
+      if (aggregateEnabled && this.aggregateEpoch===aggregateEpoch)
+        this.cohort.observe({tasks:aggregateTasks,complete:aggregateComplete&&!this.aggregateScopeOverflow,observedAt:this.now()});
       this.lastGoodTasksAt = this.now();
       this.state.taskSource = {
         available: true,
@@ -811,11 +878,12 @@ export class CodexAdapter {
         writerEvidence: this.writerState !== null,
         updatedAt: iso(this.now()),
       };
-      const retained = new Set(tasks.map((task) => task.id));
+      const retained = new Set(rows.map((task) => task.id));
       for (const id of this.cache.keys())
         if (!retained.has(id)) this.cache.delete(id);
     } catch {
-      if (!this.running) return;
+      if (!this.running || this.aggregateEpoch!==aggregateEpoch) return;
+      if (aggregateEnabled && this.aggregateEpoch===aggregateEpoch) this.cohort.observe({complete:false,observedAt:this.now()});
       if (this.lastGoodTasksAt !== null && this.now() - this.lastGoodTasksAt > 30_000)
         this.state.tasks = this.state.tasks.map(task => ({...task,status:"unknown",color:STATUS_COLORS.unknown,evidence:"索引暂时不可读，状态未确认"}));
       this.state.taskSource = {
@@ -830,7 +898,7 @@ export class CodexAdapter {
       this.publish();
     }
   }
-  async readTaskEvent(row) {
+  async readTaskEvent(row,expectedEpoch=this.aggregateEpoch) {
     const unknown = {
       status: "unknown",
       eventAt: null,
@@ -838,25 +906,34 @@ export class CodexAdapter {
     };
     if (typeof row.rollout_path !== "string") return unknown;
     try {
-      const file = await realpath(
-        path.resolve(this.codexHome, row.rollout_path),
-      );
-      // Rollout paths are untrusted database data. Do not follow them into arbitrary user files.
+      const candidate = path.resolve(this.codexHome, row.rollout_path);
+      if (!candidate.startsWith(`${this.codexHome}${path.sep}`) || !candidate.endsWith('.jsonl')) return unknown;
       const root = await realpath(this.codexHome);
+      let file;
+      try { file = await realpath(candidate); }
+      catch (error) {
+        return error?.code === 'ENOENT' && await confirmedMissing(root,path.relative(this.codexHome,candidate))
+          ? {...unknown, unavailableReason:'missing'} : unknown;
+      }
+      // Rollout paths are untrusted database data. Do not follow them into arbitrary user files.
       if (!file.startsWith(`${root}${path.sep}`) || !file.endsWith(".jsonl"))
         return unknown;
       const old = this.cache.get(row.id);
       let raw = old?.raw;
       let activityObservedAt = old?.activityObservedAt ?? null;
       let bootstrap = old?.bootstrap;
-      let continuous = true;
+      let continuous = true, invalidEvents = old?.invalidEvents ?? false;
       const tail = await readEventLines(file, {
         previous: old?.tail, tailBytes: this.tailBytes,
-        onReset: () => { continuous = false; raw = null; bootstrap = null; activityObservedAt = null; },
+        onReset: () => { continuous = false; raw = null; bootstrap = null; activityObservedAt = null; invalidEvents = false; },
+        onGap: () => { invalidEvents = true; },
         onLine: line => {
+          try { JSON.parse(line); } catch { invalidEvents = true; return; }
           const next = classifyEvents(line, {now:this.now(), previousEvent:raw});
-          if (next.signature !== raw?.signature)
+          if (next.signature && next.signature !== raw?.signature) {
+            invalidEvents = false;
             activityObservedAt = continuous && next.kind === "active" ? this.now() : null;
+          }
           raw = next;
         },
       });
@@ -864,14 +941,20 @@ export class CodexAdapter {
         bootstrap = await findLatestEvent(file, {
           snapshot: tail, previous: bootstrap,
           isEventLine: line => Boolean(classifyEvents(line).kind),
+          isValidLine: line => { try { JSON.parse(line); return true; } catch { return false; } },
         });
+        invalidEvents ||= bootstrap.invalidEvents===true;
         if (bootstrap.line) {
           raw = classifyEvents(bootstrap.line, {now:this.now()});
           bootstrap = {done:true};
         }
       } else if (raw?.kind) bootstrap = {done:true};
-      this.cache.set(row.id, {file, tail, raw, activityObservedAt, bootstrap});
+      if(expectedEpoch!==this.aggregateEpoch)return unknown;
+      this.cache.set(row.id, {file, tail, raw, activityObservedAt, bootstrap, invalidEvents});
       if (!raw) return unknown;
+      // Keep slot UI behavior independent, but never treat an unread/partial
+      // tail or an unfinished backwards search as a complete task scope.
+      raw = {...raw,scopeComplete:!invalidEvents && tail.settled===true && bootstrap?.done===true};
       if (raw.kind === "active") {
         const age = raw.eventAt === null ? Infinity : this.now() - raw.eventAt;
         const observedAge =

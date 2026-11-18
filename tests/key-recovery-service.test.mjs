@@ -97,3 +97,24 @@ test('a confirmation received behind a queued mode On is checked at execution, b
  assert.deepEqual((await service.operations()).slice(start).filter(op=>op.op==='confirmFunctionKeyRecovery'),[]);
  assert.equal((await service.state()).device.keyRecovery.pending,true);
 });
+
+
+test('shortcut recording and confirmed key recovery cannot lease over one another',async t=>{
+ const service=await fakeService(t,modeRecoveryFixture());
+ const preview=await service.command({op:'previewFunctionKeyRecovery'});
+ assert.equal(preview.ok,true);
+ assert.equal((await service.command({op:'codexCapture',session:'recovery-recorder',active:true})).ok,true);
+ const start=(await service.operations()).length;
+ const refusedPreview=await service.command({op:'previewFunctionKeyRecovery'});
+ const refusedConfirm=await service.command({op:'confirmFunctionKeyRecovery',token:preview.result.token,confirmSameKeyboard:true});
+ for(const r of [refusedPreview,refusedConfirm]) {assert.equal(r.ok,false);assert.match(r.error,/结束快捷键录制/);}
+ assert(!(await service.operations()).slice(start).some(o=>['previewFunctionKeyRecovery','confirmFunctionKeyRecovery'].includes(o.op)));
+ assert.equal((await service.command({op:'codexCapture',session:'recovery-recorder',active:false})).ok,true);
+ const fresh=await service.command({op:'previewFunctionKeyRecovery'});
+ assert.equal(fresh.ok,true);
+ const before=(await service.operations()).length;
+ const result=await service.command({op:'confirmFunctionKeyRecovery',token:fresh.result.token,confirmSameKeyboard:true});
+ assert.equal(result.ok,true);
+ assert(!(await service.operations()).slice(before).some(o=>o.op==='prepareFunctionKey'));
+ assert.equal((await service.state()).device.keyRecovery.pending,false);
+});

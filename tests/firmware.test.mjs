@@ -82,7 +82,7 @@ test('online latest version never grants missing device capabilities', async () 
   assert.equal(next.status, 'newer');
   assert.equal(next.compatible, true);
   assert.equal(next.stateBytes, 22);
-  assert.equal(next.verifiedVersion, '1.0.23.6', 'future protocol support must not claim future-firmware hardware testing');
+  assert.equal(next.verifiedVersion, '2.0.0.7', 'future protocol support must not claim future-firmware hardware testing');
 });
 
 const kickManifest = (version = "4.0.18.6", changes = {}) => manifest(version, { businessId: "1930094363885735938", ...changes });
@@ -202,7 +202,7 @@ test("known old Kick firmware receives an upgrade requirement even when the offi
   assert.equal(result.updateAvailable,false);
   assert.equal(result.upgradeRecommended,true);
   assert.equal(result.compatible,false,'the upgrade hint cannot make an unsupported protocol usable');
-  assert.equal(result.updateUrl,'https://drive.nuphyio.com/#/setting');
+  assert.equal(result.updateUrl,'https://drive.nuphy.io/#/setting');
 });
 
 test("upgrade guidance does not recommend a downgrade or guess unknown firmware and unsupported models", async () => {
@@ -264,7 +264,7 @@ test("a failed LED-count handshake retains the identified keyboard's firmware up
   assert.equal(result.compatible,false);
   assert.equal(result.perKeyReady,false);
   assert.equal(result.functionKeysReady,false);
-  assert.equal(result.updateUrl,'https://drive.nuphyio.com/#/setting');
+  assert.equal(result.updateUrl,'https://drive.nuphy.io/#/setting');
   const unplugged=checker.snapshot({...legacy,identified:false,firmwareDetectionAvailable:false,firmwareVersion:null});
   assert.equal(unplugged.status,'disconnected');
   assert.equal(unplugged.firmwareDetectionAvailable,false);
@@ -312,4 +312,19 @@ test("protocol and function-key readiness require both a usable connection and e
     assert.equal(result.perKeyReady,false);
     assert.equal(result.functionKeysReady,false);
   }
+});
+
+test('unqualified latest firmware is visible but not recommended; paired receiver notice is retained',async()=>{
+ const checker=new FirmwareChecker({fetchImpl:async()=>new Response(JSON.stringify(manifest('2.0.1.7',{dataList:[{languageType:'en-US',driverVersionItemList:[{data:['When using a 2.4G connection, both the keyboard firmware and receiver firmware must be updated together']}]}]})))});
+ await checker.refresh();const s=checker.snapshot(device('1.0.23.6'));
+ assert.equal(s.latestSupported,false);assert.equal(s.updateAvailable,true);assert.equal(s.upgradeRecommended,false);assert.equal(s.pairedReceiverUpdate,true);assert.equal(s.compatible,true);
+ const unsupported=checker.snapshot({...device('1.0.23.6'),capabilities:{perKey:false}});assert.equal(unsupported.compatible,false);
+});
+
+test('qualified AIRLINK firmware preserves older qualification and relies on native read probes',async()=>{
+ const checker=new FirmwareChecker({fetchImpl:async()=>new Response(JSON.stringify(manifest('2.0.0.7')))});
+ await checker.refresh();
+ const old=checker.snapshot(device('1.0.23.6'));assert.equal(old.latestSupported,true);assert.equal(old.upgradeRecommended,true);
+ const current=checker.snapshot(device('2.0.0.7'));assert.equal(current.latestSupported,true);assert.equal(current.upgradeRecommended,false);
+ assert.equal(checker.snapshot({...device('2.0.0.7'),capabilities:{perKey:false,functionKeyAdaptation:false}}).compatible,false);
 });

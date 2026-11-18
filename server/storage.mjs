@@ -138,6 +138,8 @@ export const defaultSettings = {
   autoConnect: true,
   codexTaskSource: "recent",
   codexLightMode: "keys",
+  codexLightZone: "backlight",
+  codexCommandKeysEnabled: true,
   codexWholeTaskId: "",
   codexBrightness: 100,
   codexSelectedPulse: true,
@@ -150,6 +152,8 @@ export const defaultSettings = {
   claudeTaskSource: "recent",
   claudeSlotIds: [],
   claudeLightMode: "keys",
+  claudeLightZone: "backlight",
+  claudeCommandKeysEnabled: true,
   claudeWholeTaskId: "",
   claudeBrightness: 100,
   claudeSelectedPulse: true,
@@ -180,7 +184,7 @@ export function validateSettings(input, previous = defaultSettings) {
         throw new Error("亮度应在 0–100 之间");
       s[k] = v;
     } else if (
-      ["codexEnabled", "codexKeyAdaptation", "codexKeycapFallback", "quotaSideEnabled", "autoConnect", "codexSelectedPulse", "codexAmbient",
+      ["codexCommandKeysEnabled","claudeCommandKeysEnabled","codexEnabled", "codexKeyAdaptation", "codexKeycapFallback", "quotaSideEnabled", "autoConnect", "codexSelectedPulse", "codexAmbient",
         "claudeEnabled", "claudeSelectedPulse", "claudeAmbient"].includes(k)
     ) {
       if (typeof v !== "boolean") throw new Error("开关设置无效");
@@ -205,6 +209,9 @@ export function validateSettings(input, previous = defaultSettings) {
       s[k] = [...v];
     } else if (k === "claudeWholeTaskId") {
       if (typeof v !== "string" || v.length > 80 || (v && !/^[A-Za-z0-9_.:-]+$/.test(v))) throw new Error("会话绑定格式无效");
+      s[k] = v;
+    } else if (k === "codexLightZone" || k === "claudeLightZone") {
+      if (!["backlight","side"].includes(v)) throw new Error("灯区无效");
       s[k] = v;
     } else if (k === "claudeLightMode") {
       if (!["keys","whole"].includes(v)) throw new Error("灯光模式无效");

@@ -10,7 +10,7 @@ export function FirmwareStatus({state}:{state:AppState|null;command:Command}){
   return <section className={`firmware-status ${outdated?'has-update':''}`} aria-label={copy('键盘固件','Keyboard firmware')}>
     <div className="firmware-copy">
       <h3>{outdated?<CircleAlert size={16}/>:<Check size={16}/>} {outdated?copy('请更新键盘固件','Update keyboard firmware'):current?copy('固件已是最新版','Firmware is up to date'):copy('键盘固件','Keyboard firmware')}</h3>
-      <p>{outdated?copy('请前往 NuPhyIO 安装最新固件，更新完成后即可使用。','Install the latest firmware in NuPhyIO, then return here to use your keyboard.'):`${copy('当前','Current')} ${fw.current}`}</p>
+      <p>{outdated?copy('请前往 NuPhyIO 安装最新固件，更新后返回重新检测。','Install the latest firmware in NuPhyIO, then return here to recheck compatibility.'):`${copy('当前','Current')} ${fw.current}`}</p>
     </div>
     {outdated&&<Button kind="primary" onClick={showFirmwareGuide}>{copy('前往 NuPhyIO 更新','Update in NuPhyIO')}</Button>}
   </section>;

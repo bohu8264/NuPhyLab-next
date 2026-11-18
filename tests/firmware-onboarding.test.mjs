@@ -21,7 +21,8 @@ test('updated firmware clears the old reminder even offline; an old or different
  Object.assign(state.firmware,{current:'4.0.18.6',status:'current',upgradeRecommended:false,compatible:true});assert.equal(currentFirmwareReady(state),true);assert.equal(firmwareUpdateSatisfied(state,previous),true);
  Object.assign(state.firmware,{latestConfirmed:false,status:'unavailable'});assert.equal(currentFirmwareReady(state),false);assert.equal(firmwareUpdateSatisfied(state,previous),true);
  state.device.modelId='air75-v3';assert.equal(firmwareUpdateSatisfied(state,previous),false);
- state.device.modelId='kick75';state.firmware.compatible=false;assert.equal(firmwareUpdateSatisfied(state,previous),false);
+ state.device.modelId='kick75';state.firmware.compatible=false;assert.equal(firmwareUpdateSatisfied(state,previous),true);
+ state.device.connected=false;assert.equal(firmwareUpdateSatisfied(state,previous),false);
 });
 test('old Kick prompts from current USB firmware before online flags exist, but never inherits another model',()=>{
  const state={device:{connected:true,modelId:'kick75',firmware:'4.0.12.6',readOnly:true}};
@@ -31,4 +32,13 @@ test('old Kick prompts from current USB firmware before online flags exist, but 
  state.firmware={modelId:'kick75',current:'4.0.12.6',latest:'4.0.99.6',latestConfirmed:true,latestSupported:false};
  assert.equal(firmwarePrompt(state).target,'4.0.18.6');assert.equal(firmwarePrompt(state).latestUnverified,true);
  state.device.connected=false;state.device.identified=false;assert.equal(firmwarePrompt(state),null);
+});
+
+test('unqualified future official updates never auto-prompt compatible keyboards',()=>{
+ const device={connected:true,modelId:'air75-v3',firmware:'2.0.0.7'};
+ const firmware={modelId:'air75-v3',current:'2.0.0.7',latest:'2.0.1.7',latestConfirmed:true,latestSupported:false,updateAvailable:true,status:'updateAvailable'};
+ assert.equal(firmwarePrompt({device,firmware}),null);
+ firmware.latestSupported=true;assert.equal(firmwarePrompt({device,firmware}),null,'a flag cannot override the local qualification list');
+ device.firmware='1.0.23.6';firmware.current=device.firmware;firmware.latest='2.0.0.7';
+ assert.equal(firmwarePrompt({device,firmware}).target,'2.0.0.7');
 });

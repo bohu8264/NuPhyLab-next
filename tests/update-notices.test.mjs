@@ -34,13 +34,13 @@ for(const language of ['zh-CN','en'])test(`actual Updates panel shows precise fi
   const commands=[],nativeCalls=[],Button=Object.defineProperty(()=>null,'name',{value:'Button'}),Driver=()=>null;
   const ui=createVMEnvironment({
     './primitives':{Button,run:p=>ui.track(p)},'./codexKeys':{nativeCodexKeys:async body=>{nativeCalls.push(plain(body));return true;}},
-    './StartupGuide':{useStartupCopy:()=> (zh,en)=>language==='en'?en:zh,OFFICIAL_DRIVER_URL:'https://drive.nuphyio.com/#/setting',OfficialDriverAccess:Driver},
+    './StartupGuide':{useStartupCopy:()=> (zh,en)=>language==='en'?en:zh,OFFICIAL_DRIVER_URL:'https://drive.nuphy.io/#/setting',OfficialDriverAccess:Driver},
     '../../shared/firmware-onboarding.mjs':{availableFirmwareUpdate},'../../package.json':{default:{version:'fixture-version'}},
   });
   const Component=(await ui.load(new URL('../ui/src/UpdatePreferences.tsx',import.meta.url))).exports.UpdatePreferences;
   const state=old(),panel=ui.mount(Component,{state,command:async body=>commands.push(plain(body))});
   assert.match(textOf(panel.tree),/1\.0\.23\.6/);assert.match(textOf(panel.tree),/1\.0\.16\.6/);
-  assert.equal(walkAll(panel.tree,node=>node.type==='a')[0].props.href,'https://drive.nuphyio.com/#/setting');
+  assert.equal(walkAll(panel.tree,node=>node.type==='a')[0].props.href,'https://drive.nuphy.io/#/setting');
   assert.equal(walkAll(panel.tree,node=>node.type===Driver).length,1,'reuse the native safe USB handoff');
   assert.ok(textOf(panel.tree).includes(language==='en'?'24 hours':'24 小时'));
   if(language==='en')assert.doesNotMatch(textOf(panel.tree),/[\u3400-\u9fff]/);

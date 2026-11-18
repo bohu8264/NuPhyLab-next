@@ -31,7 +31,14 @@ test('direct production UI labels and conditional labels have English translatio
       else if(ts.isConditionalExpression(node)){check(node.whenTrue);check(node.whenFalse);}
     };
     const visit=node=>{
-      if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&['t','tr'].includes(node.expression.text)&&node.arguments[0])check(node.arguments[0]);
+      if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&['t','tr'].includes(node.expression.text)&&node.arguments[0]){
+        if(file==='DockScenes.tsx'&&node.expression.text==='t'){
+          const english=node.arguments[1];
+          if(!english||!ts.isStringLiteralLike(english)||!english.text.trim()||han.test(english.text)){
+            missing.push(file+': '+node.arguments[0].getText(source));
+          }
+        }else check(node.arguments[0]);
+      }
       ts.forEachChild(node,visit);
     };
     visit(source);

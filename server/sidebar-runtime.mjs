@@ -1,6 +1,7 @@
 import {readFile} from 'node:fs/promises';
 import path from 'node:path';
 const nativeSwitches={
+ 'dock-scenes':['dock-scenes-shortcuts.json',false],
  'voice-input':['voice-input/enabled',false],
  'keyboard-pocket':['keyboard-pocket/settings.json',true],
  'selection-question':['selection-preferences.json',true],

@@ -48,6 +48,8 @@ test('whole mode and task choice persist independently and tracking retains six 
 
 test('service follows a task outside six slots, reacts to status changes, preserves the drawing and yields to games',async t=>{
  const tasks=Array.from({length:7},(_,i)=>task('task-'+i));const s=await fakeService(t,{tasks});
+ const sidebar=[...(await s.state()).settings.sidebarFeatures,'game'];
+ assert.equal((await s.command({op:'settings',settings:{sidebarFeatures:sidebar}})).ok,true);
  await s.command({op:'settings',settings:{...settings,codexEnabled:true,codexWholeTaskId:'task-6',brightness:100,codexStatusColors:{running:'#FF0000',completed:'#00FF00'}}});
  await s.command({op:'preview',colors:Array(84).fill('#112233')});
  await s.command({op:'settings',settings:{codexEnabled:true}});
@@ -56,8 +58,8 @@ test('service follows a task outside six slots, reacts to status changes, preser
  await until(s.state,v=>v.colors[0]==='#00ff00','status change did not recolor keyboard');
  await s.configure({tasks:tasks.slice(0,6)});await until(s.state,v=>v.colors.every(c=>c==='#000000'),'missing task did not go dark');
  await s.configure({tasks});await until(s.state,v=>v.colors[0]==='#ff0000','returning task not restored');
- await s.command({op:'gameStart',gameType:'snake'});state=await s.state();assert.ok(state.colors.filter(c=>c!=='#000000').length<10);
- await s.command({op:'gameStop'});assert.equal((await s.state()).colors[0],'#ff0000');
+ assert.equal((await s.command({op:'gameStart',gameType:'snake'})).ok,true);state=await s.state();assert.ok(state.colors.filter(c=>c!=='#000000').length<10);
+ assert.equal((await s.command({op:'gameStop'})).ok,true);assert.equal((await s.state()).colors[0],'#ff0000');
  assert.equal((await s.state()).device.state[10],0,'returning to Codex keeps side lights off');
  await s.command({op:'settings',settings:{codexLightMode:'keys'}});state=await s.state();assert.equal(state.colors[20],'#112233');assert.equal(state.colors[1],'#ff0000');
  await s.command({op:'settings',settings:{codexEnabled:false}});assert.equal((await s.state()).device.armed,true);assert.equal((await s.state()).colors[1],'#112233');

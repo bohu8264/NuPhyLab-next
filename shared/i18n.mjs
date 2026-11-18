@@ -1,6 +1,14 @@
 import selectionMessages from "./selection-messages.json" with {type:"json"};
 import {overlayMessages} from "./ui-overlays-i18n.mjs";
 export const messages = {
+  "当前固件的这组主灯颜色尚不能可靠恢复。可使用侧灯模式，或在 NuPhyIO 将主灯颜色设为白色后再启用背光。":"This firmware cannot reliably restore the current main color. Use side lighting, or set the main color to white in NuPhyIO before using backlighting.",
+  "请先在 NuPhyIO 选择一种原厂背光灯效；当前自定义灯效的亮度尚不能可靠恢复。侧灯仍可使用。":"Select a stock backlight effect in NuPhyIO first; the current custom effect brightness cannot be restored reliably. Side lighting remains available.",
+  "请先结束快捷键录制，再检查和恢复按键。":"Finish recording the shortcut before checking and restoring the keys.",
+  "正在恢复按键，请完成后再录制快捷键。":"Keys are being restored. Wait until this finishes before recording a shortcut.",
+  "该固件升级后的完整出厂键位已验证":"The complete factory keymap for this firmware upgrade has been verified.",
+  "升级后的 USB 标识格式已验证（仍需确认同一把实体键盘）":"The updated USB identifier format is verified. Confirm that this is the same physical keyboard.",
+  "键盘模式或配置已改变，原恢复记录已保留。":"The keyboard mode or configuration changed. The original recovery record has been retained.",
+
   "演奏模式":"Performance",
   "实验室":"Labs",
   "键盘口袋":"Keyboard Pocket",

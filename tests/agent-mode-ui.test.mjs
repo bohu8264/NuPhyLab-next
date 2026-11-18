@@ -22,6 +22,7 @@ async function fixture({source='codex',enabled=false,tab='tasks',handler=async()
     'lucide-react':Object.fromEntries(['ChevronRight','Info','RefreshCw','Check','CircleAlert','Keyboard','Moon','ArrowUp'].map(name=>[name,stub(name)])),
     '../../shared/codex-lighting.mjs':codex,'../../shared/claude-lighting.mjs':claude,'../../shared/codex-keys.mjs':codexKeys,'../../shared/claude-keys.mjs':claudeKeys,
     '../../shared/agent-lighting-view.mjs':view,'../../shared/layout.mjs':layouts,'../../shared/device-status.mjs':{lightingUnavailableMessage:()=> 'Unsupported fixture'},
+    './AgentSideLighting':{AgentLightingZone:stub('AgentLightingZone'),AgentSideLighting:stub('AgentSideLighting')},
     './AgentTabs':{AgentTabs:nodes.AgentTabs},'./AgentQuota':{AgentQuota:nodes.AgentQuota},'./CodexLightMode':{CodexLightMode:nodes.CodexLightMode},'./ClaudeLightMode':{ClaudeLightMode:nodes.ClaudeLightMode},
     './CodexSetup':{CodexSetup:nodes.CodexSetup},'./ClaudeSetup':{ClaudeSetup:nodes.ClaudeSetup},'./CodexKeyRecorder':{CodexKeyRecorder:nodes.CodexKeyRecorder,useAgentKeyCapture:()=>({ready:true,error:'',release:async()=>{}})},
     './FunctionKeyRecoveryDialog':{FunctionKeyRecoveryDialog:nodes.FunctionKeyRecoveryDialog},
@@ -29,6 +30,7 @@ async function fixture({source='codex',enabled=false,tab='tasks',handler=async()
     './StartupGuide':{useStartupCopy:()=>zh=>zh,refreshAppPermissions:async()=>{},requestAppPermission:async()=>{},showFirmwareGuide(){}},
     './KeyRecoveryPanel':{keyRecoveryProblem:()=>null,friendlyConnectionError:value=>value},'./Keyboard':{Keyboard:nodes.Keyboard},'./CodexStatusColors':{CodexStatusColors:nodes.CodexStatusColors},'./ClaudeStatusColors':{ClaudeStatusColors:nodes.ClaudeStatusColors},
     './useWorkspaceLayout':{useWorkspaceLayout:()=>({mode:'flow',style:{},previewAway:false,gridRef:{},stageRef:{},keyboardRef:{},auxiliaryRef:{},headerRef:{},returnToKeyboard(){}})},
+    './useAgentPreviewFit':{useAgentPreviewFit:()=>({ref:{},style:{}})},
   },{sessionStorage:{'nuphylab-agent-tab':tab}});
   ui.window.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});
   const current=state(source,enabled),command=async body=>{commands.push(plain(body));return handler(body);};
@@ -127,7 +129,7 @@ for(const source of['codex','claude'])test(`actual ${source} setup enables the s
 });
 
 test('actual AI lighting has no second start/stop/sleep action and uses the committed frame while artwork sleeps',async()=>{
-  const f=await fixture({enabled:true}),Lighting=(await f.ui.load(new URL('../ui/src/AgentLighting.tsx',import.meta.url))).exports.AgentLighting;
+  const f=await fixture({enabled:true}),Lighting=(await f.ui.load(new URL('../ui/src/AgentLighting.tsx',import.meta.url))).exports.BacklightLighting;
   f.current.lightPower={sleeping:true};f.current.codex.lighting={selectedId:'task-a',ownsOutput:true,outputOwner:{source:'codex',connectionSessionId:'fixture:1',mode:'keys',frameCommittedAt:10},pausedReason:null,sleeping:false,backgroundSleeping:true};
   f.current.previewColors=Array(84).fill('#d07d74');
   const instance=f.ui.mount(Lighting,{source:'codex',state:f.current,command:f.command}),buttons=walkAll(instance.tree,node=>node.type===f.nodes.Button).map(textOf);
@@ -138,7 +140,7 @@ test('actual AI lighting has no second start/stop/sleep action and uses the comm
 for(const source of['codex','claude'])for(const language of['zh','en'])test(`actual ${source} lighting labels the connection wake in ${language} and restores its normal preview without changing mode controls`,async()=>{
   const f=await fixture({source,enabled:true});
   f.ui.modules['./StartupGuide'].useStartupCopy=()=> (zh,en)=>language==='en'?en:zh;
-  const Lighting=(await f.ui.load(new URL('../ui/src/AgentLighting.tsx',import.meta.url))).exports.AgentLighting;
+  const Lighting=(await f.ui.load(new URL('../ui/src/AgentLighting.tsx',import.meta.url))).exports.BacklightLighting;
   f.current[source].lighting={selectedId:'task-a',ownsOutput:true,outputOwner:{source,connectionSessionId:'fixture:1',mode:'keys',frameCommittedAt:10},pausedReason:null};
   f.current.connectionWake={active:true,status:'playing',elapsedMs:800,durationMs:4400,sessionId:'fixture:1'};
   f.current.previewColors=Array(84).fill('#ffffff');

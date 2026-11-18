@@ -218,6 +218,12 @@ export class Hardware extends EventEmitter {
       if (epoch !== null && epoch !== this.transportEpoch)
         throw Object.assign(new Error('键盘连接正在恢复，请稍候。'), {code:'SESSION_CHANGED'});
       return result;
+    }).catch(error=>{
+      // Keep transport/output failures distinguishable from an unrelated UI
+      // command validation error (for example an empty AI task slot).
+      if(['arm','armConnectionWake','paint','restore','nativeLighting','side','acquireBoardSleepLease','releaseBoardSleepLease'].includes(op))
+        error.hardwareOperation=op;
+      throw error;
     });
     this.tail = promise.catch(() => {});
     return promise;
@@ -296,12 +302,32 @@ export class Hardware extends EventEmitter {
     if (connectionWake) {
       if (!supportsAirConnectionWake(this.state))
         throw Object.assign(new Error('此键盘尚未验证启动灯效接管，未开启灯光。'), {code:'CONNECTION_WAKE_UNSUPPORTED'});
-      await this.acquireBoardSleepLease();
+      const expectedProfile=this.state.lightingProfile??0;
+      const session=this.state.connectionSessionId,epoch=this.transportEpoch;
+      const sleep=await this.acquireBoardSleepLease({expectedProfile});
       // Native validates the profile and durable original before any write;
       // it returns only after keys and side lights are safely black. Never
       // interpose an ordinary restore/arm which can expose a stale palette.
-      const result = await this.request('armConnectionWake');
-      this.updateState({...result, armed:true, error:null, errorCode:null});
+      try {
+        const result = await this.request('armConnectionWake',{expectedProfile});
+        this.updateState({...result, armed:true, error:null, errorCode:null});
+      } catch(error) {
+        // Sleep is board-global. Return this startup's lease even if the
+        // following lighting command is rejected before native preparation.
+        // Never reconnect or cross to a replacement device to perform cleanup.
+        if(sleep?.boardSleepLease?.pending && this.state.connected &&
+           session===this.state.connectionSessionId && epoch===this.transportEpoch) {
+          try {
+            const restored=await this.request('releaseBoardSleepLease');
+            if(restored.verified!==true)throw new Error('键盘休眠恢复尚未通过校验');
+            if(restored.boardSleepLease)this.state.boardSleepLease=restored.boardSleepLease;
+          } catch(recoveryError) {
+            throw Object.assign(new Error(`${error.message}；键盘休眠恢复未完成：${recoveryError.message}`),
+              {code:'SLEEP_RESTORE_REQUIRED',hardwareOperation:'armConnectionWake',protocolDetail:`${error.protocolDetail??error.message}; ${recoveryError.protocolDetail??recoveryError.message}`,cause:error});
+          }
+        }
+        throw error;
+      }
       return;
     }
     if (this.state.armed) { await this.acquireBoardSleepLease(); return; }
@@ -315,11 +341,11 @@ export class Hardware extends EventEmitter {
     const result = await this.request("arm");
     this.updateState({ ...result, armed: true, error: null, errorCode: null });
   }
-  async acquireBoardSleepLease() {
+  async acquireBoardSleepLease({expectedProfile=this.state.lightingProfile??0} = {}) {
     if (this.state.capabilities?.boardSleepLease !== true) return;
-    const result = await this.request('acquireBoardSleepLease');
+    const result = await this.request('acquireBoardSleepLease',{expectedProfile});
     if (result.verified !== true)
-      throw Object.assign(new Error('键盘休眠设置尚未通过校验，已停止播放。'), {code:'SLEEP_VERIFY_FAILED'});
+      throw Object.assign(new Error('键盘休眠设置尚未通过校验，已停止播放。'), {code:'SLEEP_VERIFY_FAILED',hardwareOperation:'acquireBoardSleepLease'});
     if (result.boardSleepLease) this.state.boardSleepLease = result.boardSleepLease;
     return result;
   }
@@ -351,18 +377,39 @@ export class Hardware extends EventEmitter {
       throw new RangeError("输出亮度应在 0–100 之间");
     return corrected.map(color => scaleColor(color, brightness / 100));
   }
-  async restore() {
+  restorationVersion({session=this.state.connectionSessionId,epoch=this.transportEpoch,profile=this.state.lightingProfile??0} = {}) {
+    return this.verifiedRestorationScopes?.get(JSON.stringify([session,epoch,profile]))??0;
+  }
+  async restore({expectedProfile = this.state.lightingProfile ?? 0, currentProfile = false} = {}) {
     if (this.state.readOnly === true && !this.state.recoveryPending && !this.state.needsRestore && !this.state.unsafeWritesNeeded && !this.state.boardSleepLease?.pending)
       return {restored:true,verified:true,readOnly:true};
     if (!this.state.connected && !this.state.recoveryPending && !this.state.needsRestore && !this.state.boardSleepLease?.pending) return;
     try {
-      const result = await this.request("restore");
+      const session=this.state.connectionSessionId,epoch=this.transportEpoch;
+      const response = await this.request("restore",currentProfile?{}:{expectedProfile});
+      // Native's side-only journal path returns its verified sleep release
+      // inside sleepRestoration; the whole-lighting path also exposes it at
+      // the top level. Normalize both before caching state or acknowledging
+      // recovery, without trusting an unverified nested sleep result.
+      const nestedSleep=response.sleepRestoration?.verified===true ? response.sleepRestoration.boardSleepLease : undefined;
+      const result=response.boardSleepLease===undefined && nestedSleep
+        ? {...response,boardSleepLease:nestedSleep} : response;
       if (result.verified !== true) throw new Error("键盘灯效恢复尚未通过校验");
+      this.verifiedRestorations=(this.verifiedRestorations??0)+1;
+      const profile=result.lightingProfile??(currentProfile?null:expectedProfile);
+      const sleepPending=result.boardSleepLease?.pending ?? this.state.boardSleepLease?.pending;
+      if(profile!==null && result.recoveryPending!==true && result.needsRestore!==true &&
+         result.sideRecoveryPending!==true && result.lightingRecoveryPending!==true && !sleepPending) {
+        this.verifiedRestorationScopes??=new Map();
+        const key=JSON.stringify([session,epoch,profile]);
+        this.verifiedRestorationScopes.set(key,(this.verifiedRestorationScopes.get(key)??0)+1);
+      }
       this.restoreFailure = null;
-      this.updateState({ ...result, armed: false, needsRestore: false, recoveryPending: false, error: null, errorCode: null });
+      this.updateState({ ...result, armed: false, needsRestore: false, recoveryPending: false, sideRecoveryPending: false, lightingRecoveryPending: false, error: null, errorCode: null });
       if (!this.state.connected) await this.status();
       return result;
     } catch (error) {
+      error.hardwareOperation??='restore';
       this.state = { ...this.state, armed: false, error: error.message, errorCode: error.code ?? "RESTORE_REQUIRED" };
       throw error;
     }

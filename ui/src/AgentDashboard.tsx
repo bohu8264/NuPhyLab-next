@@ -1,3 +1,5 @@
+import {agentLightZone} from '../../shared/agent-cohort.mjs';
+import {useStartupCopy} from './StartupGuide';
 import {useEffect,useRef,useState} from 'react';
 import {ChevronRight,Info,RefreshCw} from 'lucide-react';
 import {STATUS_NAMES} from '../../shared/codex-lighting.mjs';
@@ -5,6 +7,8 @@ import {CLAUDE_STATUS_NAMES} from '../../shared/claude-lighting.mjs';
 import {codexBindings,rebindCodexKey,CODEX_KEYS} from '../../shared/codex-keys.mjs';
 import {claudeBindings,rebindClaudeKey} from '../../shared/claude-keys.mjs';
 import {AgentTabs,type AgentTab} from './AgentTabs';
+import {AgentLightingZone} from './AgentSideLighting';
+import './agent-light-layout.css';
 import {AgentQuota} from './AgentQuota';
 import type {AgentSource} from './AgentSourceSwitch';
 import {CodexLightMode} from './CodexLightMode';
@@ -56,7 +60,9 @@ export function AgentDashboard({source,state,command,focusColors,readState=readA
   useEffect(()=>{if(focusColors)setTab('lights');},[focusColors]);
   const changeTab=(value:AgentTab)=>{setTab(value);sessionStorage.setItem('nuphylab-agent-tab',value);};
   const claude=source==='claude',name=claude?'Claude Code':'Codex';
+  const copy=useStartupCopy();
   const settings:Record<string,unknown>=state?.settings??{};
+  const sideMode=agentLightZone(settings,source,state?.device.modelId)==='side',commandsEnabled=settings[`${source}CommandKeysEnabled`]!==false;
   const integration=claude?state?.claude:state?.codex,tasks=integration?.tasks??[];
   const slots=(integration?.slots??[]).map(item=>item&&typeof item==='object'?item as Task:null);
   const bindings=claude?claudeBindings(settings):codexBindings(settings);
@@ -163,12 +169,13 @@ export function AgentDashboard({source,state,command,focusColors,readState=readA
   const emptySlots=!slots.some(Boolean);
   const statusMessage=initialLoading?'正在读取任务状态…':serviceError?'本地服务暂未响应，正在重新连接。':claude&&hookState.status==='unknown'?'正在检查 Claude Code 接入…':claude&&hookState.installed===false?'需要完成 Claude Code 接入才能确认状态。':claude&&currentSource.spoolReadable===false?'会话事件暂不可读，稍后自动重试。':dataUnavailable?'任务状态暂不可读，保留原有绑定并自动重试。':tasks.length===0?(claude?'本机当前没有可显示的 Claude Code 会话。':'先在 Codex 中打开或创建一个聊天，再刷新状态。'):emptySlots?'此来源下暂无任务。':'';
   const matchingCommands=commands.filter(item=>`${t(item.label)} ${t(operationReason(item))}`.toLowerCase().includes(search.trim().toLowerCase()));
-  return <div className="agent-v5">
-    <AgentTabs tab={tab} onChange={changeTab} state={state} command={command} sourceDisabled={modeBusy||Boolean(serviceError)}/>
-    <section className="agent-shortcut-toggle agent-mode-control" aria-label={t(claude?'Claude Code 模式':'Codex 模式')} aria-busy={modeBusy||undefined}>
-      <div><h2>{t(claude?'Claude Code 模式':'Codex 模式')}</h2><p>{t('开启后，对话键显示状态并控制对应对话；关闭后恢复普通按键。')}</p>{!state?.device.connected&&state?.bluetooth?.connected&&<p>{t('实时灯光需要 USB 连接。')}</p>}{modeBusy&&<p role="status">{t('正在切换模式…')}</p>}</div>
+  const modeControl=<section className="agent-shortcut-toggle agent-mode-control" aria-label={t(claude?'Claude Code 模式':'Codex 模式')} aria-busy={modeBusy||undefined}>
+      <div><h2>{t(claude?'Claude Code 模式':'Codex 模式')}</h2><p>{sideMode?copy('开启后，侧灯显示整体任务状态；关闭后恢复原有灯光。','Side LEDs show overall task status when enabled. Turning the mode off restores the original lighting.'):t('开启后，对话键显示状态并控制对应对话；关闭后恢复普通按键。')}</p>{!state?.device.connected&&state?.bluetooth?.connected&&<p>{t('实时灯光需要 USB 连接。')}</p>}{modeBusy&&<p role="status">{t('正在切换模式…')}</p>}</div>
       <Switch label={t(claude?'Claude Code 模式':'Codex 模式')} checked={enabled} disabled={!state||Boolean(serviceError)||modeBusy||(state.device.capabilities?.perKey===false&&!enabled)} onChange={value=>{void changeMode(value);}}/>
-    </section>
+    </section>;
+  return <div className="agent-v5" data-agent-tab={tab}>
+    <AgentTabs tab={tab} onChange={changeTab} state={state} command={command} sourceDisabled={modeBusy||Boolean(serviceError)}/>
+    {tab==='lights'?<div className="agent-light-controls">{modeControl}<AgentLightingZone source={source} state={state} command={command}/></div>:modeControl}
     {modeError&&<div className="agent-feedback-v6" role="alert"><p>{t(modeError)}</p><Button kind="ghost" busy={modeBusy} onClick={()=>{if(modeRetry.current!==null)void changeMode(modeRetry.current);}}>{t(modeRetry.current?'重试开启模式':'重试关闭模式')}</Button></div>}
     {recoveryUnconfirmed&&<div className="agent-feedback-v6 agent-mode-recovery" role="status"><p>{t('模式已关闭，部分按键的原功能尚未确认。请确认当前连接的是原来那把键盘，再检查并恢复。')}</p><div><Button kind="secondary" disabled={modeBusy||Boolean(serviceError)||state?.device.connected!==true} onClick={event=>{recoveryTrigger.current=event.currentTarget;setRecoveryOpen(true);}}>{t('检查并恢复按键')}</Button><Button kind="ghost" onClick={()=>window.dispatchEvent(new CustomEvent('nuphylab:navigate',{detail:'device'}))}>{t('查看设备')}</Button></div></div>}
     {restoreError&&!recoveryUnconfirmed&&<p className="agent-warning" role="alert">{t('原有按键尚未恢复，请重试。')}<Button kind="ghost" onClick={()=>run(command({op:'agentMode',source,enabled:false}))}>{t('重试恢复')}</Button></p>}
@@ -178,16 +185,19 @@ export function AgentDashboard({source,state,command,focusColors,readState=readA
     {tab==='tasks'&&<section className="agent-tasks-page">
       <div className="agent-connection-row"><span className={`agent-live-status ${integrationReady?'connected':''}`}><i/>{t(integrationReady?`${name} 已接入`:claude?'尚未接入 Claude Code':'Codex 暂不可用')}</span><Button kind="ghost" onClick={()=>setAllOperations(true)}>{t('额度与全部操作')}</Button></div>
       {failedKeys.length>0&&<p className="agent-warning" role="alert">{t('这些按键被系统占用，请更换绑定：')}{failedKeys.map(code=>bindings.find(key=>key.code===code)?.label??code).join('、')}</p>}
-      <div className="agent-task-heading"><h2>{t('任务键')}</h2><span>{t(taskSource==='custom'?'手动绑定任务':taskSource==='recent'?'按最近顺序自动分配':taskSource==='pinned'?'显示固定任务':taskSource==='active'?'仅显示进行中会话':'按关注程度自动分配')}</span><label>{t('任务列表')}<select aria-label={t(claude?'会话来源':'任务来源')} value={taskSource} onChange={e=>set({[`${source}TaskSource`]:e.target.value})}>{sources.map(([id,label])=><option key={id} value={id}>{t(label)}</option>)}</select></label></div>
+      {!sideMode&&<><div className="agent-task-heading"><h2>{t('任务键')}</h2><span>{t(taskSource==='custom'?'手动绑定任务':taskSource==='recent'?'按最近顺序自动分配':taskSource==='pinned'?'显示固定任务':taskSource==='active'?'仅显示进行中会话':'按关注程度自动分配')}</span><label>{t('任务列表')}<select aria-label={t(claude?'会话来源':'任务来源')} value={taskSource} onChange={e=>set({[`${source}TaskSource`]:e.target.value})}>{sources.map(([id,label])=><option key={id} value={id}>{t(label)}</option>)}</select></label></div>
       <div className="agent-task-table" role="table" aria-label={t('任务键')}><div className="agent-task-columns" role="row"><span role="columnheader">{t('按键')}</span><span role="columnheader">{t('绑定任务')}</span><span role="columnheader">{t('当前状态')}</span><span/></div>
         {Array.from({length:6},(_,index)=>{const task=slots[index]??null,selected=Boolean(task&&lighting.selectedId===taskId(task));return <div className="agent-task-row" role="row" key={index}>
           <div role="cell"><button className={`agent-key ${selected?'selected':''}`} aria-label={t(`打开任务 ${index+1}`)} aria-current={selected?'true':undefined} disabled={!task} onClick={()=>task&&openTask(task)}>{t(bindings[index].label)}</button></div>
           <div className="agent-task-name" role="cell">{taskSource==='custom'?<select aria-label={t(`绑定任务 ${index+1}`)} value={bound?.[index]??''} onChange={e=>{const next=Array.from({length:6},(_,i)=>bound?.[i]??'');const duplicate=e.target.value?next.indexOf(e.target.value):-1;if(duplicate>=0&&duplicate!==index)next[duplicate]=next[index];next[index]=e.target.value;set({[claude?'claudeSlotIds':'slotIds']:next});}}><option value="">{t('未绑定任务')}</option>{tasks.map(task=><option key={taskId(task)} value={taskId(task)}>{String(task.title??task.name??t('未命名任务'))}</option>)}{bound?.[index]&&!task&&<option value={bound[index]}>{t('已绑定任务（当前不可用）')}</option>}</select>:<button className={!task?'muted':''} disabled={!task} title={String(task?.title??task?.name??'')} translate="no" onClick={()=>task&&openTask(task)}>{String(task?.title??task?.name??t('未绑定任务'))}</button>}</div>
           <span role="cell" className={`agent-task-status ${task?statusClass(String(task.status)):'idle'}`} title={selected?t('控制中'):undefined}><i/>{t(statusLabel(task))}</span><div role="cell"><Button kind="ghost" aria-label={t(`更改任务键 ${index+1}`)} onClick={()=>setRecording({group:'task',index,keys:bindings.map(item=>item.code)})}>{t('更改按键')}</Button></div>
         </div>;})}</div>
+      </>}
+      {sideMode&&<p>{copy('侧灯模式已释放任务键绑定（默认为 F1–F6），不使用任务键跳转。','Side mode releases task bindings (F1–F6 by default) and does not use task-key navigation.')}</p>}
+      <div className="agent-command-key-toggle"><Switch label={copy('启用命令键（默认 F7–F12）','Enable command keys (F7–F12 by default)')} checked={commandsEnabled} disabled={!state} onChange={value=>set({[`${source}CommandKeysEnabled`]:value})}/></div>
       <div className="agent-command-heading"><h2>{t('命令键')}</h2><Button kind="ghost" disabled={!state} onClick={openEditor}>{t('编辑命令键')}</Button></div>
       {!claude&&enabled&&Boolean(object(keys.commandBridge).message)&&<p className="agent-feedback-v6" role="status">{t(String(object(keys.commandBridge).message))}</p>}
-      <div className="agent-command-strip">{Array.from({length:6},(_,index)=>{const id=commandIds[index]??'none',item=commands.find(item=>item.id===id);return <button key={index} disabled={!item||operationDisabled(item)} title={releasingDictation(id)?t('结束听写'):item&&operationUnavailable(item)?t(operationReason(item)):!claude&&!canSend?t(accessIssue):id==='dictation'?t(dictation.mode==='toggle'?'听写时按一次开始，再按一次结束。':'听写时按住对应按键，松开结束。'):t(item?.label??'未绑定')} onClick={()=>execute(id)}><kbd>{t(bindings[index+6].label)}</kbd><span>{t(releasingDictation(id)?'结束听写':(!claude&&commandShortLabels[id])||item?.label||'未绑定')}</span></button>;})}</div>
+      <div className="agent-command-strip">{Array.from({length:6},(_,index)=>{const id=commandIds[index]??'none',item=commands.find(item=>item.id===id);return <button key={index} disabled={!commandsEnabled||!item||operationDisabled(item)} title={releasingDictation(id)?t('结束听写'):item&&operationUnavailable(item)?t(operationReason(item)):!claude&&!canSend?t(accessIssue):id==='dictation'?t(dictation.mode==='toggle'?'听写时按一次开始，再按一次结束。':'听写时按住对应按键，松开结束。'):t(item?.label??'未绑定')} onClick={()=>execute(id)}><kbd>{t(bindings[index+6].label)}</kbd><span>{t(releasingDictation(id)?'结束听写':(!claude&&commandShortLabels[id])||item?.label||'未绑定')}</span></button>;})}</div>
       {dictationError&&!keys.held&&commandIds.includes('dictation')&&<p className="agent-warning" role="status">{t('听写')}: {t(dictationError)}</p>}
       {ordinaryKeys.length>0&&<p className="agent-note">{t('这些绑定是普通按键，开启本模式时会被全局接管，期间无法用它们正常输入：')}{ordinaryKeys.map(key=>t(key.label)).join('、')}</p>}
       {statusMessage&&<div className="agent-feedback-v6" role="status"><p>{t(statusMessage)}</p>{Boolean(serviceError||dataUnavailable)&&<small>{t('保留上次内容与绑定；恢复读取后自动更新。')}</small>}<div>{claude&&hookState.installed===false?<Button kind="ghost" onClick={()=>changeTab('setup')}>{t('接入设置')}</Button>:<Button kind="ghost" busy={operationBusy==='refreshState'} onClick={refresh}>{t('刷新状态')}</Button>}{emptySlots&&tasks.length>0&&<Button kind="ghost" onClick={()=>document.querySelector<HTMLSelectElement>('.agent-task-heading select')?.focus()}>{t('选择其他来源')}</Button>}</div></div>}
