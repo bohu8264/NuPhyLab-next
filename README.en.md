@@ -6,6 +6,12 @@ NuPhy Lab is a macOS lighting studio for **NuPhy AIR65 / AIR75 / AIR100 V3, NODE
 
 It includes drawing, animation, key-triggered effects, games, audio-reactive lighting, a local artwork library, and Codex / Claude Code task shortcuts and status lights.
 
+## Voice Control
+
+Save a model and API key in **Settings → Models & API**, turn on **Voice Control** in the page header, then click **Speak a command**. Try “Add Keyboard Pocket to my sidebar and turn it on,” “Remove Lighting Games,” or “Set keyboard brightness to 35 percent.” Allow microphone and speech recognition access when macOS asks. Your Mac transcribes the audio and your selected model interprets the command text. Use **Voice Input** for dictation into other apps.
+
+Press Control + Shift + Space to speak, then press it again to run the command. Open the settings beside Voice Control to see the current shortcut. To change it, click the displayed key, then press and release the new key or chord. Say “Set the dictation shortcut to left Ctrl” or “Set the dictation shortcut to Q” to change the separate Voice Input shortcut.
+
 ## Feature Center and Library
 
 For new users, the sidebar starts with Lighting Studio, Library and AI Assistant. Upgrading keeps entries for tools already used or enabled; you can remove them at any time. Open **Feature Center** to add Lighting Games, Typing Sounds, Music Mode, Smart Selection, Drag Convert, Keyboard Pocket, Voice Input or Dock Scenes. The three default entries can also be removed. Feature Center, Device and Settings always remain available. Removing a tool turns it and its shortcuts off while retaining its content and preferences. Re-add it, then enable it when needed.

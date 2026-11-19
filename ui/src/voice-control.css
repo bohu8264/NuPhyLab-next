@@ -1,0 +1,27 @@
+.lab-page-tools{display:flex;align-items:center;gap:16px;min-width:0}
+.lab-voice-control{position:relative;flex:none;color:#292929}
+.lvc-toolbar{display:flex;align-items:center;gap:9px;padding:3px 9px 3px 4px;border:1px solid #ddd;border-radius:9px;background:#fafafa}
+.lvc-talk,.lvc-icon,.lvc-actions button,.lvc-review button,.lvc-panel form button{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:6px;background:transparent;color:inherit;font:inherit;cursor:pointer}
+.lvc-talk{min-height:25px;padding:0 5px;font-size:12px;font-weight:550;white-space:nowrap}
+.lvc-switch{width:26px;height:16px;border:0;border-radius:12px;background:#bbb;padding:2px;cursor:pointer}
+.lvc-switch span{display:block;width:12px;height:12px;border-radius:50%;background:white;transition:transform .14s}
+.lvc-switch[aria-checked=true]{background:#262626}.lvc-switch[aria-checked=true] span{transform:translateX(10px)}
+.lab-voice-control button:focus-visible,.lvc-panel input:focus-visible{outline:2px solid #636363;outline-offset:2px}
+.lab-voice-control button:disabled{opacity:.5;cursor:default}
+.lvc-panel{position:absolute;right:0;top:calc(100% + 8px);width:min(298px,calc(100vw - 80px));padding:14px 15px;z-index:30;text-align:start;white-space:normal;color:#292929;background:#fff;border:1px solid #d9d9d9;border-radius:12px;box-shadow:0 6px 24px #0002}
+.lvc-panel header,.lvc-actions,.lvc-review{display:flex;align-items:center;gap:8px}
+.lvc-panel header{justify-content:space-between;font-size:14px}.lvc-panel p,.lvc-feedback{font-size:12px;line-height:1.55;margin:9px 0}
+.lvc-feedback{white-space:pre-line}.lvc-feedback:empty{display:none}.lvc-words{overflow-wrap:anywhere}
+.lvc-panel small{display:block;margin-top:9px;color:#626262;font-size:11px;line-height:1.5}
+.lvc-icon{min-width:26px;min-height:25px}.lvc-actions{justify-content:flex-end;margin-top:8px}
+.lvc-actions button,.lvc-review button,.lvc-panel form button{font-size:12px;padding:5px 8px;background:#f3f3f3}
+.lvc-panel button.lvc-primary{background:#272727;color:white}
+.lvc-panel form{display:grid;gap:6px;margin-top:8px}.lvc-panel form>label{font-size:12px}
+.lvc-panel input{width:100%;color:inherit;background:white;border:1px solid #bbb;border-radius:6px;padding:6px;font:inherit;font-size:13px}
+.lvc-panel form button{justify-self:end}.lvc-review p{flex:1;overflow-wrap:anywhere}
+.lvc-shortcut{padding:10px 0;border-bottom:1px solid #e6e6e6}
+.lvc-shortcut>div{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px}
+.lvc-shortcut button{min-width:58px;padding:4px 8px;border:1px solid #d8d8d8;border-radius:6px;background:#f6f6f6;color:inherit;font:inherit;cursor:pointer}
+.lvc-shortcut small{margin-top:5px}
+@media(max-width:820px){.lab-page-tools{gap:8px}.lab-page-tools .lab-connection{max-width:145px}}
+@media(max-width:620px){.lab-page-tools{margin-left:auto}.lab-page-tools .lab-connection span{display:none}.lvc-panel{position:fixed;right:12px;top:64px}}

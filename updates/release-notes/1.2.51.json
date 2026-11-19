@@ -1,0 +1,13 @@
+{
+  "version": "1.2.51",
+  "zh-CN": [
+    "主页顶部新增独立的语音控制开关。说出指令即可添加或移除侧栏功能、开关功能、切换页面或调节亮度和音量。",
+    "语音指令在 Mac 本机转写，由「模型与 API」中的服务理解。原有语音输入继续用于听写。",
+    "语音控制支持自定义单键或组合键。按一次说指令，再按一次执行，打开设置可查看当前键位，点击键位即可更改。听写快捷键支持用语音指定左、右修饰键。"
+  ],
+  "en": [
+    "Voice Control in the page header lets you add or remove sidebar tools, turn features on or off, navigate and adjust brightness or volume.",
+    "Commands are transcribed on your Mac and interpreted by the service in Models & API. Voice Input continues to handle dictation.",
+    "Set a key or chord for Voice Control. Press once to speak and again to run. Open settings to see the current shortcut, then click the key to change it. Dictation commands recognize left and right modifier keys."
+  ]
+}

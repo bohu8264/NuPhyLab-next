@@ -32,6 +32,7 @@ type Preferences = {
 };
 type Status = {
     supported: boolean;
+    modelSupported?: boolean;
     ready?: boolean;
     setupState?: string;
     shortcutConflict?: boolean;
@@ -54,13 +55,14 @@ type Status = {
 const defaults: Preferences = { enabled: false, voiceEnabled: false, defaultAction: 'translate', shortcut: { keyCode: 12, modifiers: 2560, label: '⌥ ⇧ Q' }, configuration: { provider: 'openAI', endpoint: 'https://api.openai.com/v1/responses', model: '', apiProtocol: 'responses', imageInputConfirmed: false, maximumOutputTokens: 4096 } };
 // Keep one activation target for WebKit and accessibility, without an outer
 // label forwarding clicks from the decorative switch thumb.
-function Switch({ checked, onChange, label, disabled }: {
+function Switch({ checked, onChange, label, disabled, voiceId }: {
+    voiceId?:string;
     checked: boolean;
     onChange: (value: boolean) => void;
     label: string;
     disabled?: boolean;
 }) {
-    return <div className={'switch-field ' + (disabled ? 'disabled' : '')}><button type="button" className={'switch ' + (checked ? 'checked' : '')} role="switch" aria-checked={checked} aria-label={t(label)} disabled={disabled} onClick={() => onChange(!checked)}><span /></button></div>;
+    return <div className={'switch-field ' + (disabled ? 'disabled' : '')}><button type="button" className={'switch ' + (checked ? 'checked' : '')} data-voice-control={voiceId} role="switch" aria-checked={checked} aria-label={t(label)} disabled={disabled} onClick={() => onChange(!checked)}><span /></button></div>;
 }
 async function native(op: string, body: Record<string, unknown> = {}): Promise<any> {
     const bridge = (window as unknown as {
@@ -216,7 +218,7 @@ export function SelectionLab() {
   <div className="sl-settings-card">
    <div className="sl-enable-row">
     <div className="sl-row-copy"><h2>{t("启用智能框选")}</h2><p>{t("按下快捷键，拖动框选，松开即答。")}</p></div>
-    <Switch label={t("开启智能框选")} checked={prefs.enabled} disabled={!status || unavailable || busy} onChange={enabled => void save({ enabled })}/>
+    <Switch voiceId="selection-question" label={t("开启智能框选")} checked={prefs.enabled} disabled={!status || unavailable || busy} onChange={enabled => void save({ enabled })}/>
    </div>
    <div className="sl-preferences">
     <div className="sl-preference-row"><div className="sl-row-copy"><h3>{t("快捷键")}</h3><p>{t(recording ? '按下键盘快捷键或鼠标侧键，松开保存；Esc 取消。' : '点击后按键盘快捷键或鼠标侧键')}</p></div>
@@ -238,9 +240,9 @@ export function SelectionLab() {
     <div className="sl-preference-row sl-default-action-row"><div className="sl-row-copy"><h3>{t("松开后")}</h3><p>{t(prefs.defaultAction === 'reply' ? "结合选中内容和口述要求生成回复" : "框选时可用滚轮切换")}</p></div>
      <div className="sl-actions" role="group" aria-label={t("默认框选动作")}>{selectionActions.filter(([value]) => enabledActions.includes(value)).map(([value, label]) => <button key={value} aria-pressed={prefs.defaultAction === value} disabled={!status || unavailable || busy} onClick={() => void changeAction(value)}>{t(label)}</button>)}</div>
     </div>
-    <div className="sl-preference-row sl-translation-row"><div className="sl-row-copy"><label htmlFor="selection-translation-language">{t("翻译为")}</label><p>{t("保存后，后续翻译默认使用此语言。")}</p></div><select id="selection-translation-language" aria-label={t("翻译目标语言")} value={prefs.translationLanguage ?? 'zh-CN'} disabled={!status || unavailable || busy} onChange={event => void save({ translationLanguage: event.target.value as TranslationLanguage })}>{translationLanguages.map(item => <option key={item.id} value={item.id}>{item.id === "zh-CN" ? item.label : t(item.label)}</option>)}</select></div>
-    <div className="sl-preference-row"><div className="sl-row-copy"><h3>{t("按住说话")}</h3><p>{t("按住时说出问题，语音在本机转写。")}</p></div><Switch label={t("开启按住说话")} checked={prefs.voiceEnabled} disabled={!status || unavailable || busy} onChange={voiceEnabled => void save({ voiceEnabled })}/></div>
-    <div className="sl-preference-row sl-image-row"><div className="sl-row-copy"><h3>{t("发送选区图片")}</h3><p>{t("需要支持图片的模型；关闭时只发送识别文字。")}</p></div><Switch label={t("发送选区图片")} checked={prefs.configuration.imageInputConfirmed} disabled={!status || unavailable || busy} onChange={value => void saveImageConsent(value)}/></div>
+    <div className="sl-preference-row sl-translation-row"><div className="sl-row-copy"><label htmlFor="selection-translation-language">{t("翻译为")}</label><p>{t("保存后，后续翻译默认使用此语言。")}</p></div><select data-voice-control="translation" id="selection-translation-language" aria-label={t("翻译目标语言")} value={prefs.translationLanguage ?? 'zh-CN'} disabled={!status || unavailable || busy} onChange={event => void save({ translationLanguage: event.target.value as TranslationLanguage })}>{translationLanguages.map(item => <option key={item.id} value={item.id}>{item.id === "zh-CN" ? item.label : t(item.label)}</option>)}</select></div>
+    <div className="sl-preference-row"><div className="sl-row-copy"><h3>{t("按住说话")}</h3><p>{t("按住时说出问题，语音在本机转写。")}</p></div><Switch voiceId="selection-speech" label={t("开启按住说话")} checked={prefs.voiceEnabled} disabled={!status || unavailable || busy} onChange={voiceEnabled => void save({ voiceEnabled })}/></div>
+    <div className="sl-preference-row sl-image-row"><div className="sl-row-copy"><h3>{t("发送选区图片")}</h3><p>{t("需要支持图片的模型；关闭时只发送识别文字。")}</p></div><Switch voiceId="selection-images" label={t("发送选区图片")} checked={prefs.configuration.imageInputConfirmed} disabled={!status || unavailable || busy} onChange={value => void saveImageConsent(value)}/></div>
    </div>
    <div className="sl-connections">
     <div className="sl-connection-row"><KeyRound size={15} strokeWidth={1.5}/><span className="sl-connection-label">{t("模型服务")}</span><span className="sl-connection-value" title={t(configured ? prefs.configuration.model : undefined)}>{t(!status ? '正在读取' : configured ? `${t(provider?.name || prefs.configuration.provider)} · ${prefs.configuration.model}` : '尚未配置')}</span><button className="sl-text-button" onClick={openSettings}>{t("设置")}<ChevronRight size={13}/></button></div>
@@ -281,8 +283,8 @@ export function SelectionPermissionSettings() {
     const entries = [
         { id: 'accessibility' as const, title: '辅助功能', detail: '用于识别受保护的输入区域。新版 macOS 中可能显示为“设备控制和数据访问”。' },
         { id: 'inputMonitoring' as const, title: '输入监控', detail: '用于识别你设置的全局单键、组合键和松开动作。' },
-        { id: 'microphone' as const, title: '麦克风', detail: '仅在启用“按住说话”并保持按住时录音。' },
-        { id: 'speechRecognition' as const, title: '语音识别', detail: '将录音在本机转成问题；松开后发送问题文本。' },
+        { id: 'microphone' as const, title: '麦克风', detail: '用于智能框选的按住说话，以及主动开始的语音指令。' },
+        { id: 'speechRecognition' as const, title: '语音识别', detail: '在本机将语音问题或指令转成文字。' },
         { id: 'screenRecording' as const, title: '屏幕录制', detail: '仅在主动框选时截取选定区域，用于本机文字识别和提问。' },
     ];
     return <div className="lab-permission-preferences selection-permissions">
@@ -371,7 +373,7 @@ export function SelectionAPISettings() {
     const customAddress = !provider || provider.id === 'custom' || !provider.endpoint || config.endpoint !== provider.endpoint || config.apiProtocol !== provider.protocol;
     const validTokens = Number.isInteger(config.maximumOutputTokens) && config.maximumOutputTokens >= 1 && config.maximumOutputTokens <= 16384;
     const validModel = new TextEncoder().encode(config.model).length <= 256 && !/\s/.test(config.model);
-    const canSave = !!status && status.supported !== false && !busy && !!config.endpoint.trim() && validTokens && validModel;
+    const canSave = !!status && (status.supported !== false || status.modelSupported === true) && !busy && !!config.endpoint.trim() && validTokens && validModel;
     const canRequest = canSave && (!!key.trim() || hasKey);
     const accountListSupported = !config.provider.startsWith('qwen');
     const working = !!busy;
@@ -451,7 +453,7 @@ export function SelectionAPISettings() {
         }
     }
     return <section className="selection-api-settings models-settings" aria-label={t("模型与 API 设置")}>
-  <header className="models-heading"><h2>{t("模型与 API")}</h2><p>{t("连接自己的模型服务，用于智能框选。")}</p></header>
+  <header className="models-heading"><h2>{t("模型与 API")}</h2><p>{t("连接自己的模型服务，用于智能框选和语音控制。")}</p></header>
   <div className="models-card" aria-busy={working}>
    <fieldset disabled={!status || working}>
     <div className="models-field">

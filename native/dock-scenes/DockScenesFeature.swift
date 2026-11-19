@@ -24,6 +24,11 @@ final class DockScenesFeature {
     var english = false { didSet { controller?.english = english } }
     var isApplying: Bool { controller?.isApplying == true }
     var isRecording: Bool { editor != nil }
+    func usesShortcut(keyCode:UInt32,flags:UInt64) -> Bool {
+        guard added==true, enabled, let state=controller?.state,
+              let shortcut=try? DockShortcut(keyCode:keyCode,flags:NSEvent.ModifierFlags(rawValue:UInt(flags))) else {return false}
+        return state.scenes.contains { state.shortcut(for:$0.id)==shortcut }
+    }
 
     init(directory: URL, legacy: URL) {
         profile = directory.appendingPathComponent("dock-scenes", isDirectory: true)

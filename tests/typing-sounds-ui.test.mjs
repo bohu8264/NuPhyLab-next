@@ -235,7 +235,7 @@ test('range debounces changes, flushes once on completion, and rolls back failed
 });
 
 test('formal navigation places Typing Sounds below Lighting Games and opens its independent page',async()=>{
-  const app=await appDraftFixture();
+  const app=await appDraftFixture({state:{settings:{sidebarFeatures:['studio','game','typing-sounds']}}});
   const nav=app.nodes().filter(n=>n.type==='button').map(n=>app.text(n));
   assert.ok(nav.indexOf('模拟声浪')>nav.indexOf('灯光游戏'));
   await app.click('模拟声浪');assert.ok(app.child('TypingSounds'));

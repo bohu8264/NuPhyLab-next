@@ -425,6 +425,17 @@ import Carbon
         default:break
         }
     }
+    func setCommandShortcut(_ value:VoiceShortcutValue) throws -> String {
+        guard store != nil, featureAdded, !stopping, !isBusy, canRecordShortcut() else {
+            throw VoiceConfigurationError.invalid(VoiceL10n.text("请先添加语音输入，并结束当前录音或快捷键设置。"))
+        }
+        inputTestArmed=false
+        applyShortcut(code:value.keyCode,modifiers:value.modifiers,mouseButton:value.mouseButton)
+        guard shortcutSaveOutcome==true, VoiceConflictPolicy.shortcut(store.settings)==value else {
+            throw VoiceConfigurationError.invalid(VoiceL10n.text(message))
+        }
+        return VoiceL10n.text(VoiceHotkey.label(keyCode:value.keyCode,modifiers:value.modifiers,mouseButton:value.mouseButton))
+    }
     func applyShortcut(code:UInt32,modifiers:UInt64,mouseButton:UInt32?=nil) {
         let old=store.settings
         do {

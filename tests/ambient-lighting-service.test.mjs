@@ -36,8 +36,11 @@ test('old Kick firmware keeps its update guide while per-key controls remain una
   assert.equal((await s.operations()).some(x=>['arm','paint','nativeLighting'].includes(x.op)),false);
 });
 test('a paused game fades without advancing play, and sensor reports do not extend the sleep deadline',async t=>{
-  const s=await fakeService(t,{freshLibrary:true,storedSettings:{brightness:70,lightDurationMs:0,lightIdleMs:0}});
-  await s.command({op:'gameStart',gameType:'snake',speed:10});await s.command({op:'gamePause',paused:true});
+  const s=await fakeService(t,{freshLibrary:true});
+  assert.equal((await s.command({op:'settings',settings:{sidebarFeatures:['studio','game']}})).status,200);
+  assert.equal((await s.command({op:'settings',settings:{brightness:70,lightDurationMs:0,lightIdleMs:0}})).status,200);
+  assert.equal((await s.command({op:'gameStart',gameType:'snake',speed:10})).status,200);
+  assert.equal((await s.command({op:'gamePause',paused:true})).status,200);
   const before=(await s.state()).game;
   await s.command({op:'settings',settings:{ambientLighting:{enabled:true}}});
   let sequence=0;

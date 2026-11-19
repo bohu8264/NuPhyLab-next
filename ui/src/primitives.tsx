@@ -28,9 +28,11 @@ export function Button({
 export function Switch({
   checked,
   onChange,
+  voiceId,
   label,
   disabled,
 }: {
+  voiceId?: string;
   checked: boolean;
   onChange: (value: boolean) => void;
   label: string;
@@ -42,6 +44,7 @@ export function Switch({
       <button
         type="button"
         className={`switch ${checked ? "checked" : ""}`}
+        data-voice-control={voiceId}
         role="switch"
         aria-checked={checked}
         aria-label={tr(label)}

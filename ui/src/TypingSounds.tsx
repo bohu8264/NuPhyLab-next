@@ -100,13 +100,13 @@ function useTypingStatus() {
   return {status,failed,failureCode,busy,run};
 }
 // Keep a local slider draft; debounce native writes and also commit on pointer/keyboard completion.
-export function SoundRange({label,value,max=100,disabled,onCommit}:{label:string;value:number;max?:number;disabled:boolean;onCommit:(value:number)=>void}) {
+export function SoundRange({label,value,max=100,disabled,onCommit,voiceId}:{voiceId?:string;label:string;value:number;max?:number;disabled:boolean;onCommit:(value:number)=>void}) {
   const id=useId(),[draft,setDraft]=useState(value),current=useRef(value),last=useRef(value),timer=useRef<ReturnType<typeof setTimeout>|null>(null);
   const commitRef=useRef(onCommit);commitRef.current=onCommit;
   const flush=()=>{if(timer.current!==null)clearTimeout(timer.current);timer.current=null;if(current.current!==last.current){last.current=current.current;commitRef.current(current.current);}};
   useEffect(()=>{if(!disabled&&timer.current===null){current.current=value;last.current=value;setDraft(value);}},[value,disabled]);
   useEffect(()=>()=>{flush();},[]);
-  return <div className="ts-range"><label htmlFor={id}>{label}</label><input id={id} aria-label={label} type="range" min={0} max={max} step={1} value={draft} disabled={disabled}
+  return <div className="ts-range"><label htmlFor={id}>{label}</label><input data-voice-control={voiceId} data-voice-saved={value} id={id} aria-label={label} type="range" min={0} max={max} step={1} value={draft} disabled={disabled}
     onChange={event=>{const next=Number(event.target.value);current.current=next;setDraft(next);if(timer.current!==null)clearTimeout(timer.current);timer.current=setTimeout(flush,200);}}
     onPointerUp={flush} onKeyUp={flush} onBlur={flush}/><output htmlFor={id}>{draft}%</output></div>;
 }
@@ -132,9 +132,9 @@ export function TypingSounds() {
     <p className="ts-subtitle">{say('为打字选择你喜欢的声音。','Choose how your keyboard sounds.')}</p>
     <div className="ts-hero">
       <div className="ts-hero-glyph"><SwitchGlyph/></div><div className="ts-hero-main"><div className="ts-current-row"><div><span className="ts-eyebrow">{say('当前声音','Current sound')}</span><h2>{selected?nameOf(selected,en):failed?say('声音暂不可用','Sounds unavailable'):say('正在读取声音','Loading sounds')}</h2><p>{selected?(selected.designed?say('调校音色','Tuned sound'):say('经典采样','Classic sample')):say('从声音库选择','Choose from the sound library')}</p></div>
-        <div className="ts-hero-actions"><div className="ts-switch-row"><span>{readiness.label}</span><button type="button" role="switch" aria-label={say('开启模拟声浪','Enable typing sounds')} aria-checked={prefs.enabled} className={'ts-switch'+(prefs.enabled?' checked':'')} disabled={disabled} onClick={()=>void save({enabled:!prefs.enabled})}><span/></button></div>
+        <div className="ts-hero-actions"><div className="ts-switch-row"><span>{readiness.label}</span><button type="button" role="switch" data-voice-control="typing-sounds" aria-label={say('开启模拟声浪','Enable typing sounds')} aria-checked={prefs.enabled} className={'ts-switch'+(prefs.enabled?' checked':'')} disabled={disabled} onClick={()=>void save({enabled:!prefs.enabled})}><span/></button></div>
         <button type="button" className="ts-primary" disabled={disabled||!selected} onClick={()=>status?.previewing?stop():preview(prefs.pack)}>{status?.previewing?<Square size={14}/>:<Play size={14}/>} {status?.previewing?say('停止试听','Stop preview'):say('试听','Preview')}</button></div></div>
-        <div className="ts-output"><button type="button" className="ts-icon" aria-label={prefs.muted?say('取消静音','Unmute'):say('静音输出','Mute output')} aria-pressed={prefs.muted} disabled={disabled} onClick={()=>void save({muted:!prefs.muted})}>{prefs.muted?<VolumeX size={18}/>:<Volume2 size={18}/>}</button><SoundRange label={say('输出音量','Output volume')} value={prefs.volume} disabled={disabled} onCommit={volume=>void save({volume})}/></div></div>
+        <div className="ts-output"><button type="button" className="ts-icon" aria-label={prefs.muted?say('取消静音','Unmute'):say('静音输出','Mute output')} aria-pressed={prefs.muted} disabled={disabled} onClick={()=>void save({muted:!prefs.muted})}>{prefs.muted?<VolumeX size={18}/>:<Volume2 size={18}/>}</button><SoundRange voiceId="sound-volume" label={say('输出音量','Output volume')} value={prefs.volume} disabled={disabled} onCommit={volume=>void save({volume})}/></div></div>
     </div>
     <div className={'ts-status'+(readiness.permission||readiness.retry?' ts-notice':'')} role="status"><span>{readiness.detail}</span><div>{readiness.permission&&<button type="button" disabled={disabled} onClick={()=>void run('permission')}>{say('前往系统设置','Open System Settings')}<ChevronRight size={14}/></button>}{readiness.retry&&<button type="button" disabled={busy} onClick={()=>void run('refresh')}>{say('重新检查','Check again')}</button>}</div></div>
     {failed&&status&&<div className="ts-operation-error" role="alert">{typingIssue(failureCode,en)}</div>}

@@ -58,6 +58,8 @@ import {useLanguage, setLanguage} from "./i18n";
 import {DragConvertLab} from './DragConvertLab';
 import {VoiceInput} from './VoiceInput';
 import {DockScenes} from './DockScenes';
+import {VoiceControl} from './VoiceControl';
+import type {VoicePage} from './voice-control-actions';
 import {KeyboardPocketLab} from './KeyboardPocketLab';
 
 type Page = "dock-scenes" | "voice-input" | "features" | "keyboard-pocket" | "drag-convert" | "music" | "typing-sounds" | "selection-question" | "studio" | "library" | "codex" | "device" | "settings" | "game" | "audio" | "offline";
@@ -135,10 +137,17 @@ export default function App() {
   );
   const { state, layout, serviceError, command, readState, refresh, exiting } = useAirApi(notify);
   const addedFeatures=sidebarFeatures(state?.settings.sidebarFeatures);
-  const persistFeatures=async(next:FeatureId[])=>{
+  const persistFeatures=async(change:FeatureId[]|((current:FeatureId[])=>FeatureId[]),check?:()=>void)=>{
     if(featureLock.current||!state||exiting||serviceError)return false;
     featureLock.current=true;setFeatureBusy(true);
-    try{await nativeCodexRequest({kind:'prepareSidebarFeatures'});await command({op:'settings',settings:{sidebarFeatures:next}},{silent:true});await nativeCodexRequest({kind:'sidebarFeaturesChanged'});return true;}
+    try{
+      await nativeCodexRequest({kind:'prepareSidebarFeatures'});
+      const next=typeof change==='function'?change(sidebarFeatures((await readState()).settings.sidebarFeatures)):change;
+      check?.();
+      await command({op:'settings',settings:{sidebarFeatures:next}},{silent:true});
+      await nativeCodexRequest({kind:'sidebarFeaturesChanged'});
+      return true;
+    }
     catch(error){notify(language==='en'?'Could not save your sidebar. Please try again.':'侧栏设置未能保存，请重试。');return false;}
     finally{featureLock.current=false;setFeatureBusy(false);}
   };
@@ -148,6 +157,21 @@ export default function App() {
     const next=addedFeatures.includes(id)?addedFeatures.filter(value=>value!==id):[...addedFeatures,id];
     if(await persistFeatures(next)){if(epoch===navigationEpoch.current&&(page===id||id==='studio'&&['audio','offline'].includes(page)))setPage('features');}
   };
+  const voiceMembership=async(id:FeatureId,add:boolean,check:()=>void)=>{
+    const epoch=navigationEpoch.current;
+    const success=await persistFeatures(current=>add?(current.includes(id)?current:[...current,id]):current.filter(item=>item!==id),check);
+    if(!success||sidebarFeatures((await readState()).settings.sidebarFeatures).includes(id)!==add)
+      throw new Error(language==='en'?'The sidebar change could not be confirmed.':'侧栏更改尚未确认。');
+    if(!add&&epoch===navigationEpoch.current&&(page===id||id==='studio'&&['audio','offline'].includes(page)))setPage('features');
+  };
+  function voiceNavigate(destination:string){
+    const [id,tab]=destination.split('.');
+    if(id==='settings'&&tab)setSettingsTab(tab as typeof settingsTab);
+    if(id==='studio'&&tab)setStudioMode(tab as StudioMode);
+    if(id==='library'&&tab){setLibraryFilter(tab as LibraryFilter);setLibrarySource('saved');}
+    if(id==='music'&&page!=='music')setMusicEntry(null);
+    setPage(id as VoicePage);
+  }
   const editMusic=async(entry:MusicEntry)=>{const epoch=++navigationEpoch.current;try{await prepareMusicLibraryAction();if(epoch!==navigationEpoch.current)return;if(await ensureFeature('music')&&epoch===navigationEpoch.current){setMusicEntry(entry);setPage('music');}}catch(error){notify(language==='en'?'Save your current music project before opening another work.':'请先完成当前演奏的保存，再打开其他作品。');}};
   const loadFromLibrary=async(scene:Scene,create=false)=>{const epoch=++navigationEpoch.current;if(await ensureFeature('studio')&&epoch===navigationEpoch.current)load(scene,{create});};
   const browseMusic=()=>{setLibraryFilter('music');setLibrarySource('saved');setPage('library');};
@@ -355,7 +379,7 @@ export default function App() {
         </div>
       </aside>
       <main>
-        <header className="lab-page-header"><h1>{tr(pageTitle)}</h1><button className="lab-connection lab-connection-v7" data-connection-state={connectionDisplay.stateId} onClick={()=>setPage("device")}><Keyboard size={16} strokeWidth={1.5}/><span>{connectionHeader(connectionDisplay)}</span></button></header>
+        <header className="lab-page-header"><h1>{tr(pageTitle)}</h1><div className="lab-page-tools"><VoiceControl page={page} unavailable={exiting||!!serviceError||!state} command={command} read={readState} membership={voiceMembership} open={voiceNavigate}/><button className="lab-connection lab-connection-v7" data-connection-state={connectionDisplay.stateId} onClick={()=>setPage("device")}><Keyboard size={16} strokeWidth={1.5}/><span>{connectionHeader(connectionDisplay)}</span></button></div></header>
         {exiting && <div className="wireless-notice" role="status">{tr("正在完成当前操作…")}</div>}
         {!state&&!serviceError&&<div className="service-error" role="status">{tr('正在读取键盘与本机数据…')}</div>}
         {serviceError&&<div className="service-error service-error-v6" role="alert"><CircleAlert size={16}/><span>{tr('本地服务未响应：')}{tr(friendlyConnectionError(serviceError))}</span><Button kind="ghost" busy={checkingService} onClick={()=>{if(checkingService)return;setCheckingService(true);void refresh().finally(()=>setCheckingService(false));}}>{tr('重新检查')}</Button></div>}
@@ -364,7 +388,7 @@ export default function App() {
         {draftStorageIssue?.model===modelId&&<div className="service-error" role="alert"><CircleAlert size={16}/><span>{tr(draftStorageIssue.kind==='read'?'暂时无法读取本机草稿。原记录已保留，请重试读取。':'草稿自动保存失败。当前内容仍在本窗口，关闭前请重试或保存到作品库。')}</span><Button kind="ghost" onClick={()=>draftStorageIssue.kind==='read'?retryDraftRead():writeLocalDraft(modelId,draft)}>{tr(draftStorageIssue.kind==='read'?'重试读取':'重试自动保存')}</Button><Button kind="ghost" onClick={openSave}>{tr('保存作品')}</Button></div>}
         <div className="page-content" inert={exiting}>
           {creative && (!nativeOnly || page === "offline") && <nav className="lab-tabs creative-tabs" aria-label={tr("灯光创作")}>
-            {([["paint","绘制"],["animation","动画"],["trigger","按键触发"],["audio","声音律动"]] as const).map(([id,label])=><button key={id} aria-current={(id === "audio" ? page === "audio" : page !== "audio" && studioMode === id) ? "page" : undefined} className={(id === "audio" ? page === "audio" : page !== "audio" && studioMode === id) ? "active" : ""} onClick={()=>{if(id === "audio")setPage("audio");else{setStudioMode(id);setPage("studio");}}}>{tr(label)}</button>)}
+            {([["paint","绘制"],["animation","动画"],["trigger","按键触发"],["audio","声音律动"]] as const).map(([id,label])=><button key={id} data-voice-tab={id} aria-current={(id === "audio" ? page === "audio" : page !== "audio" && studioMode === id) ? "page" : undefined} className={(id === "audio" ? page === "audio" : page !== "audio" && studioMode === id) ? "active" : ""} onClick={()=>{if(id === "audio")setPage("audio");else{setStudioMode(id);setPage("studio");}}}>{tr(label)}</button>)}
           </nav>}
           {connectionDisplay.stateId === 'bluetoothOnly' && ['studio','library'].includes(page) && <div className="wireless-notice" role="status"><strong>{tr("蓝牙已连接 · 灯光需接线")}</strong><p>{tr("可以编辑、预览和保存作品；播放到键盘、按键灯效及灯光游戏需要 USB 有线连接。")}</p></div>}
           {nativeOnly && state && ["studio", "audio"].includes(page) && <NativeLighting state={state} layout={layout} command={command}

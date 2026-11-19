@@ -6,11 +6,23 @@
 
 A macOS lighting studio for **NuPhy AIR65 / AIR75 / AIR100 V3, NODE75 / NODE100 (LP / HP), and Kick75 (ANSI)**, with keyboard games, audio-reactive lighting, and Codex / Claude Code task shortcuts and status lights.
 
+## 语音控制
+
+在「设置 → 模型与 API」保存模型和 API Key，然后打开页面顶部的「语音控制」，点「说指令」。可以说“把键盘口袋添加到侧栏并开启”“移除灯光游戏”或“把键盘亮度调到 35%”。首次录音时，按 macOS 提示允许麦克风和语音识别。声音在本机转写，指令文字由所选模型理解。需要听写到其他应用时，使用「语音输入」。
+
+语音控制默认快捷键是 Control + Shift + 空格。按一次开始说，再按一次执行。点击页首语音控制旁的设置图标可查看当前快捷键。需要修改时，点面板里的键位，再按下并松开新的单键或组合键。说“把语音输入的快捷键改成左边的 Ctrl”或“把语音输入的快捷键改成 Q”，可单独修改听写快捷键。
+
 ## 功能中心与作品库
 
 新用户的侧栏默认显示灯光创作、作品库和 AI 助手。升级时会保留已使用或已开启的功能入口，之后可以自行移除。打开 **功能中心**，按需添加灯光游戏、模拟声浪、演奏模式、智能框选、拖拽转换、键盘口袋、语音输入和 Dock 场景；默认的三项也可以移除。功能中心、设备和设置始终保留。移除会关闭功能及其快捷键，已有内容和配置保留。重新添加后，请按需手动开启。
 
 **作品库** 统一展示灯光和演奏作品，支持全部、灯光和演奏筛选。演奏模式中的作品库按钮进入同一个库；编辑并保存会更新原作品。编辑器尚未添加时，可直接选择“添加演奏模式并编辑”或“添加灯光创作并编辑”。演奏作品支持试听、复制、改名、工程导出及最近删除恢复；WAV 音频在演奏编辑页导出。
+
+## Voice Control
+
+Save a model and API key in **Settings → Models & API**, turn on **Voice Control** in the page header, then click **Speak a command**. Try “Add Keyboard Pocket to my sidebar and turn it on,” “Remove Lighting Games,” or “Set keyboard brightness to 35 percent.” Allow microphone and speech recognition access when macOS asks. Your Mac transcribes the audio and your selected model interprets the command text. Use **Voice Input** for dictation into other apps.
+
+Press Control + Shift + Space to speak, then press it again to run the command. Open the settings beside Voice Control to see the current shortcut. To change it, click the displayed key, then press and release the new key or chord. Say “Set the dictation shortcut to left Ctrl” or “Set the dictation shortcut to Q” to change the separate Voice Input shortcut.
 
 ## Feature Center and Library
 

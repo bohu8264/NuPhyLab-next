@@ -17,7 +17,7 @@ enum LabText {
         "Esc 用于取消框选，请选其他按键。":"Esc cancels selection. Choose another key.",
         "Mac 权限":"Mac permissions",
         "仅在主动框选时截取选定区域，用于本机文字识别和提问。":"Captures only the region you select, for local text recognition and questions.",
-        "仅在启用“按住说话”并保持按住时录音。":"Records only while Hold to speak is enabled and you keep holding.",
+        "用于智能框选的按住说话，以及主动开始的语音指令。":"Used for Hold to Speak in Smart Selection and for voice commands you start.",
         "俄语":"Russian",
         "保存后，后续翻译默认使用此语言。":"Saved as the default language for future translations.",
         "保存设置":"Save settings",
@@ -42,7 +42,7 @@ enum LabText {
         "安全输入中":"Secure input active",
         "完成":"Done",
         "密钥保存在本机钥匙串。":"Your key is stored in the local Keychain.",
-        "将录音在本机转成问题；松开后发送问题文本。":"Transcribes your question locally. Releasing submits the text.",
+        "在本机将语音问题或指令转成文字。":"Transcribes spoken questions and commands on this Mac.",
         "尚未保存此服务的 API Key，请前往设置。":"No API key is saved for this service. Open settings to add one.",
         "尚未允许":"Not allowed",
         "点击后按键盘快捷键或鼠标侧键":"Click, then press a keyboard shortcut or mouse side button",
@@ -196,7 +196,7 @@ enum LabText {
         "辅助功能":"Accessibility",
         "输入监控":"Input Monitoring",
         "连接成功，模型已返回测试响应。":"Connected. The model returned a test response.",
-        "连接自己的模型服务，用于智能框选。":"Connect your own model service for Smart Selection.",
+        "连接自己的模型服务，用于智能框选和语音控制。":"Connect your own model service for Smart Selection and Voice Control.",
         "选择模型":"Choose model",
         "选择模型并保存 API Key 后即可继续。":"Choose a model and save your API key to continue.",
         "通义千问":"Qwen",
@@ -273,6 +273,21 @@ enum LabText {
         "需要填写服务地址":"Enter a service endpoint",
         "预设":"Preset",
     ]
+    static func modelError(_ error:AIError, language:AppLanguage)->String {
+        let message:String
+        switch error {
+        case .authentication: message="API Key 无效，或没有此模型的访问权限。"
+        case .missingModel: message="请先在设置中选择或填写模型 ID。"
+        case .imagesDisabled: message="当前模型尚未确认支持图片。请使用识别文字，或在设置中确认图片能力。"
+        case .unsupportedEndpoint: message="此服务不支持自动读取模型，请在服务控制台复制模型 ID。"
+        case .rateLimited: message="服务额度不足或请求过于频繁，请检查服务账户。"
+        case .timedOut: message="请求超时，服务可能已计费。你可以手动重试。"
+        case .network: message="暂时无法连接模型服务，请检查网络和 API 地址。"
+        case .cancelled: message="已停止接收，服务可能已处理本次请求。"
+        default: message=error.localizedDescription
+        }
+        return text(message,language:language)
+    }
     static func text(_ value:String,language:AppLanguage)->String {
         if language == .en {return english[value] ?? value}
         return english.first(where:{$0.value == value})?.key ?? value

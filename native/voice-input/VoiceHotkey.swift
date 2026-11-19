@@ -370,7 +370,7 @@ struct VoiceEscapeState {
     }
 
     func recoverIfNeeded() {
-        guard registeredCode != nil,recordingMonitor==nil,AXIsProcessTrusted(),!IsSecureEventInputEnabled() else{return}
+        guard listenToSystemEvents,registeredCode != nil,recordingMonitor==nil,AXIsProcessTrusted(),!IsSecureEventInputEnabled() else{return}
         if let tap,CFMachPortIsValid(tap),CGEvent.tapIsEnabled(tap:tap){return}
         if let tap,CFMachPortIsValid(tap) {
             resetMachine(flags:CGEventSource.flagsState(.hidSystemState).rawValue)
@@ -596,14 +596,45 @@ struct VoiceEscapeState {
         var prefix=""
         if flags.contains(.control){prefix+="⌃"};if flags.contains(.option){prefix+="⌥"};if flags.contains(.shift){prefix+="⇧"};if flags.contains(.command){prefix+="⌘"}
         if let button=mouseButton {return prefix+"鼠标侧键 \(button-2)"}
-        let names:[UInt32:String]=[49:"Space",36:"Return",48:"Tab",51:"Delete",123:"←",124:"→",125:"↓",126:"↑",122:"F1",120:"F2",99:"F3",118:"F4",96:"F5",97:"F6",98:"F7",100:"F8",101:"F9",109:"F10",103:"F11",111:"F12",105:"F13",107:"F14",113:"F15",106:"F16",64:"F17",79:"F18",80:"F19",90:"F20"]
+        let names:[UInt32:String]=[49:"Space",36:"Return",48:"Tab",51:"Delete",114:"Help",115:"Home",116:"Page Up",117:"Forward Delete",119:"End",121:"Page Down",123:"←",124:"→",125:"↓",126:"↑",122:"F1",120:"F2",99:"F3",118:"F4",96:"F5",97:"F6",98:"F7",100:"F8",101:"F9",109:"F10",103:"F11",111:"F12",105:"F13",107:"F14",113:"F15",106:"F16",64:"F17",79:"F18",80:"F19",90:"F20"]
         if let name=names[keyCode]{return prefix+name}
-        if let source=TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),let pointer=TISGetInputSourceProperty(source,kTISPropertyUnicodeKeyLayoutData) {
+        var source=TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue()
+        if source.flatMap({TISGetInputSourceProperty($0,kTISPropertyUnicodeKeyLayoutData)}) == nil {
+            source=TISCopyCurrentASCIICapableKeyboardLayoutInputSource()?.takeRetainedValue()
+        }
+        if let source,let pointer=TISGetInputSourceProperty(source,kTISPropertyUnicodeKeyLayoutData) {
             let data=Unmanaged<CFData>.fromOpaque(pointer).takeUnretainedValue()
             let layout=UnsafeRawPointer(CFDataGetBytePtr(data)).assumingMemoryBound(to:UCKeyboardLayout.self)
             var dead:UInt32=0,length=0;var chars=[UniChar](repeating:0,count:8)
             if UCKeyTranslate(layout,UInt16(keyCode),UInt16(kUCKeyActionDisplay),0,UInt32(LMGetKbdType()),UInt32(kUCKeyTranslateNoDeadKeysBit),&dead,chars.count,&length,&chars)==noErr,length>0{return prefix+String(utf16CodeUnits:chars,count:length).uppercased()}
         }
         return prefix+"Key \(keyCode)"
+    }
+
+    /// Resolve the key's name on the same keyboard layout used by the recorder.
+    /// The model supplies a name, never a macOS virtual key code.
+    static func namedShortcut(_ name:String) -> VoiceShortcutValue? {
+        guard !name.isEmpty, name.utf8.count <= 100 else { return nil }
+        var raw=name.precomposedStringWithCompatibilityMapping.lowercased().trimmingCharacters(in:.whitespaces)
+        for (glyph,word) in [("⌃","control+"),("⌥","option+"),("⇧","shift+"),("⌘","command+")] { raw=raw.replacingOccurrences(of:glyph,with:word) }
+        let sides:[String:UInt32]=["left shift":56,"right shift":60,"left control":59,"right control":62,
+            "left option":58,"right option":61,"left command":55,"right command":54,"fn":63,
+            "左 shift":56,"右 shift":60,"左 control":59,"右 control":62,"左 option":58,"右 option":61,"左 command":55,"右 command":54]
+        if let code=sides[raw] { return .init(keyCode:code,modifiers:0) }
+        let parts=raw.components(separatedBy:"+").map{$0.trimmingCharacters(in:.whitespaces)}
+        guard let key=parts.last, !key.isEmpty, parts.count<=5 else { return nil }
+        let flags:[String:UInt64]=["ctrl":1<<18,"control":1<<18,"shift":1<<17,"option":1<<19,"alt":1<<19,"command":1<<20,"cmd":1<<20]
+        var mods:UInt64=0
+        for part in parts.dropLast() {
+            guard let flag=flags[part],mods & flag == 0 else { return nil }
+            mods |= flag
+        }
+        let aliases=["spacebar":"space","空格":"space","空格键":"space","enter":"return","回车":"return","回车键":"return","backspace":"delete","cue":"q","left":"←","right":"→","up":"↑","down":"↓"]
+        let target=aliases[key] ?? key
+        guard !target.hasPrefix("key "),!target.isEmpty else { return nil }
+        let keys=Array(UInt32(0)...51)+Array(VoiceHotkeyPolicy.implicitFunctionCodes).sorted()
+        let matching=keys.filter { label(keyCode:$0,modifiers:0).lowercased()==target }
+        guard matching.count==1,let code=matching.first,VoiceHotkeyPolicy.valid(keyCode:code,modifiers:mods) else {return nil}
+        return .init(keyCode:code,modifiers:mods)
     }
 }

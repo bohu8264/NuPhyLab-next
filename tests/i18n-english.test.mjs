@@ -106,6 +106,7 @@ test('actual device component translates firmware, storage, connection and actio
     './KeyRecoveryPanel':{friendlyConnectionError:value=>value,keyRecoveryProblem:()=>null},
     './codexKeys':{nativeCodexKeys:async()=>false},
     './FunctionKeyRecoveryDialog':{FunctionKeyRecoveryDialog:child},
+    './FirmwareManagement':{FirmwareManagement:child},
     './connection-copy-v7':{connectionCopy:pair=>pair?.en??''},
     './i18n':{t:en},
   });

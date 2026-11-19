@@ -57,6 +57,7 @@ enum LabKeychain {
   guard !value.configuration.model.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty else{return "请先在“模型与 API”中选择模型并保存 API Key。"}
   do{let account=try value.configuration.credentialAccount();return LabKeychain.has(account) ? "":"请先在“模型与 API”中保存此服务的 API Key。"}catch{return Self.friendly(error,language:language)}
  }
+ var commandModel:AIConfiguration? {preferences.configuration}
  private var preferences=LabPreferences();private let input=SelectionHoldMonitor();private let voice=LocalVoiceCapture()
  private var overlays:[SelectionOverlayWindow]=[];private var panel:SelectionResultPanel?;private var task:Task<Void,Never>?;private var utilityTask:Task<Void,Never>?
  private var utilityGeneration=UUID();private var generation=UUID();private var imagePNG:Data?;private var observers:[NSObjectProtocol]=[];private var monitor:Timer?
@@ -233,7 +234,7 @@ enum LabKeychain {
   case "capture":startFromShortcut();reply(status(),nil)
   case "models","test":
    let configuration=preferences.configuration,key=try LabKeychain.read(configuration.credentialAccount()),models=body["op"] as? String == "models"
-   utilityTask?.cancel();let utilityID=UUID();utilityGeneration=utilityID;utilityTask=Task{defer{if utilityGeneration==utilityID{utilityTask=nil}};do{if models{let page=try await AIClient().listModelCatalog(configuration:configuration,apiKey:key);try Task.checkCancellation();reply(["models":page.models.map(\.id),"hasMore":page.nextCursor != nil],nil)}else{var check=configuration;check.maximumOutputTokens=256;_ = try await AIClient().send(configuration:check,text:"Reply with OK only.",images:[],apiKey:key);try Task.checkCancellation();reply(["message":LabText.text("连接成功，模型已返回测试响应。",language:language)],nil)}}catch{reply(nil,Self.friendly(error,language:language))}}
+   utilityTask?.cancel();let utilityID=UUID();utilityGeneration=utilityID;utilityTask=Task{defer{if utilityGeneration==utilityID{utilityTask=nil}};do{let result=try await LabModelQuery.run(configuration,key:key,models:models,language:language);try Task.checkCancellation();reply(result,nil)}catch{reply(nil,Self.friendly(error,language:language))}}
   default:throw LabIssue("未知操作。")
   }}catch{reply(nil,Self.friendly(error,language:language))}
  }
@@ -433,17 +434,7 @@ enum LabKeychain {
  static func friendly(_ error:Error,language:AppLanguage = .zh)->String{LabText.text(untranslated(error,language:language),language:language)}
  private static func untranslated(_ error:Error,language:AppLanguage)->String{
   if let error=error as? IntentServiceError{return error.message(language)};if error is CancellationError{return "已取消。"}
-  if let error=error as? AIError{switch error{
-   case .authentication:return "API Key 无效，或没有此模型的访问权限。"
-   case .missingModel:return "请先在设置中选择或填写模型 ID。"
-   case .imagesDisabled:return "当前模型尚未确认支持图片。请使用识别文字，或在设置中确认图片能力。"
-   case .unsupportedEndpoint:return "此服务不支持自动读取模型，请在服务控制台复制模型 ID。"
-   case .rateLimited:return "服务额度不足或请求过于频繁，请检查服务账户。"
-   case .timedOut:return "请求超时，服务可能已计费。你可以手动重试。"
-   case .network:return "暂时无法连接模型服务，请检查网络和 API 地址。"
-   case .cancelled:return "已停止接收，服务可能已处理本次请求。"
-   default:return error.localizedDescription
-  }}
+  if let error=error as? AIError{return LabText.modelError(error,language:language)}
   if let issue=error as? LabIssue{return issue.message};return "操作未完成，请检查设置和权限后重试。"
  }
 

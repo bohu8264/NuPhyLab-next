@@ -1,8 +1,14 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {readFile,writeFile,mkdtemp,rm} from 'node:fs/promises';import {execFile} from 'node:child_process';import {promisify} from 'node:util';import {tmpdir} from 'node:os';import path from 'node:path';import {fileURLToPath} from 'node:url';
 test('production music host fails closed, respects every capture owner and rolls back an unstarted permission relaunch',{skip:process.platform!=='darwin',timeout:120000},async t=>{
  const d=await mkdtemp(path.join(tmpdir(),'ml-host-'));t.after(()=>rm(d,{recursive:true,force:true}));const host=await readFile(new URL('../native/AppHost.swift',import.meta.url),'utf8');const main=path.join(d,'main.swift'),bin=path.join(d,'check');
- await writeFile(main,host+`\nlet app=AppDelegate()
+ await writeFile(main,host+`\nextension AppDelegate { func addFixtureMusic(){addedFeatures.insert("music")} }
+let app=AppDelegate()
+precondition(!app.musicPlayAllowed())
+app.addFixtureMusic()
 precondition(app.musicPlayAllowed())
+app.setMusicCapture("voiceControl",active:true)
+precondition(!app.musicPlayAllowed())
+app.setMusicCapture("voiceControl",active:false)
 precondition(!app.musicPlayAllowed(requireForeground:true))
 app.setMusicCapture("microphone",active:true)
 app.setMusicCapture("selectionVoice",active:true)

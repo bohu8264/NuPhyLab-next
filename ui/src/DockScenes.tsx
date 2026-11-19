@@ -92,7 +92,7 @@ export function DockScenes() {
 
   return <section className="dock-scenes">
     <div className="dock-toolbar">
-      <Switch checked={state?.enabled ?? false} disabled={busy || !scene} label={t('场景快捷键', 'Scene shortcuts')} onChange={enabled => void action('enable', {enabled})}/>
+      <Switch voiceId="dock-scenes" checked={state?.enabled ?? false} disabled={busy || !scene} label={t('场景快捷键', 'Scene shortcuts')} onChange={enabled => void action('enable', {enabled})}/>
       <Button kind="ghost" icon={<RotateCcw size={15}/>} disabled={busy || state?.applying} onClick={() => void action('reload')}>{t('重新读取', 'Reload')}</Button>
       <Button icon={<Plus size={16}/>} disabled={editingBlocked} onClick={() => show({kind: 'create'})}>{t('新建场景', 'New scene')}</Button>
     </div>

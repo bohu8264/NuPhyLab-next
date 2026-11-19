@@ -5,12 +5,45 @@
 import AppKit
 import WebKit
 
+// The host lifecycle harness has neither speech permissions nor an API account.
+// Real command capture and model dispatch are exercised by VoiceControlChecks.
+struct AIConfiguration {}
+enum LabKeychain {
+ static func has(_ account:String)->Bool { false }
+ static func read(_ account:String)throws->String { "" }
+}
+struct VoiceShortcutValue:Equatable {var keyCode:UInt32=49;var modifiers:UInt64=0;var mouseButton:UInt32?}
+enum VoiceL10n {static func text(_ value:String)->String{value}}
+@MainActor final class FixtureCommandShortcut {
+ var isRecording=false;var value=VoiceShortcutValue()
+ var conflict:(VoiceShortcutValue)->String?={_ in nil}
+ var canTrigger:()->Bool={false};var recordingChanged:(Bool)->Void={_ in}
+ func refresh(enabled:Bool){};func shutdown(){}
+}
+@MainActor final class LabVoiceControl {
+ let shortcut=FixtureCommandShortcut();var enabled=false
+ var presentShortcut:(String)->Void={_ in}
+ var setInputShortcut:((VoiceShortcutValue)throws->String)?
+
+ var configuration:()->AIConfiguration? = {nil}
+ var mayStart:()->Bool = {false}
+ var hasForegroundWindow:()->Bool = {false}
+ var activityChanged:(Bool)->Void = {_ in}
+ var english=false
+ var capturing=false
+ var authorizing=false
+ init(hasKey:@escaping (String)->Bool,readKey:@escaping (String)throws->String) {}
+ func cancel() {}
+ func handle(_ body:[String:Any],reply:@escaping(Any?,String?)->Void) {reply(nil,"Command boundary fixture")}
+}
+
 // Host-only tests must never import the user's Dock or register system hotkeys.
 @MainActor final class DockScenesFeature {
  weak var window: NSWindow?
  weak var web: WKWebView?
  var english = false
  var allowSwitch: () -> Bool = { false }
+ func usesShortcut(keyCode:UInt32,flags:UInt64)->Bool{false}
  let isApplying = false
  let isRecording = false
 
@@ -38,6 +71,7 @@ enum AppLanguage {case zh,en}
  var voiceActivityChanged:((Bool)->Void)? {get set}
  var fileDragActive:(()->Bool)? {get set}
  var shortcutSaveIssue:((InputBinding)->String?)? {get set}
+ var commandModel:AIConfiguration? {get}
  var isBusy:Bool {get}
  var dragReservedTrigger:String? {get}
  var selectionReservedBinding:InputBinding? {get}
@@ -56,6 +90,7 @@ enum AppLanguage {case zh,en}
  static func make(directory:URL,featureAdded:Bool=true)->any SelectionFeature {SelectionBoundaryFixture()}
 }
 @MainActor private final class SelectionBoundaryFixture:SelectionFeature {
+ var commandModel:AIConfiguration? {nil}
  var dragReservedTrigger:String? {nil}
  var selectionReservedBinding:InputBinding? {nil}
  func setFeatureAdded(_ added:Bool) {}
@@ -105,11 +140,15 @@ struct PocketSettings {}
 struct VoiceSettings {}
 struct FixtureVoiceStore {var settings=VoiceSettings()}
 enum VoiceConflictPolicy {
+ static func shortcut(_ settings:VoiceSettings)->VoiceShortcutValue{VoiceShortcutValue()}
+ static func issue(_ value:VoiceShortcutValue,selection:InputBinding?,pocket:PocketSettings,reservedKeys:Set<UInt32>)->String?{nil}
+ static func overlapsSelection(_ a:InputBinding,_ b:InputBinding)->Bool{false}
+ static func binding(_ value:VoiceShortcutValue)->InputBinding{InputBinding()}
  static func issue(_ settings:VoiceSettings,selection:InputBinding?,pocket:PocketSettings,reservedKeys:Set<UInt32>)->String?{nil}
  static func binding(_ settings:VoiceSettings)->InputBinding{InputBinding()}
  static func mouseConflict(_ first:InputBinding,_ second:InputBinding)->Bool{false}
 }
-struct FixturePocketIssue {func message(english:Bool)->String{"fixture conflict"}}
+enum FixturePocketIssue: Equatable {case selection;func message(english:Bool)->String{"fixture conflict"}}
 enum PocketConflictPolicy {static func conflict(settings:PocketSettings,selection:InputBinding?,reservedKeys:Set<UInt32>)->FixturePocketIssue?{nil}}
 @MainActor class PocketHostWebView:WKWebView {weak var pocketController:PocketController?}
 @MainActor final class PocketController {
@@ -124,6 +163,7 @@ enum PocketConflictPolicy {static func conflict(settings:PocketSettings,selectio
  func handle(_ body:[String:Any],reply:@escaping(Any?,String?)->Void){reply(nil,"Pocket boundary fixture")}
 }
 @MainActor final class VoiceInputController {
+ func setCommandShortcut(_ value:VoiceShortcutValue)throws->String{"test"}
  var isBusy=false,busy=false,enabled=false;var store:FixtureVoiceStore?=FixtureVoiceStore()
  var canStart:()->Bool={true},canRecordShortcut:()->Bool={true}
  var operationIssue:()->String?={nil},conflictIssue:(VoiceSettings)->String?={_ in nil}

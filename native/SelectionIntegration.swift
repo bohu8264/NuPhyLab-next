@@ -90,6 +90,7 @@ enum SelectionPermissionProbe {
     var voiceActivityChanged: ((Bool) -> Void)? { get set }
     var fileDragActive: (() -> Bool)? { get set }
     var shortcutSaveIssue: ((InputBinding) -> String?)? { get set }
+    var commandModel: AIConfiguration? { get }
     var isBusy: Bool { get }
     var dragReservedTrigger: String? { get }
     var selectionReservedBinding: InputBinding? { get }
@@ -104,18 +105,25 @@ enum SelectionPermissionProbe {
     func refreshAuthorization()
     func shutdown()
 }
-extension SelectionFeature { func setFeatureAdded(_ added:Bool) {} ; func setExternalShortcutRecording(_ active:Bool) {} ; var selectionReservedBinding:InputBinding? {nil}; var dragReservedTrigger:String? {nil}; func cancel() { cancel(animatePanel: false) } }
+extension SelectionFeature { var commandModel:AIConfiguration? { nil }; func setFeatureAdded(_ added:Bool) {} ; func setExternalShortcutRecording(_ active:Bool) {} ; var selectionReservedBinding:InputBinding? {nil}; var dragReservedTrigger:String? {nil}; func cancel() { cancel(animatePanel: false) } }
 
 @MainActor enum SelectionFeatureFactory {
     static func make(directory: URL, featureAdded:Bool=true) -> any SelectionFeature {
         if #available(macOS 14, *) { return SelectionLab(directory: directory, featureAdded:featureAdded) }
-        return UnavailableSelectionFeature()
+        return UnavailableSelectionFeature(directory:directory)
     }
 }
 // Keep the existing keyboard application usable on its original macOS 13.5
 // minimum. Only the single-frame capture/notch feature requires macOS 14.
 @MainActor private final class UnavailableSelectionFeature: SelectionFeature {
     private var language=AppLanguage.zh
+    private let file:URL
+    private var preferences:LabPreferences
+    init(directory:URL) {
+        file=directory.appendingPathComponent("selection-preferences.json")
+        preferences=(try? JSONDecoder().decode(LabPreferences.self,from:Data(contentsOf:file))) ?? LabPreferences()
+    }
+    var commandModel:AIConfiguration? { preferences.configuration }
     func updateLanguage(_ language:AppLanguage){self.language=language}
     var showSettings: (() -> Void)?
     var fileDragActive: (() -> Bool)?
@@ -127,10 +135,39 @@ extension SelectionFeature { func setFeatureAdded(_ added:Bool) {} ; func setExt
     func updateReservedKeys(_ codes: Set<UInt32>) {}
     func handle(_ body: [String:Any], reply: @escaping (Any?, String?) -> Void) {
         if body["op"] as? String == "language",let value=body["language"] as? String,["en","zh-CN"].contains(value){updateLanguage(value == "en" ? .en:.zh);reply(["supported":false],nil);return}
-        if body["op"] as? String == "status" {
+        let op=body["op"] as? String
+        do {
+            if op=="save" {
+                guard let raw=(body["preferences"] as? [String:Any])?["configuration"] else {throw AIError.invalidOutputFormat}
+                let config=try JSONDecoder().decode(AIConfiguration.self,from:JSONSerialization.data(withJSONObject:raw))
+                let account=try config.credentialAccount()
+                guard config.model.utf8.count<=256,!config.model.contains(where:{$0.isWhitespace}),(1...16384).contains(config.maximumOutputTokens) else {throw AIError.invalidOutputFormat}
+                var json:[String:Any]=[:]
+                if FileManager.default.fileExists(atPath:file.path) {
+                    guard let old=try JSONSerialization.jsonObject(with:Data(contentsOf:file)) as? [String:Any] else {throw AIError.invalidOutputFormat}
+                    json=old
+                }
+                json["configuration"]=try JSONSerialization.jsonObject(with:JSONEncoder().encode(config))
+                if let key=body["apiKey"] as? String,!key.isEmpty {try LabKeychain.write(key,account:account)}
+                try FileManager.default.createDirectory(at:file.deletingLastPathComponent(),withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])
+                try JSONSerialization.data(withJSONObject:json).write(to:file,options:.atomic)
+                try FileManager.default.setAttributes([.posixPermissions:0o600],ofItemAtPath:file.path)
+                preferences.configuration=config
+            } else if op=="deleteKey" {
+                try LabKeychain.delete(preferences.configuration.credentialAccount())
+            } else if op=="models" || op=="test" {
+                let config=preferences.configuration,key=try LabKeychain.read(config.credentialAccount())
+                Task {
+                    do {reply(try await LabModelQuery.run(config,key:key,models:op=="models",language:language),nil)}
+                    catch {reply(nil,error.localizedDescription)}
+                }
+                return
+            }
+        } catch {reply(nil,error.localizedDescription);return}
+        if op=="status" || op=="save" || op=="deleteKey" {
             var result = LabPermissionSnapshot.current().dictionary
-            result.merge(["supported":false,"ready":false,"setupState":"unsupported","hasKey":false,"shortcutRegistered":false,
-                "preferences":(try? JSONSerialization.jsonObject(with:JSONEncoder().encode(LabPreferences()))) ?? [:],
+            result.merge(["supported":false,"ready":false,"setupState":"unsupported","modelSupported":true,"hasKey":(try? preferences.configuration.credentialAccount()).map(LabKeychain.has) ?? false,"shortcutRegistered":false,
+                "preferences":(try? JSONSerialization.jsonObject(with:JSONEncoder().encode(preferences))) ?? [:],
                 "issue":LabText.text("智能框选需要 macOS 14 或更新版本；键盘功能可继续使用。",language:language),
                 "shortcutNotice":"","phase":LabText.text("系统版本不支持",language:language)],uniquingKeysWith: { _,new in new })
             reply(result,nil)
@@ -141,4 +178,17 @@ extension SelectionFeature { func setFeatureAdded(_ added:Bool) {} ; func setExt
     func cancelShortcutRecording() {}
     func refreshAuthorization() {}
     func shutdown() {}
+}
+
+enum LabModelQuery {
+    static func run(_ configuration: AIConfiguration, key: String, models: Bool, language: AppLanguage) async throws -> [String:Any] {
+        if models {
+            let page=try await AIClient().listModelCatalog(configuration:configuration,apiKey:key)
+            return ["models":page.models.map(\.id),"hasMore":page.nextCursor != nil]
+        }
+        var probe=configuration
+        probe.maximumOutputTokens=256
+        _ = try await AIClient().send(configuration:probe,text:"Reply with OK only.",images:[],apiKey:key)
+        return ["message":LabText.text("连接成功，模型已返回测试响应。",language:language)]
+    }
 }

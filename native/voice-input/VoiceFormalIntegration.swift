@@ -26,24 +26,37 @@ enum VoiceFormalMigration {
 }
 
 enum VoiceConflictPolicy {
+    static func shortcut(_ value:VoiceSettings)->VoiceShortcutValue {
+        .init(keyCode:UInt32(value.shortcutKeyCode),modifiers:value.activeShortcutModifiers,mouseButton:value.shortcutMouseButton)
+    }
     static func binding(_ value:VoiceSettings)->InputBinding {
-        let code=UInt32(value.shortcutKeyCode)
-        let flags=value.shortcutMouseButton == nil ? (VoiceHotkeyPolicy.modifiers[code]?.flag ?? value.shortcutModifiers) : value.activeShortcutModifiers
+        binding(shortcut(value))
+    }
+    static func binding(_ value:VoiceShortcutValue)->InputBinding {
+        let code=value.keyCode
+        let flags=value.mouseButton == nil ? (VoiceHotkeyPolicy.modifiers[code]?.flag ?? value.modifiers) : value.modifiers
         var modifiers=InputModifiers()
         for (flag,modifier) in [(UInt64(1<<17),InputModifiers.shift),(1<<18,.control),(1<<19,.option),(1<<20,.command),(1<<23,.function)] {if flags & flag != 0 {modifiers.insert(modifier)}}
-        if let button=value.shortcutMouseButton {return .mouseButton(index:Int(button),modifiers:modifiers)}
-        return VoiceHotkeyPolicy.modifierCodes.contains(code) ? .modifierChord(modifiers) : .keyboard(keyCode:value.shortcutKeyCode,modifiers:modifiers)
+        if let button=value.mouseButton {return .mouseButton(index:Int(button),modifiers:modifiers)}
+        return VoiceHotkeyPolicy.modifierCodes.contains(code) ? .modifierChord(modifiers) : .keyboard(keyCode:UInt16(code),modifiers:modifiers)
     }
     static func mouseConflict(_ voice:InputBinding,_ selection:InputBinding)->Bool {
         voice.kind == .mouseButton && selection.kind == .mouseButton && voice.buttonIndex==selection.buttonIndex && voice.modifiers==selection.modifiers
     }
     static func issue(_ value:VoiceSettings,selection:InputBinding?,pocket:PocketSettings,reservedKeys:Set<UInt32>)->String? {
+        issue(shortcut(value),selection:selection,pocket:pocket,reservedKeys:reservedKeys)
+    }
+    static func overlapsSelection(_ voice:InputBinding,_ other:InputBinding)->Bool {
+        mouseConflict(voice,other) ||
+        (other.kind == .modifiers && !other.modifiers.isEmpty && other.modifiers.isSubset(of:voice.modifiers)) ||
+        (other.kind == .keyboard && voice.kind == .keyboard && other.keyCode==voice.keyCode && other.matchesModifiers(voice.modifiers))
+    }
+    static func issue(_ value:VoiceShortcutValue,selection:InputBinding?,pocket:PocketSettings,reservedKeys:Set<UInt32>)->String? {
         let voice=binding(value)
-        if voice.kind == .keyboard,voice.modifiers.isEmpty,reservedKeys.contains(UInt32(value.shortcutKeyCode)){return "此快捷键已用于 AI 助手，请更换语音输入快捷键。"}
+        if voice.kind == .keyboard,voice.modifiers.isEmpty,reservedKeys.contains(value.keyCode){return "此快捷键已用于 AI 助手，请更换语音输入快捷键。"}
         if let other=selection {
             if mouseConflict(voice,other) {return "此快捷键已用于智能框选，请更换其中一个快捷键。"}
-            if other.kind == .modifiers,!other.modifiers.isEmpty,other.modifiers.isSubset(of:voice.modifiers){return "此快捷键已用于智能框选，请更换其中一个快捷键。"}
-            if other.kind == .keyboard,voice.kind == .keyboard,other.keyCode==voice.keyCode,other.matchesModifiers(voice.modifiers){return "此快捷键已用于智能框选，请更换其中一个快捷键。"}
+            if overlapsSelection(voice,other){return "此快捷键已用于智能框选，请更换其中一个快捷键。"}
         }
         if PocketConflictPolicy.conflict(settings:pocket,selection:voice,reservedKeys:[]) == .selection {return "此快捷键与键盘口袋冲突，请更换其中一个快捷键。"}
         return nil

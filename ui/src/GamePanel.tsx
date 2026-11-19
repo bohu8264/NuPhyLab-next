@@ -333,8 +333,8 @@ export function GamePanel({
           </select>
         </label>
       {inProgress(game) && <span className="v5-game-switch-hint">{tr("结束本局后可切换")}</span>}
-        <div className={`game-controls ${finished(game)?"v6-game-terminal-controls":""}`}>
-          <Button
+        <div data-voice-game-state={game?.status??'idle'} className={`game-controls ${finished(game)?"v6-game-terminal-controls":""}`}>
+          <Button data-voice-action="game-play"
             kind="primary"
             aria-describedby={!canStart?"game-start-unavailable":undefined}
             disabled={!state?.device.connected || state?.firmware?.compatible === false || state?.device.capabilities?.perKey === false}
@@ -354,7 +354,7 @@ export function GamePanel({
           >
             {tr(active ? "暂停游戏" : paused ? "继续游戏" : finished(game) ? "再来一次" : "开始游戏")}
           </Button>
-          <Button
+          <Button data-voice-action="game-stop"
             icon={finished(game)?undefined:<Square size={14} />}
             disabled={!game || game.status === "idle" || busy}
             className={game && game.status !== "idle" ? "" : "v5-idle-end"}
