@@ -6,41 +6,33 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>NuPhy Lab</title>
         <item>
-            <title>1.2.50</title>
-            <pubDate>Wed, 18 Nov 2026 15:20:24 +0800</pubDate>
+            <title>1.2.51</title>
+            <pubDate>Thu, 19 Nov 2026 16:17:51 +0800</pubDate>
             <link>https://github.com/bohu8264/NuPhyLab-next</link>
-            <sparkle:version>1.2.50</sparkle:version>
-            <sparkle:shortVersionString>1.2.50</sparkle:shortVersionString>
+            <sparkle:version>1.2.51</sparkle:version>
+            <sparkle:shortVersionString>1.2.51</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.5</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <description sparkle:format="plain-text"><![CDATA[NUPHY-RELEASE-NOTES 1
-version:1.2.50
+version:1.2.51
 [zh-CN]
-NuPhy Lab 1.2.50
+NuPhy Lab 1.2.51
 
-• Air75 V3 新增 USB 侧灯状态模式，可与背光模式切换。
-• 侧灯跟踪当前任务集合，仅在完整、新鲜的成功状态下显示全部完成。
-• 侧灯模式释放任务键，命令键可独立开关，原有映射与内容保留。
-• 支持 Air75 V3 官方 2.0.0.7 的 USB 灯控与功能键，并提供升级后临时 F4 键位的确认恢复。
-• 固件提醒仅建议已完成 Lab 兼容验证的版本；保留原设置，并提示配套接收器更新。
-• 新固件下，无法确认能原样恢复的主灯颜色或已有自定义灯效会先停止接管；侧灯仍可使用。
-• 功能中心新增 Dock 场景，可保存原始固定应用顺序，通过自定义快捷键切换场景。
+• 主页顶部新增独立的语音控制开关。说出指令即可添加或移除侧栏功能、开关功能、切换页面或调节亮度和音量。
+• 语音指令在 Mac 本机转写，由「模型与 API」中的服务理解。原有语音输入继续用于听写。
+• 语音控制支持自定义单键或组合键。按一次说指令，再按一次执行，打开设置可查看当前键位，点击键位即可更改。听写快捷键支持用语音指定左、右修饰键。
 [en]
-NuPhy Lab 1.2.50
+NuPhy Lab 1.2.51
 
-• Air75 V3 adds USB side-LED status mode alongside backlighting.
-• Side LEDs track the current task cohort; all-complete requires a fresh, complete set of successful results.
-• Side mode releases task keys and provides a separate command-key switch while preserving mappings and content.
-• Supports USB lighting and function keys on Air75 V3 firmware 2.0.0.7, with confirmed recovery of a temporary F4 assignment after upgrading.
-• Firmware prompts recommend only Lab-qualified releases, preserve current settings, and explain matching receiver updates.
-• On the new firmware, backlight control pauses before changing a main color or existing custom effect that cannot be restored exactly. Side lighting remains available.
-• Dock Scenes saves your original pinned apps and lets you switch between layouts with configurable shortcuts.
+• Voice Control in the page header lets you add or remove sidebar tools, turn features on or off, navigate and adjust brightness or volume.
+• Commands are transcribed on your Mac and interpreted by the service in Models & API. Voice Input continues to handle dictation.
+• Set a key or chord for Voice Control. Press once to speak and again to run. Open settings to see the current shortcut, then click the key to change it. Dictation commands recognize left and right modifier keys.
 ]]></description>
-            <enclosure url="https://github.com/bohu8264/NuPhyLab-next/releases/download/v1.2.50/NuPhyLab-1.2.50-macOS-AppleSilicon.dmg" length="52291696" type="application/octet-stream" sparkle:edSignature="RIzN5tNd/0TI6takGsp4/u2qBhqsHJ+r5eKfzk8DU6SO26143w+imrgE22QIqtVgfbfGwjbhlRjB65bXQefiAg=="/>
+            <enclosure url="https://github.com/bohu8264/NuPhyLab-next/releases/download/v1.2.51/NuPhyLab-1.2.51-macOS-AppleSilicon.dmg" length="52340625" type="application/octet-stream" sparkle:edSignature="kMS2WQwOwdPyGj2egfBFkGR39whjhufpkXBYo3x4fCBRnY8XTgyWOiLMxi8sb9/zSq9KrRDtnwHHqCvFE3ZuCA=="/>
         </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: F+T0LoHOB6Jy6RXy/Zm95yz1BzE1tQ2fg3Q8nF6u6/lA/Swq//VIHTpLyfZJPBtjIgQ0k1I6r1aCjss7TzusDQ==
-length: 2964
+edSignature: ukIVDOzU3euYWAO1PyqBOzVp0FAv6vycaWxhpvGqSPskDTmxFBlbzsrdoQCWJMcBhUcO/98VqXu54isD5wetDQ==
+length: 2361
 -->
