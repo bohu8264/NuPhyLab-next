@@ -6,33 +6,29 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>NuPhy Lab</title>
         <item>
-            <title>1.2.52</title>
-            <pubDate>Fri, 20 Nov 2026 13:51:04 +0800</pubDate>
+            <title>1.2.53</title>
+            <pubDate>Fri, 20 Nov 2026 15:14:21 +0800</pubDate>
             <link>https://github.com/bohu8264/NuPhyLab-next</link>
-            <sparkle:version>1.2.52</sparkle:version>
-            <sparkle:shortVersionString>1.2.52</sparkle:shortVersionString>
+            <sparkle:version>1.2.53</sparkle:version>
+            <sparkle:shortVersionString>1.2.53</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.5</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <description sparkle:format="plain-text"><![CDATA[NUPHY-RELEASE-NOTES 1
-version:1.2.52
+version:1.2.53
 [zh-CN]
-NuPhy Lab 1.2.52
+NuPhy Lab 1.2.53
 
-• 在功能中心添加「取色器」，点选屏幕颜色即可复制 HEX 色号。可以用一个单键、组合键或鼠标侧键取色。重新录制会替换原键，取色结果会在屏幕顶部短暂显示。
-• 语音控制的指令快捷键支持鼠标侧键。点当前键位，再按下并松开想用的侧键。按一次开始说指令，再按一次执行。
-• 点键位旁的 × 可以清除指令快捷键。这个选择会在重新打开 NuPhy Lab 后保留，也可以直接点「说指令」使用语音控制。
+• 在功能中心添加「刚刚怎么了」，开启全屏回放后，可用按钮或自定义快捷键保存刚过去的 15 秒。画面在本机缓存，MP4 保存到「影片 / NuPhy Lab / Replays」。关闭回放或锁屏会清空未保存的画面。
 [en]
-NuPhy Lab 1.2.52
+NuPhy Lab 1.2.53
 
-• Add Color Picker from Feature Center to sample a screen color and copy its HEX code. Set a single key, key combination or mouse side button as your shortcut. Recording again replaces it. The result appears briefly at the top of the screen.
-• Voice Control supports mouse side buttons. Click the current shortcut, then press and release the side button you want. Press once to speak and again to run the command.
-• Click × beside the shortcut to clear it. Your choice is saved when you reopen NuPhy Lab. You can still click Speak a command to use Voice Control.
+• Add Instant Replay from Feature Center. Turn it on to save the last 15 seconds of your display with a button or a custom shortcut. Silent clips are buffered locally and saved as MP4 files in Movies / NuPhy Lab / Replays. Turning replay off or locking your Mac clears the unsaved buffer.
 ]]></description>
-            <enclosure url="https://github.com/bohu8264/NuPhyLab-next/releases/download/v1.2.52/NuPhyLab-1.2.52-macOS-AppleSilicon.dmg" length="52392059" type="application/octet-stream" sparkle:edSignature="kyCivFDdK5P/mG6IN6AarH85s6RQsYIgjVZVylc8+gawKdeUDWiuLNs5uXU/XNbn1ySmB3ONBIFY4k9gs7oKAA=="/>
+            <enclosure url="https://github.com/bohu8264/NuPhyLab-next/releases/download/v1.2.53/NuPhyLab-1.2.53-macOS-AppleSilicon.dmg" length="52059879" type="application/octet-stream" sparkle:edSignature="taN/GH6MmJ2BwIxPuCGRzxdnBuKlIMTKMCO8PIZsLzHSn2aewVEmIPP6EcdGHN9AzjznVH7CFr97HqNpRUqEBA=="/>
         </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: cxZDEq2vOxoj7xl2Q4cxUxXy5YBrvCJHm46y+wINcDhdYnmcjEfUBjBbZmcN/LPPiP3ud7HMcXWOdnHEPF8fBw==
-length: 2489
+edSignature: nzklT8OXIYcoGqqWE7miV60cNzGVUESm4Qs1jtGuc45DSwoMJKmPd0jIxAVJqmJzW65Cp8JaIuPdkpYYz9RyAA==
+length: 1931
 -->
