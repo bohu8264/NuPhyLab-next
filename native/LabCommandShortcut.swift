@@ -3,8 +3,8 @@ import AppKit
 /// The command shortcut is independent of the dictation shortcut. Both use the
 /// same physical-key recorder and exact modifier / repeat / key-up handling.
 @MainActor final class LabCommandShortcut {
-    static let standard = VoiceShortcutValue(keyCode:49, modifiers:(1 << 17) | (1 << 18))
-    private static let preference = "NuPhyLab.voiceControl.shortcut"
+    nonisolated static let standard = VoiceShortcutValue(keyCode:49, modifiers:(1 << 17) | (1 << 18))
+    private let preference: String
     private let defaults: UserDefaults
     let monitor: VoiceHotkey
     private(set) var value: VoiceShortcutValue?
@@ -16,16 +16,18 @@ import AppKit
     var recordingChanged: (Bool) -> Void = { _ in }
     private(set) var issue: String?
 
-    init(defaults: UserDefaults, monitor: VoiceHotkey) {
+    init(defaults: UserDefaults, monitor: VoiceHotkey, preference: String = "NuPhyLab.voiceControl.shortcut",
+         defaultValue: VoiceShortcutValue? = LabCommandShortcut.standard) {
+        self.preference = preference
         self.defaults = defaults
         self.monitor = monitor
-        value = Self.savedValue(in:defaults)
+        value = Self.savedValue(in:defaults, preference:preference, defaultValue:defaultValue)
         monitor.canHandle = { [weak self] in self?.canTrigger() == true }
         monitor.onRecordingCancelled = { [weak self] in self?.endRecording(cancelled:true) }
     }
 
-    private static func savedValue(in defaults: UserDefaults) -> VoiceShortcutValue? {
-        guard let saved = defaults.dictionary(forKey:preference) else { return standard }
+    private static func savedValue(in defaults: UserDefaults, preference: String, defaultValue: VoiceShortcutValue?) -> VoiceShortcutValue? {
+        guard let saved = defaults.dictionary(forKey:preference) else { return defaultValue }
         if saved["kind"] as? String == "none" { return nil }
         if let rawButton = saved["mouseButton"] {
             guard let button = rawButton as? UInt32, let mods = saved["modifiers"] as? UInt64,
@@ -33,7 +35,7 @@ import AppKit
             return VoiceShortcutValue(keyCode:0, modifiers:mods, mouseButton:button)
         }
         guard let key = saved["keyCode"] as? UInt32, let mods = saved["modifiers"] as? UInt64,
-              VoiceHotkeyPolicy.valid(keyCode:key, modifiers:mods) else { return standard }
+              VoiceHotkeyPolicy.valid(keyCode:key, modifiers:mods) else { return defaultValue }
         return VoiceShortcutValue(keyCode:key, modifiers:mods)
     }
 
@@ -96,14 +98,14 @@ import AppKit
         }
         var saved = ["keyCode":Int(binding.keyCode),"modifiers":Int(binding.modifiers)]
         saved["mouseButton"] = binding.mouseButton.map { Int($0) }
-        defaults.set(saved,forKey:Self.preference)
+        defaults.set(saved,forKey:preference)
         value=binding
         refresh(enabled:enabled)
     }
 
     func clear() {
         // A missing preference means first launch. An explicit empty choice survives restarting.
-        defaults.set(["kind":"none"],forKey:Self.preference)
+        defaults.set(["kind":"none"],forKey:preference)
         value = nil
         issue = nil
         monitor.suspendHandling()

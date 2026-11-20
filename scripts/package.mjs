@@ -112,7 +112,7 @@ await writeFile(
 <key>NSMicrophoneUsageDescription</key><string>用于你主动开始的语音控制、语音输入、智能框选语音及麦克风律动。语音输入录音发送至你配置的识别服务，临时录音处理后删除；其他声音在本机处理。</string>
 <key>NSAudioCaptureUsageDescription</key><string>将电脑播放的声音转换为键盘律动灯效。声音仅在本机分析，不保存或上传。</string>
 <key>NSSpeechRecognitionUsageDescription</key><string>在本机识别语音指令和框选问题，指令或问题文字发送至你配置的模型服务。</string>
-<key>NSScreenCaptureUsageDescription</key><string>仅在主动框选时截取选定区域，供本机文字识别；提交后按你的设置发送文字或图片至模型服务。</string>
+<key>NSScreenCaptureUsageDescription</key><string>智能框选截取选区供识别。开启全屏回放后，在本机内存中缓存最近 15 秒的无声画面，按保存时写入影片文件夹。</string>
 <key>NSPrincipalClass</key><string>NSApplication</string>
 <key>NSInputMonitoringUsageDescription</key><string>仅在启用按键触发、全局快捷键或模拟声浪后监听按键，保留正常输入，不记录输入内容。</string>
 </dict></plist>`,
@@ -124,6 +124,7 @@ for (const [locale,microphone] of Object.entries({
 })) {
   const folder=path.join(resources,locale+'.lproj');await mkdir(folder,{recursive:true});
   await writeFile(path.join(folder,'InfoPlist.strings'),'"NSMicrophoneUsageDescription" = '+JSON.stringify(microphone)+';\n' +
+    '"NSScreenCaptureUsageDescription" = '+JSON.stringify(locale==='en'?'Smart Selection captures the selected region. When Instant Replay is on, the last 15 seconds of the display are buffered locally without audio. Saving writes a clip to Movies.':'智能框选截取选区供识别。开启全屏回放后，在本机内存中缓存最近 15 秒的无声画面，按保存时写入影片文件夹。')+';\n' +
     '"NSSpeechRecognitionUsageDescription" = '+JSON.stringify(locale==='en'?'Transcribes voice commands and Smart Selection questions on this Mac. Command or question text goes to your configured model service.':'在本机识别语音指令和框选问题，指令或问题文字发送至你配置的模型服务。')+';\n');
 }
 // Record how this bundle was signed. An ad-hoc signature has no stable code

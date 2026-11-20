@@ -1,0 +1,5 @@
+{
+  "version": "1.2.53",
+  "zh-CN": ["在功能中心添加「刚刚怎么了」，开启全屏回放后，可用按钮或自定义快捷键保存刚过去的 15 秒。画面在本机缓存，MP4 保存到「影片 / NuPhy Lab / Replays」。关闭回放或锁屏会清空未保存的画面。"],
+  "en": ["Add Instant Replay from Feature Center. Turn it on to save the last 15 seconds of your display with a button or a custom shortcut. Silent clips are buffered locally and saved as MP4 files in Movies / NuPhy Lab / Replays. Turning replay off or locking your Mac clears the unsaved buffer."]
+}

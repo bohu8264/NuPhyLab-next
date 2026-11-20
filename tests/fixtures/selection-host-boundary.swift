@@ -25,12 +25,21 @@ enum VoiceL10n {static func text(_ value:String)->String{value}}
  func setAdded(_ value:Bool){}; func refresh(){}; func interrupt(){}; func cancelRecording(){}; func shutdown(){}
  func handle(_ body:[String:Any],reply:@escaping(Any?,String?)->Void){reply(nil,"Color Picker boundary fixture")}
 }
+@MainActor final class ScreenReplay {
+ let shortcut=FixtureCommandShortcut()
+ var english=false,enabled=false,canSave=false,exporting=false
+ var reservedShortcut:VoiceShortcutValue?
+ var canRecordShortcut:()->Bool={false},stateChanged:()->Void={}
+ var notify:(String)->Void={_ in}
+ func setAdded(_ value:Bool){};func refresh(){};func interrupt(){};func save(){};func displaysChanged(){}
+ func handle(_ body:[String:Any],reply:@escaping(Any?,String?)->Void){reply(nil,"Replay boundary fixture")}
+}
 @MainActor final class ColorPickerNotice {func show(color:NSColor,hex:String,english:Bool){};func hide(){}}
 @MainActor final class FixtureCommandShortcut {
  var isRecording=false;var value:VoiceShortcutValue?=VoiceShortcutValue()
  var conflict:(VoiceShortcutValue)->String?={_ in nil}
  var canTrigger:()->Bool={false};var recordingChanged:(Bool)->Void={_ in}
- func refresh(enabled:Bool){};func shutdown(){}
+ func refresh(enabled:Bool){};func shutdown(){};func cancelRecording(){}
 }
 @MainActor final class LabVoiceControl {
  let shortcut=FixtureCommandShortcut();var enabled=false

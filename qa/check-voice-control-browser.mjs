@@ -19,6 +19,15 @@ function installNativeFixture() {
   fixture.colorLabels=['Q','鼠标侧键 2','⌥K'];
   fixture.colorPicks=0;
   window.webkit={messageHandlers:{
+    screenReplay:{async postMessage(body){
+      const r=fixture.replay??={enabled:false,phase:'off',saving:false,display:'main',displays:[{id:'fixture',name:'Test Display'}],lastFile:'',shortcutLabel:'',shortcutReady:true,shortcutIssue:'',issue:''};
+      if(body.op==='start'){r.enabled=true;r.phase='recording';}
+      if(body.op==='stop'){r.enabled=false;r.phase='off';}
+      if(body.op==='record')r.shortcutLabel='⌥R';
+      if(body.op==='clear')r.shortcutLabel='';
+      if(body.op==='save'&&r.enabled)r.lastFile='Replay-fixture.mp4';
+      return structuredClone(r);
+    }},
     colorPicker:{async postMessage(body){
       if(body.op==='enable') colors.enabled=body.enabled;
       if(body.op==='pick') fixture.colorPicks++;
@@ -232,6 +241,20 @@ try {
     }
   }
   checks.push('all '+FEATURE_IDS.length+' features actually added and removed through the production service');
+  await run([{id:'add:screen-replay'},{id:'open:screen-replay'}]);
+  const replaySwitch=()=>evaluate(()=>document.querySelector('.screen-replay [role=switch]')?.getAttribute('aria-checked'));
+  await until(replaySwitch,v=>v==='false','replay starts off');
+  assert(await evaluate(()=>document.querySelector('.replay-save button').disabled));
+  await click('.replay-key');
+  await until(()=>evaluate(()=>document.querySelector('.replay-key')?.innerText),v=>v==='⌥R','replay shortcut recorded');
+  await click('.replay-clear');
+  await run([{id:'on:screen-replay'}]);await until(replaySwitch,v=>v==='true','enable replay');
+  await click('.replay-save button');
+  await until(()=>evaluate(()=>document.querySelector('.replay-last p')?.innerText),v=>v==='Replay-fixture.mp4','save MP4');
+  await screenshot('instant-replay-zh');
+  await run([{id:'off:screen-replay'},{id:'remove:screen-replay'}]);
+  await until(()=>service.state(),s=>!s.settings.sidebarFeatures.includes('screen-replay'),'replay removed');
+  checks.push('Instant Replay starts off, records/clears one shortcut, saves while enabled and can be removed');
   await run([{id:'add:color-picker'},{id:'open:color-picker'}]);
   await until(()=>evaluate(()=>document.querySelector('.app-shell').dataset.page),v=>v==='color-picker','picker page');
   const colorRows=()=>evaluate(()=>[...document.querySelectorAll('.color-picker-key')].map(b=>b.innerText));
@@ -273,8 +296,20 @@ try {
   await evaluate(()=>{window.voiceFixture.recordedShortcut='Mouse side button 1';});
   await click('#lvc-shortcut-value');
   await until(displayedKey,s=>s==='Mouse side button 1','reassign a cleared shortcut in English');
+  await dismiss(); // Page.reload also reopens the fixture's first-run permission sheet.
   assert.equal(await evaluate(()=>document.querySelector('.lvc-shortcut-clear')?.getAttribute('aria-label')),'Clear command shortcut');
   checks.push('navigation and language switch; compact English layout; opt-in survives UI reload');
+  await run([{id:'add:screen-replay'},{id:'open:screen-replay'}]);
+  await until(replaySwitch,v=>v==='false','English replay opens disabled');
+  await click('.lvc-settings');
+  const replayLayout=await evaluate(()=>{
+    const part=document.querySelector('.screen-replay');
+    const boxes=[...part.querySelectorAll('button')].map(b=>b.getBoundingClientRect());
+    return {copy:part.innerText,fit:boxes.every(r=>r.width>0&&r.left>=0&&r.right<=innerWidth+1)};
+  });
+  assert(replayLayout.copy.includes('Save last 15 seconds')&&replayLayout.copy.includes('Set shortcut')&&replayLayout.fit);
+  await screenshot('instant-replay-en-compact');
+  checks.push('compact English replay controls fit and display the saved language');
   assert.deepEqual(exceptions,[]);
   console.log(JSON.stringify({ok:true,checks}));
   await writeFile(path.join(output,'RESULT.json'),JSON.stringify({ok:true,checks,scope:'Production UI and local server; isolated simulated model, speech, HID and feature-native bridges.'},null,2));

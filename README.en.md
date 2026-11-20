@@ -12,6 +12,10 @@ Save a model and API key in **Settings → Models & API**, turn on **Voice Contr
 
 Press Control + Shift + Space to speak, then press it again to run the command. Open the settings beside Voice Control to see the current shortcut. To change it, click the displayed key, then press and release a keyboard shortcut or mouse side button. Click × beside the shortcut to clear it. You can still click **Speak a command**. Say “Set the dictation shortcut to left Ctrl” or “Set the dictation shortcut to Q” to change the separate Voice Input shortcut.
 
+## Instant Replay
+
+Add **Instant Replay** in **Feature Center**, then turn on **Full-screen replay**. Click **Save last 15 seconds** or press your shortcut to save the preceding screen activity as a silent MP4. If you just started, the clip includes the time available. You can save again while buffering continues. Play the last clip or reveal it in Finder. Turning replay off, locking the Mac or quitting clears unsaved footage.
+
 ## Color Picker
 
 Add **Color Picker** in **Feature Center** and click **Pick a color**. Click a pixel anywhere on the screen to copy its sRGB HEX code (for example, `#336699`). A brief message appears at the top of the screen. Press Esc to cancel and keep the current clipboard. Set one **Color picker shortcut** using a key, a key combination or a mouse side button, then turn on **Global shortcut**. Click the saved shortcut to replace it, or click × to clear it.

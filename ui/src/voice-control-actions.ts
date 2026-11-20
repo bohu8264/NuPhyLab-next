@@ -26,7 +26,7 @@ for (const [id,zh,en] of [
   ['library.lighting','灯光作品','Lighting works'],['library.music','演奏作品','Music works'],
 ] as const) add({id:'open:'+id, names:[zh,en],kind:'open',page:id.split('.')[0] as VoicePage});
 
-for (const id of ['selection-question','typing-sounds','music','keyboard-pocket','drag-convert','voice-input','dock-scenes','color-picker'] as const) {
+for (const id of ['selection-question','typing-sounds','music','keyboard-pocket','drag-convert','voice-input','dock-scenes','color-picker','screen-replay'] as const) {
   const feature = features.find(f=>f.id===id)!;
   toggle(id,id==='dock-scenes'?['Dock 场景快捷键','Dock scene shortcuts']:[feature.zh,feature.en],id,id);
 }
