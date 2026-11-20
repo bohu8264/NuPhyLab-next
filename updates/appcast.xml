@@ -6,33 +6,33 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>NuPhy Lab</title>
         <item>
-            <title>1.2.51</title>
-            <pubDate>Thu, 19 Nov 2026 16:17:51 +0800</pubDate>
+            <title>1.2.52</title>
+            <pubDate>Fri, 20 Nov 2026 13:51:04 +0800</pubDate>
             <link>https://github.com/bohu8264/NuPhyLab-next</link>
-            <sparkle:version>1.2.51</sparkle:version>
-            <sparkle:shortVersionString>1.2.51</sparkle:shortVersionString>
+            <sparkle:version>1.2.52</sparkle:version>
+            <sparkle:shortVersionString>1.2.52</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.5</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <description sparkle:format="plain-text"><![CDATA[NUPHY-RELEASE-NOTES 1
-version:1.2.51
+version:1.2.52
 [zh-CN]
-NuPhy Lab 1.2.51
+NuPhy Lab 1.2.52
 
-• 主页顶部新增独立的语音控制开关。说出指令即可添加或移除侧栏功能、开关功能、切换页面或调节亮度和音量。
-• 语音指令在 Mac 本机转写，由「模型与 API」中的服务理解。原有语音输入继续用于听写。
-• 语音控制支持自定义单键或组合键。按一次说指令，再按一次执行，打开设置可查看当前键位，点击键位即可更改。听写快捷键支持用语音指定左、右修饰键。
+• 在功能中心添加「取色器」，点选屏幕颜色即可复制 HEX 色号。可以用一个单键、组合键或鼠标侧键取色。重新录制会替换原键，取色结果会在屏幕顶部短暂显示。
+• 语音控制的指令快捷键支持鼠标侧键。点当前键位，再按下并松开想用的侧键。按一次开始说指令，再按一次执行。
+• 点键位旁的 × 可以清除指令快捷键。这个选择会在重新打开 NuPhy Lab 后保留，也可以直接点「说指令」使用语音控制。
 [en]
-NuPhy Lab 1.2.51
+NuPhy Lab 1.2.52
 
-• Voice Control in the page header lets you add or remove sidebar tools, turn features on or off, navigate and adjust brightness or volume.
-• Commands are transcribed on your Mac and interpreted by the service in Models & API. Voice Input continues to handle dictation.
-• Set a key or chord for Voice Control. Press once to speak and again to run. Open settings to see the current shortcut, then click the key to change it. Dictation commands recognize left and right modifier keys.
+• Add Color Picker from Feature Center to sample a screen color and copy its HEX code. Set a single key, key combination or mouse side button as your shortcut. Recording again replaces it. The result appears briefly at the top of the screen.
+• Voice Control supports mouse side buttons. Click the current shortcut, then press and release the side button you want. Press once to speak and again to run the command.
+• Click × beside the shortcut to clear it. Your choice is saved when you reopen NuPhy Lab. You can still click Speak a command to use Voice Control.
 ]]></description>
-            <enclosure url="https://github.com/bohu8264/NuPhyLab-next/releases/download/v1.2.51/NuPhyLab-1.2.51-macOS-AppleSilicon.dmg" length="52340625" type="application/octet-stream" sparkle:edSignature="kMS2WQwOwdPyGj2egfBFkGR39whjhufpkXBYo3x4fCBRnY8XTgyWOiLMxi8sb9/zSq9KrRDtnwHHqCvFE3ZuCA=="/>
+            <enclosure url="https://github.com/bohu8264/NuPhyLab-next/releases/download/v1.2.52/NuPhyLab-1.2.52-macOS-AppleSilicon.dmg" length="52392059" type="application/octet-stream" sparkle:edSignature="kyCivFDdK5P/mG6IN6AarH85s6RQsYIgjVZVylc8+gawKdeUDWiuLNs5uXU/XNbn1ySmB3ONBIFY4k9gs7oKAA=="/>
         </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: ukIVDOzU3euYWAO1PyqBOzVp0FAv6vycaWxhpvGqSPskDTmxFBlbzsrdoQCWJMcBhUcO/98VqXu54isD5wetDQ==
-length: 2361
+edSignature: cxZDEq2vOxoj7xl2Q4cxUxXy5YBrvCJHm46y+wINcDhdYnmcjEfUBjBbZmcN/LPPiP3ud7HMcXWOdnHEPF8fBw==
+length: 2489
 -->
