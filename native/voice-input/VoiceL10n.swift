@@ -141,11 +141,12 @@ enum VoiceL10n {
         "录音格式不兼容，未发送。":"Incompatible audio format. Nothing was sent.",
         "无法读取本次录音。":"The recording could not be read."
     ]
-    static func text(_ value:String)->String {
+    static func text(_ value:String)->String { text(value,english:english) }
+    static func text(_ value:String,english:Bool)->String {
         guard english else{return value.replacingOccurrences(of:"此实验版",with:"NuPhy Lab")}
         if let translated=messages[value]{return translated}
         let prefixes=[("快捷键已设为 ","Shortcut set to "),("快捷键未更改：","Shortcut unchanged: "),("保存失败，请检查设置和 Key 后重试：","Save failed: ")]
-        for (prefix,result) in prefixes where value.hasPrefix(prefix) {return result+text(String(value.dropFirst(prefix.count)))}
+        for (prefix,result) in prefixes where value.hasPrefix(prefix) {return result+text(String(value.dropFirst(prefix.count)),english:english)}
         if value.hasPrefix("语音输入钥匙串操作失败") {return "Keychain access failed. Allow NuPhy Lab to access your existing voice credentials, then retry."}
         if value.hasPrefix("接口未授权") {return "The service rejected authorization. Check its API key and model access."}
         if value.hasPrefix("服务请求失败") {return "The service request failed. The original transcript is preserved."}

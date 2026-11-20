@@ -22,6 +22,9 @@
 .lvc-shortcut{padding:10px 0;border-bottom:1px solid #e6e6e6}
 .lvc-shortcut>div{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px}
 .lvc-shortcut button{min-width:58px;padding:4px 8px;border:1px solid #d8d8d8;border-radius:6px;background:#f6f6f6;color:inherit;font:inherit;cursor:pointer}
+.lvc-shortcut-controls{display:flex;align-items:center;gap:4px}
+.lvc-shortcut .lvc-shortcut-clear{display:grid;place-items:center;min-width:26px;min-height:26px;padding:4px;border-color:transparent;background:transparent}
+.lvc-shortcut-clear:hover{background:#eee}
 .lvc-shortcut small{margin-top:5px}
 @media(max-width:820px){.lab-page-tools{gap:8px}.lab-page-tools .lab-connection{max-width:145px}}
 @media(max-width:620px){.lab-page-tools{margin-left:auto}.lab-page-tools .lab-connection span{display:none}.lvc-panel{position:fixed;right:12px;top:64px}}

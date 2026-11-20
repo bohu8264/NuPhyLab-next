@@ -34,6 +34,7 @@ import Foundation
     var capturing: Bool { captureReply != nil }
     var authorizing: Bool { capturing && speech.session.phase == .authorizing }
     var enabled: Bool { defaults.bool(forKey: Self.preference) }
+    var reservedShortcut: VoiceShortcutValue? { enabled && shortcut.issue == nil ? shortcut.value : nil }
 
     init(defaults: UserDefaults = .standard, speech: VoiceCaptureService? = nil,
          client: AIClient = AIClient(), hotkey: VoiceHotkey? = nil, hasKey: @escaping (String) -> Bool, readKey: @escaping (String) throws -> String) {
@@ -60,16 +61,23 @@ import Foundation
     private func t(_ zh: String, _ en: String) -> String { english ? en : zh }
 
     func handle(_ body: [String: Any], reply: @escaping Reply) {
+        let shortcutEnglish = (body["language"] as? String).map { $0 == "en" } ?? english
         switch body["op"] as? String {
         case "status":
-            var status = shortcut.status(english:english)
+            var status = shortcut.status(english:shortcutEnglish)
             status["enabled"] = enabled
             status["phase"] = reviewOnFinish == nil ? speech.session.phase.rawValue : "awaitingFinish"
             status["transcript"] = capturing ? (reviewOnFinish ?? joined(captureToken == nil ? "" : speech.session.transcript)) : ""
             reply(status,nil)
         case "recordShortcut":
             guard !capturing, planTask == nil, hasForegroundWindow(), mayStart() else { reply(nil,t("请先结束当前操作。","Finish the current operation first.")); return }
-            shortcut.record(enabled:enabled,english:english,reply:reply)
+            pendingPress = nil
+            shortcut.record(enabled:enabled,english:shortcutEnglish,reply:reply)
+        case "clearShortcut":
+            guard hasForegroundWindow(), !capturing, !shortcut.isRecording, planTask == nil else { reply(nil,t("请先结束当前操作。","Finish the current operation first.")); return }
+            pendingPress = nil
+            shortcut.clear()
+            reply(shortcut.status(english:shortcutEnglish),nil)
         case "setInputShortcut":
             guard enabled, !capturing, !shortcut.isRecording, planTask == nil, mayStart(), hasForegroundWindow(),
                   let setter=setInputShortcut, let name=body["value"] as? String,
@@ -83,7 +91,7 @@ import Foundation
             if !value { cancel() }
             defaults.set(value, forKey: Self.preference)
             shortcut.refresh(enabled:enabled)
-            reply(shortcut.status(english:english).merging(["enabled":enabled]) { _,new in new }, nil)
+            reply(shortcut.status(english:shortcutEnglish).merging(["enabled":enabled]) { _,new in new }, nil)
         case "cancel":
             cancel()
             reply(true, nil)
@@ -130,7 +138,7 @@ import Foundation
     }
 
     func pressShortcut() {
-        guard enabled, !shortcut.isRecording else { return }
+        guard enabled, shortcut.value != nil, !shortcut.isRecording else { return }
         if capturing { finish(); return }
         guard planTask == nil else { return }
         if pendingPress != nil { pressedAgain = true; return }

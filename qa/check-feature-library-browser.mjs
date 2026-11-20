@@ -6,6 +6,7 @@ import os from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
 import assert from 'node:assert/strict';
+import {FEATURE_IDS} from '../shared/sidebar-features.mjs';
 import {fakeService} from '../tests/helpers/fake-service.mjs';
 import {initialSession,demoEvents} from '../ui/src/music/model.ts';
 
@@ -37,7 +38,7 @@ try {
  const shot=async name=>{await settle();const value=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await writeFile(path.join(output,name+'.png'),Buffer.from(value.data,'base64'));};
  await send('Page.enable');await send('Runtime.enable');const downloads=path.join(dir,'downloads');await mkdir(downloads);await send('Page.setDownloadBehavior',{behavior:'allow',downloadPath:downloads});await send('Emulation.setDeviceMetricsOverride',{width:1120,height:820,deviceScaleFactor:1,mobile:false});await send('Page.navigate',{url:service.url});await page('studio');await click('稍后');
  await until(()=>evaluate(`document.querySelectorAll('.feature-sidebar-nav button').length`),n=>n===3,'default three');checks.push('fresh sidebar has only three features');
- await click('功能中心');await page('features');await until(()=>evaluate(`document.querySelectorAll('.feature-card').length`),n=>n===10,'feature cards');await shot('feature-center-zh');
+ await click('功能中心');await page('features');await until(()=>evaluate(`document.querySelectorAll('.feature-card').length`),n=>n===FEATURE_IDS.length,'feature cards');await shot('feature-center-zh');
  await click('添加键盘口袋');await until(()=>service.state(),s=>s.settings.sidebarFeatures.includes('keyboard-pocket'),'add pocket');
  await click('移除灯光创作');await until(()=>service.state(),s=>!s.settings.sidebarFeatures.includes('studio'),'remove default');await send('Page.reload');await page('features');await settle();if(await evaluate(`Array.from(document.querySelectorAll('[role=dialog] button')).some(b=>b.textContent.trim()==='稍后')`))await click('稍后');
  assert(!(await service.state()).settings.sidebarFeatures.includes('studio'));checks.push('add/remove and restart persistence');

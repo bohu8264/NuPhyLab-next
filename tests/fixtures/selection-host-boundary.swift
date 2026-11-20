@@ -14,14 +14,27 @@ enum LabKeychain {
 }
 struct VoiceShortcutValue:Equatable {var keyCode:UInt32=49;var modifiers:UInt64=0;var mouseButton:UInt32?}
 enum VoiceL10n {static func text(_ value:String)->String{value}}
+@MainActor final class LabColorPicker {
+ var english=false, busy=false
+ var reservedShortcut:VoiceShortcutValue?
+ var canStart:()->Bool={false}, canRecord:()->Bool={false}
+ var conflict:(VoiceShortcutValue)->String?={_ in nil}
+ var activityChanged:()->Void={}, stateChanged:()->Void={}, hideNotice:()->Void={}
+ var showNotice:(NSColor,String)->Void={_,_ in}
+ init(directory:URL){}
+ func setAdded(_ value:Bool){}; func refresh(){}; func interrupt(){}; func cancelRecording(){}; func shutdown(){}
+ func handle(_ body:[String:Any],reply:@escaping(Any?,String?)->Void){reply(nil,"Color Picker boundary fixture")}
+}
+@MainActor final class ColorPickerNotice {func show(color:NSColor,hex:String,english:Bool){};func hide(){}}
 @MainActor final class FixtureCommandShortcut {
- var isRecording=false;var value=VoiceShortcutValue()
+ var isRecording=false;var value:VoiceShortcutValue?=VoiceShortcutValue()
  var conflict:(VoiceShortcutValue)->String?={_ in nil}
  var canTrigger:()->Bool={false};var recordingChanged:(Bool)->Void={_ in}
  func refresh(enabled:Bool){};func shutdown(){}
 }
 @MainActor final class LabVoiceControl {
  let shortcut=FixtureCommandShortcut();var enabled=false
+ var reservedShortcut:VoiceShortcutValue? {enabled ? shortcut.value : nil}
  var presentShortcut:(String)->Void={_ in}
  var setInputShortcut:((VoiceShortcutValue)throws->String)?
 
@@ -39,6 +52,7 @@ enum VoiceL10n {static func text(_ value:String)->String{value}}
 
 // Host-only tests must never import the user's Dock or register system hotkeys.
 @MainActor final class DockScenesFeature {
+ var shortcutSaveIssue: (UInt32, NSEvent.ModifierFlags) -> String? = { _, _ in nil }
  weak var window: NSWindow?
  weak var web: WKWebView?
  var english = false

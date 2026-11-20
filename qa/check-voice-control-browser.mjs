@@ -14,13 +14,24 @@ function installNativeFixture() {
     slotKeyCodes:[18,19,20,21,23,22,26,28,25],slotKeyNames:'123456789'.split(''),slotOrder:Array.from({length:9},(_,i)=>i),
     sequenceIndex:0,retainDays:0,plainText:false,clearAfterUse:false,sequential:false};
   const pocket={settings:prefs,slots:[],canUndo:false,status:'',keyChoices:[],permissions:{accessibility:true},hotkeyReady:true,hotkeys:{slotReady:true,functionObserved:true}};
-  const fixture=window.voiceFixture={calls:[],pocketCalls:[],text:'Test spoken command',partial:false,steps:[],pending:false,pocket};
+  const fixture=window.voiceFixture={calls:[],pocketCalls:[],text:'Test spoken command',partial:false,steps:[],pending:false,pocket,recordedShortcut:'⌥K'};
+  const colors={enabled:false,sampling:false};
+  fixture.colorLabels=['Q','鼠标侧键 2','⌥K'];
+  fixture.colorPicks=0;
   window.webkit={messageHandlers:{
+    colorPicker:{async postMessage(body){
+      if(body.op==='enable') colors.enabled=body.enabled;
+      if(body.op==='pick') fixture.colorPicks++;
+      if(body.op==='record') colors.shortcutLabel=fixture.colorLabels.shift();
+      if(body.op==='remove') delete colors.shortcutLabel;
+      return structuredClone(colors);
+    }},
     voiceControl:{async postMessage(body){
       fixture.calls.push(body);
       switch(body.op){
         case 'enable':sessionStorage.setItem('fixture-enabled',String(body.enabled));break;
-        case 'recordShortcut':sessionStorage.setItem('fixture-command-key','⌥K');break;
+        case 'recordShortcut':sessionStorage.setItem('fixture-command-key',fixture.recordedShortcut);break;
+        case 'clearShortcut':sessionStorage.setItem('fixture-command-key','');break;
         case 'setInputShortcut':return {shortcutLabel:body.value};
         case 'listen':return {text:fixture.text,review:fixture.partial};
         case 'interpret':
@@ -126,6 +137,15 @@ try {
   assert.equal(await recordings(),1);
   assert.equal(await evaluate(()=>window.voiceFixture.calls.filter(c=>c.op==='listen').length),listensBeforeSetting);
   checks.push('opening and reopening settings leaves the shortcut intact; only the key button records');
+  await evaluate(()=>{window.voiceFixture.recordedShortcut='鼠标侧键 2';});
+  await click('#lvc-shortcut-value');
+  await until(displayedKey,s=>s==='鼠标侧键 2','recorded mouse button is displayed');
+  await click('button[aria-label="清除指令快捷键"]');
+  await until(displayedKey,s=>s==='未设置','clear removes the binding');
+  assert.equal(await evaluate(()=>document.querySelector('.lvc-shortcut-clear')===null),true);
+  assert.equal(await evaluate(()=>document.querySelector('.lvc-switch').getAttribute('aria-checked')),'true');
+  assert.equal(await recordings(),2);
+  checks.push('clear is separate from panel close and recording; manual commands remain enabled');
   await run([{id:'add:voice-input'}]);await expectFeedback('语音输入已添加到侧栏');
   const interpretations=()=>evaluate(()=>window.voiceFixture.calls.filter(c=>c.op==='interpret').length);
   const beforeLiteral=await interpretations();
@@ -148,7 +168,7 @@ try {
   await run([],'不要把语音输入的快捷键给我改成 Q');await expectFeedback('没能确定');
   await run([{id:'shortcut:voice-input',value:'左边的 Ctrl 或右边的 Ctrl'}],'哪个控制键？');await expectFeedback('没能确定');
   assert.equal(await countBindings(),countBefore);
-  assert.equal(await evaluate(()=>document.querySelector('#lvc-shortcut-value').textContent),'⌥K');
+  assert.equal(await displayedKey(),'未设置','dictation remapping does not reassign a cleared command shortcut');
   await run([{id:'remove:voice-input'}]);await expectFeedback('语音输入已从侧栏移除');
   await run([],'把语音输入的快捷键给我改成 Q');await expectFeedback('请先从功能中心添加');
   assert.equal(await countBindings(),countBefore);
@@ -211,7 +231,25 @@ try {
       await until(()=>service.state(),s=>ids.every(id=>s.settings.sidebarFeatures.includes(id)===(action==='add')),action+' persisted feature batch');
     }
   }
-  checks.push('all 11 features actually added and removed through the production service');
+  checks.push('all '+FEATURE_IDS.length+' features actually added and removed through the production service');
+  await run([{id:'add:color-picker'},{id:'open:color-picker'}]);
+  await until(()=>evaluate(()=>document.querySelector('.app-shell').dataset.page),v=>v==='color-picker','picker page');
+  const colorRows=()=>evaluate(()=>[...document.querySelectorAll('.color-picker-key')].map(b=>b.innerText));
+  await click('.color-picker-action button');
+  assert.equal(await evaluate(()=>window.voiceFixture.colorPicks),1);
+  assert.deepEqual(await colorRows(),['未设置']);
+  for(const label of ['Q','鼠标侧键 2','⌥K']){
+    await click('.color-picker-key');
+    await until(colorRows,v=>v.length===1&&v[0]===label,'replace the only Color Picker shortcut with '+label);
+  }
+  await run([{id:'on:color-picker'}]);
+  await until(()=>evaluate(()=>document.querySelector('.color-picker-page [role=switch]')?.getAttribute('aria-checked')),v=>v==='true','picker shortcut switch');
+  await screenshot('color-picker-zh');
+  await click('.color-picker-remove');
+  await until(colorRows,v=>v.length===1&&v[0]==='未设置','clear the picker shortcut');
+  await run([{id:'off:color-picker'},{id:'remove:color-picker'}]);
+  await until(()=>service.state(),s=>!s.settings.sidebarFeatures.includes('color-picker'),'picker removed');
+  checks.push('Color Picker manual action, one shortcut field for a key, a side button or a chord, replacement, clearing and independent switch');
   await run([{id:'add:game'},{id:'on:game'}]);
   await until(()=>service.state(),s=>s.game.status==='running','game start');
   await until(feedback,v=>v?.includes('已开启'),'running game confirmed');
@@ -229,6 +267,13 @@ try {
   await screenshot('header-en-compact');
   await send('Page.reload');
   await until(()=>evaluate(()=>document.querySelector('.lvc-switch')?.getAttribute('aria-checked')),v=>v==='true','reopened preference');
+  await click('.lvc-settings');
+  await until(displayedKey,s=>s==='Not set','English empty shortcut survives reload');
+  assert.equal(await recordings(),0);
+  await evaluate(()=>{window.voiceFixture.recordedShortcut='Mouse side button 1';});
+  await click('#lvc-shortcut-value');
+  await until(displayedKey,s=>s==='Mouse side button 1','reassign a cleared shortcut in English');
+  assert.equal(await evaluate(()=>document.querySelector('.lvc-shortcut-clear')?.getAttribute('aria-label')),'Clear command shortcut');
   checks.push('navigation and language switch; compact English layout; opt-in survives UI reload');
   assert.deepEqual(exceptions,[]);
   console.log(JSON.stringify({ok:true,checks}));

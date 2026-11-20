@@ -154,11 +154,11 @@ final class ModelFixture: URLProtocol {
         let chord=VoiceHotkey.namedShortcut("Ctrl+Shift+Q")!
         check(chord.keyCode==q.keyCode && chord.modifiers==standard.modifiers && q.modifiers==0,"spoken single key and chord")
         check(VoiceHotkey.namedShortcut("Q+W")==nil && VoiceHotkey.namedShortcut("Ctrl+Ctrl+Q")==nil,"invalid chord rejected")
-        try host.shortcut.save(chord,enabled:true,english:false)
+        try host.shortcut.save(chord,enabled:true)
         let reopened=LabCommandShortcut(defaults:defaults,monitor:VoiceHotkey(listenToSystemEvents:false))
         check(reopened.value==chord,"recorded shortcut survives reopening")
         host.shortcut.conflict={_ in "Conflict"}
-        do {try host.shortcut.save(q,enabled:true,english:false);check(false,"conflict was accepted")} catch {}
+        do {try host.shortcut.save(q,enabled:true);check(false,"conflict was accepted")} catch {}
         check(host.shortcut.value==chord,"conflict keeps old shortcut")
         host.shortcut.conflict={_ in nil}
         pressID=nil;await press(standard);check(pressID==nil,"old shortcut released")
@@ -166,6 +166,64 @@ final class ModelFixture: URLProtocol {
         await press(chord)
         let emptyTap=await ask(["op":"listen","shortcutID":pressID!])
         check(emptyTap.0?["cancelled"] as? Bool==true && !host.capturing,"two quick taps before startup cancel cleanly")
+        let side=VoiceShortcutValue(keyCode:0,modifiers:0,mouseButton:4)
+        var dictation=VoiceSettings()
+        dictation.shortcutKeyCode=61;dictation.shortcutMouseButton=4;dictation.shortcutMouseModifiers=0
+        check(VoiceConflictPolicy.shortcut(dictation)==side,"dictation conflict ignores its previous keyboard trigger")
+        let selection=InputBinding.mouseButton(index:4,modifiers:[])
+        check(VoiceConflictPolicy.overlapsSelection(VoiceConflictPolicy.binding(side),selection),"Smart Selection owns the same side button")
+        host.shortcut.conflict={VoiceConflictPolicy.shortcut(dictation)==$0 ? "Used for dictation" : nil}
+        do {try host.shortcut.save(side,enabled:true);check(false,"occupied side button accepted")} catch {}
+        check(host.shortcut.value==chord,"an occupied side button preserves the command binding")
+        host.shortcut.conflict={_ in nil}
+        var capture=VoiceShortcutCaptureState()
+        for button in UInt32(0)...2 {
+            check(capture.observe(.init(kind:.mouseDown,keyCode:button)) == .pass && capture.observe(.init(kind:.mouseUp,keyCode:button)) == .pass,"primary mouse buttons pass through")
+        }
+        check(capture.observe(.init(kind:.mouseDown,keyCode:4)) == .consume,"side-button capture claims down")
+        guard case .complete(let recorded)=capture.observe(.init(kind:.mouseUp,keyCode:4)) else { preconditionFailure("Side button was not recorded") }
+        try host.shortcut.save(recorded,enabled:true)
+        check(recorded==side && host.reservedShortcut==side,"side button saved on release")
+        let reloaded=LabCommandShortcut(defaults:defaults,monitor:VoiceHotkey(listenToSystemEvents:false))
+        check(reloaded.value==side && reloaded.status(english:true)["shortcutLabel"] as? String=="Mouse side button 2","side button persists with an English label")
+        func mouse(_ kind:VoiceHotkeyEventKind,_ button:UInt32=4,_ mods:UInt64=0)->VoiceHotkeyDecision {
+            monitor.observeRuntime(.init(kind:kind,keyCode:button,flags:mods))
+        }
+        pressID=nil
+        check(!mouse(.mouseDown,3).consume && !mouse(.mouseUp,3).consume,"unbound side passes through")
+        check(!mouse(.mouseDown,4,1<<17).consume && !mouse(.mouseUp,4,1<<17).consume,"modifier mismatch passes through")
+        check(mouse(.mouseDown).consume && mouse(.mouseDown).consume && pressID==nil,"holding or repeated down cannot start speech")
+        check(mouse(.mouseUp).fire && !mouse(.mouseUp).fire,"one trigger per side-button release")
+        try await Task.sleep(for:.milliseconds(20))
+        guard let sideID=pressID else {preconditionFailure("Missing side-button request")}
+        manualReply=nil
+        host.handle(["op":"listen","shortcutID":sideID]) {v,e in manualReply=(v as? [String:Any],e)}
+        let clearWhileListening=await ask(["op":"clearShortcut"])
+        check(host.capturing && clearWhileListening.1 != nil,"active recording keeps its finish shortcut")
+        speech.receiveTestResult(.init(text:"侧键指令",isFinal:false,failureDomain:nil,failureCode:nil),token:speech.session.generation)
+        _=mouse(.mouseDown);_=mouse(.mouseUp)
+        try await Task.sleep(for:.milliseconds(90))
+        check(manualReply?.0?["text"] as? String=="侧键指令" && !host.capturing,"second side-button click finishes the command")
+        pressID=nil;_=mouse(.mouseDown);_=mouse(.mouseUp)
+        try await Task.sleep(for:.milliseconds(20))
+        let pendingID=pressID!
+        _=mouse(.mouseDown)
+        let cleared=await ask(["op":"clearShortcut"])
+        check(cleared.0?["shortcutLabel"] as? String=="" && host.enabled && host.reservedShortcut==nil,"clearing releases the shortcut without disabling Voice Control")
+        let released=mouse(.mouseUp)
+        check(released.consume && !released.fire,"clearing during a held click drains only its release")
+        check(!mouse(.mouseDown).consume && !mouse(.mouseUp).consume,"subsequent clicks return to the mouse")
+        check((await ask(["op":"listen","shortcutID":pendingID])).0?["cancelled"] as? Bool==true,"a queued shortcut cannot start after clearing")
+        _=await ask(["op":"enable","enabled":false]);_=await ask(["op":"enable","enabled":true])
+        let unbound=LabCommandShortcut(defaults:defaults,monitor:VoiceHotkey(listenToSystemEvents:false))
+        check(unbound.value==nil && !monitor.isReady,"empty choice survives reopening and toggling")
+        pressID=nil;await press(standard);await press(chord)
+        check(pressID==nil,"neither the default nor previous shortcut comes back")
+        listen();check(host.capturing,"the Speak button still works without a shortcut")
+        speech.receiveTestResult(.init(text:"按钮指令",isFinal:true,failureDomain:nil,failureCode:nil),token:speech.session.generation)
+        check(captures.last?.0?["text"] as? String=="按钮指令","button-initiated speech can finish with no binding")
+        try host.shortcut.save(chord,enabled:true)
+        check(host.reservedShortcut==chord && monitor.isReady,"a new shortcut can be assigned after clearing")
         let pairs:[(String,AIProtocol)] = [("responses",.responses),("chat",.chatCompletions),("messages",.anthropicMessages)]
         for (path,api) in pairs {
             let config = endpoint(path,api)

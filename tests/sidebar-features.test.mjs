@@ -19,7 +19,7 @@ test('legacy migration keeps active tools and saved music without rewriting thei
  const files={'dock-scenes-shortcuts.json':true,'voice-input/settings.json':{shortcutKeyCode:61},'library.json':{version:1,scenes:[],settings:{language:'en',codexEnabled:true},gameBestScores:{snake:10}},'selection-preferences.json':{enabled:true,actions:['reply']},'typing-sound-preferences.json':{enabled:true,volume:41},'keyboard-pocket/pockets.json':{slots:[{id:'user-file'}]},'music-works/test.json':{userWork:'not read by navigation'},'drag-convert.json':{enabled:true}};
  for(const [file,data] of Object.entries(files))await writeFile(path.join(dir,file),JSON.stringify(data));
  const before=await Promise.all(Object.keys(files).map(file=>readFile(path.join(dir,file))));const store=await new Store(dir).load();
- assert.deepEqual(store.data.settings.sidebarFeatures,FEATURE_IDS);assert.equal(store.data.settings.language,'en');assert.equal(store.data.settings.codexEnabled,true);
+ assert.deepEqual(store.data.settings.sidebarFeatures,FEATURE_IDS.filter(id=>id!=='color-picker'));assert.equal(store.data.settings.language,'en');assert.equal(store.data.settings.codexEnabled,true);
  for(const [i,file] of Object.keys(files).entries())assert.deepEqual(await readFile(path.join(dir,file)),before[i]);
  await store.settings({sidebarFeatures:['library']});assert.deepEqual((await new Store(dir).load()).data.settings.sidebarFeatures,['library']);
  for(const [i,file] of Object.keys(files).entries())if(file!=='library.json')assert.deepEqual(await readFile(path.join(dir,file)),before[i]);
@@ -108,4 +108,18 @@ test('delayed activation requests cannot restart removed lighting tools or games
 test('legacy native settings without enabled use the same off default when re-added',async t=>{
  const dir=await temp(t);await mkdir(path.join(dir,'keyboard-pocket'));await writeFile(path.join(dir,'sidebar-features.json'),'[]');await writeFile(path.join(dir,'keyboard-pocket/settings.json'),JSON.stringify({previewEnabled:true}));
  const store=await new Store(dir).load();await store.settings({sidebarFeatures:['keyboard-pocket']});assert.deepEqual(store.data.settings.sidebarFeatures,['keyboard-pocket']);
+});
+
+test('removing Color Picker preserves its shortcut and requires a durable off switch before re-add',async t=>{
+ const dir=await temp(t);
+ await writeFile(path.join(dir,'sidebar-features.json'),'[]');
+ const file=path.join(dir,'color-picker.json');
+ const shortcuts=[{keyCode:0,modifiers:0,mouseButton:4}];
+ await writeFile(file,JSON.stringify({enabled:true,shortcuts}));
+ const store=await new Store(dir).load();
+ assert(!store.data.settings.sidebarFeatures.includes('color-picker'));
+ await assert.rejects(store.settings({sidebarFeatures:['color-picker']}),/尚未完成关闭/);
+ await writeFile(file,JSON.stringify({enabled:false,shortcuts}));
+ await store.settings({sidebarFeatures:['color-picker']});
+ assert.deepEqual(JSON.parse(await readFile(file)),{enabled:false,shortcuts});
 });

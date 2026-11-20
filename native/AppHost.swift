@@ -635,13 +635,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     var selectionShortcutRecording=false
     var pocketShortcutRecording=false
     var dragPresentationAllowed:Bool {
-        !terminating && !preparingUpdate && !updateInstallCommitted && !updateAbortRecoveryRequested && !permissionRelaunchPending && !musicFlushInProgress && !keySessionSuspended && !capturingKey && !selectionShortcutRecording && !pocketShortcutRecording && !selectionLab.isBusy && !pocket.isInteracting && !pocket.isBusy && !voiceInput.isBusy && !IsSecureEventInputEnabled()
+        !colorPicker.busy && !terminating && !preparingUpdate && !updateInstallCommitted && !updateAbortRecoveryRequested && !permissionRelaunchPending && !musicFlushInProgress && !keySessionSuspended && !capturingKey && !selectionShortcutRecording && !pocketShortcutRecording && !selectionLab.isBusy && !pocket.isInteracting && !pocket.isBusy && !voiceInput.isBusy && !IsSecureEventInputEnabled()
     }
     var pocketPresentationAllowed:Bool { pocketOperationAllowed() }
     func pocketOperationAllowed(acceptingDrop:Bool=false,recordingShortcut:Bool=false)->Bool {
-        !terminating && !applicationQuitPending && !preparingUpdate && !updateInstallCommitted && !updateAbortRecoveryRequested && !permissionRelaunchPending && !musicFlushInProgress && !musicExportActive && !keySessionSuspended && !capturingKey && !selectionShortcutRecording && !pocketShortcutRecording && (recordingShortcut || !(editingField && NSApp.isActive)) && !voiceInput.isBusy && !musicActive && musicCaptureReasons.subtracting(["keyboardPocket"]).isEmpty && !selectionLab.isBusy && !dragConvert.busy && (acceptingDrop || !dragConvert.isFileDragActive) && !IsSecureEventInputEnabled() && worker?.isRunning == true
+        !colorPicker.busy && !terminating && !applicationQuitPending && !preparingUpdate && !updateInstallCommitted && !updateAbortRecoveryRequested && !permissionRelaunchPending && !musicFlushInProgress && !musicExportActive && !keySessionSuspended && !capturingKey && !selectionShortcutRecording && !pocketShortcutRecording && (recordingShortcut || !(editingField && NSApp.isActive)) && !voiceInput.isBusy && !musicActive && musicCaptureReasons.subtracting(["keyboardPocket"]).isEmpty && !selectionLab.isBusy && !dragConvert.busy && (acceptingDrop || !dragConvert.isFileDragActive) && !IsSecureEventInputEnabled() && worker?.isRunning == true
     }
     let voiceControl = LabVoiceControl(hasKey: LabKeychain.has, readKey: LabKeychain.read)
+    lazy var colorPicker = LabColorPicker(directory:dataDirectory)
+    lazy var colorNotice = ColorPickerNotice()
+    private var colorShortcutConflict: String {
+        english ? "This shortcut is used by Color Picker." : "此快捷键已用于取色器。"
+    }
+    private func existingShortcutIssue(_ value: VoiceShortcutValue) -> String? {
+        if voiceInput.enabled, let settings = voiceInput.store?.settings, VoiceConflictPolicy.shortcut(settings) == value {
+            return english ? "This shortcut is used by Voice Input." : "此快捷键已用于语音输入。"
+        }
+        if value.mouseButton == nil, dockScenes.usesShortcut(keyCode:value.keyCode,flags:value.modifiers) {
+            return english ? "This shortcut is used by Dock Scenes." : "此快捷键已用于 Dock 场景。"
+        }
+        return VoiceConflictPolicy.issue(value,selection:selectionLab.selectionReservedBinding,pocket:pocket.settings,
+                                        reservedKeys:configuredKeysEnabled ? Set(keyConfiguration.map { $0.keyCode }) : []).map{VoiceL10n.text($0)}
+    }
     lazy var voiceInput = VoiceInputController(directory:dataDirectory.appendingPathComponent("voice-input"),migrateFrom:FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/NuPhy Voice Input Lab"),featureAdded:false)
     lazy var dockScenes = DockScenesFeature(directory: dataDirectory, legacy: FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/NuPhy Dock Scenes Lab"))
     var dockQuitWaiting = false
@@ -655,7 +670,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         english ? "This shortcut is used by Voice Control. Choose a different shortcut." : "此快捷键已用于语音控制，请更换其中一个快捷键。"
     }
     private func canUseVoice(excluding ownReasons:Set<String>) -> Bool {
-        !terminating && !applicationQuitPending && !preparingUpdate && !updateInstallCommitted && !updateAbortRecoveryRequested && !permissionRelaunchPending && !musicFlushInProgress && !musicExportActive && !keySessionSuspended && !capturingKey && !selectionShortcutRecording && !pocketShortcutRecording && !selectionLab.isBusy && !pocket.isBusy && !pocket.isInteracting && !dragConvert.busy && !dragConvert.isFileDragActive && musicCaptureReasons.subtracting(ownReasons).isEmpty && !IsSecureEventInputEnabled() && worker?.isRunning == true
+        !colorPicker.busy && !terminating && !applicationQuitPending && !preparingUpdate && !updateInstallCommitted && !updateAbortRecoveryRequested && !permissionRelaunchPending && !musicFlushInProgress && !musicExportActive && !keySessionSuspended && !capturingKey && !selectionShortcutRecording && !pocketShortcutRecording && !selectionLab.isBusy && !pocket.isBusy && !pocket.isInteracting && !dragConvert.busy && !dragConvert.isFileDragActive && musicCaptureReasons.subtracting(ownReasons).isEmpty && !IsSecureEventInputEnabled() && worker?.isRunning == true
     }
     lazy var pocket = PocketController(directory:dataDirectory.appendingPathComponent("keyboard-pocket"),featureAdded:false)
     lazy var dragConvert = DragConvertController(directory: dataDirectory,featureAdded:false)
@@ -714,6 +729,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         config.userContentController.addScriptMessageHandler(self, contentWorld:.page, name:"dockScenes")
         config.userContentController.addScriptMessageHandler(self, contentWorld:.page, name:"voiceInput")
         config.userContentController.addScriptMessageHandler(self, contentWorld:.page, name:"voiceControl")
+        config.userContentController.addScriptMessageHandler(self, contentWorld:.page, name:"colorPicker")
         dragConvert.updateLanguage(english:english)
         dragConvert.canPresent = { [weak self] in self?.dragPresentationAllowed ?? false }
         dragConvert.reservedKeyCodes = { [weak self] in
@@ -724,7 +740,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         dragConvert.activityChanged = { [weak self] active in self?.typingSounds.setPaused("fileDrag",active:active) }
         selectionLab.fileDragActive = { [weak self] in
             guard let self else{return true}
-            return self.voiceControl.capturing || self.voiceControl.shortcut.isRecording || self.voiceInput.isBusy || self.dragConvert.isFileDragActive || self.pocket.isInteracting || self.pocket.isBusy || self.permissionRelaunchPending || self.terminating
+            return self.colorPicker.busy || self.voiceControl.capturing || self.voiceControl.shortcut.isRecording || self.voiceInput.isBusy || self.dragConvert.isFileDragActive || self.pocket.isInteracting || self.pocket.isBusy || self.permissionRelaunchPending || self.terminating
         }
         _ = typingSounds
         // Explicit recording may start from a focused search field. The recorder
@@ -732,14 +748,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         pocket.canRecordShortcut = { [weak self] in self?.pocketOperationAllowed(recordingShortcut:true) ?? false }
         pocket.recordingChanged = { [weak self] active in
             guard let self else{return};self.pocketShortcutRecording=active
-            self.selectionLab.setExternalShortcutRecording(active || self.voiceControl.shortcut.isRecording || self.voiceInput.isBusy)
+            self.selectionLab.setExternalShortcutRecording(active || self.colorPicker.busy || self.voiceControl.shortcut.isRecording || self.voiceInput.isBusy)
             self.refreshHotkeys()
         }
         pocket.canActivate = { [weak self] in self?.pocketPresentationAllowed ?? false }
         pocket.canAcceptDrop = { [weak self] in self?.pocketOperationAllowed(acceptingDrop:true) ?? false }
         pocket.conflictIssue = { [weak self] settings in
             guard let self else { return "Unavailable" }
-            if self.voiceControl.enabled, PocketConflictPolicy.conflict(settings:settings,selection:VoiceConflictPolicy.binding(self.voiceControl.shortcut.value),reservedKeys:[]) == .selection {return self.commandShortcutConflictText}
+            if let value = self.colorPicker.reservedShortcut,
+               PocketConflictPolicy.conflict(settings:settings,selection:VoiceConflictPolicy.binding(value),reservedKeys:[]) == .selection {return self.colorShortcutConflict}
+            if let value=self.voiceControl.reservedShortcut,
+               PocketConflictPolicy.conflict(settings:settings,selection:VoiceConflictPolicy.binding(value),reservedKeys:[]) == .selection {return self.commandShortcutConflictText}
             return PocketConflictPolicy.conflict(settings:settings,selection:self.selectionLab.selectionReservedBinding,
                 reservedKeys:self.configuredKeysEnabled ? Set(self.keyConfiguration.map { $0.keyCode }) : [])?.message(english:self.english)
         }
@@ -754,7 +773,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         selectionLab.recordingChanged = { [weak self] active in self?.selectionShortcutRecording=active;self?.typingSounds.setPaused("shortcut",active:active);self?.refreshHotkeys() }
         selectionLab.requestRelaunch = { [weak self] in
             guard let self, !self.terminating, !self.preparingUpdate, !self.updateInstallCommitted, !self.driverOpenInFlight,
-                  !self.applicationQuitPending, !self.permissionRelaunchPending, !self.voiceControl.capturing, !self.voiceControl.shortcut.isRecording, self.worker?.isRunning == true,
+                  !self.colorPicker.busy, !self.applicationQuitPending, !self.permissionRelaunchPending, !self.voiceControl.capturing, !self.voiceControl.shortcut.isRecording, self.worker?.isRunning == true,
                   !self.capturingKey, !self.musicSaveFailed, !self.musicActive, !self.musicExportActive, !self.musicFlushInProgress, self.keyGestureGate.activeCount == 0, !self.selectionLab.isBusy, !self.voiceInput.isBusy, !self.dragConvert.busy, !self.dragConvert.isFileDragActive, !self.pocket.isBusy, !self.pocket.isInteracting else { return false }
             self.permissionShutdownCommitted=false
             self.permissionRelaunchPending = true
@@ -765,7 +784,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         pocket.attach(web:web,window:window);pocket.resume()
         selectionLab.shortcutSaveIssue = { [weak self] binding in
             guard let self else{return nil}
-            if self.voiceControl.enabled, VoiceConflictPolicy.overlapsSelection(VoiceConflictPolicy.binding(self.voiceControl.shortcut.value),binding) {return self.commandShortcutConflictText}
+            if let value = self.colorPicker.reservedShortcut,
+               VoiceConflictPolicy.overlapsSelection(VoiceConflictPolicy.binding(value),binding) {return self.colorShortcutConflict}
+            if let value=self.voiceControl.reservedShortcut,
+               VoiceConflictPolicy.overlapsSelection(VoiceConflictPolicy.binding(value),binding) {return self.commandShortcutConflictText}
             guard self.voiceInput.enabled,let settings=self.voiceInput.store?.settings else{return nil}
             return VoiceConflictPolicy.mouseConflict(VoiceConflictPolicy.binding(settings),binding) ? "此鼠标侧键已用于语音输入，请更换其中一个快捷键。":nil
         }
@@ -778,11 +800,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         voiceControl.presentShortcut = { [weak self] id in self?.presentVoiceShortcut(id) }
         voiceControl.shortcut.conflict = { [weak self] value in
             guard let self else{return nil}
-            if self.voiceInput.enabled, let settings=self.voiceInput.store?.settings, VoiceConflictPolicy.shortcut(settings)==value {
-                return self.english ? "This shortcut is used by Voice Input." : "此快捷键已用于语音输入。"
+            if self.colorPicker.reservedShortcut == value {return self.colorShortcutConflict}
+            return self.existingShortcutIssue(value)
+        }
+        colorPicker.english = english
+        colorPicker.canStart = { [weak self] in
+            guard let self else { return false }
+            return self.commandShortcutAvailable && !self.voiceControl.capturing && !self.voiceControl.shortcut.isRecording && !self.musicActive
+        }
+        colorPicker.canRecord = { [weak self] in self?.window?.isKeyWindow == true && NSApp.isActive }
+        colorPicker.conflict = { [weak self] value in
+            guard let self else { return nil }
+            if self.voiceControl.reservedShortcut == value { return self.commandShortcutConflictText }
+            if value.mouseButton == nil, value.modifiers == 0, self.configuredKeysEnabled, self.keyConfiguration.contains(where:{ $0.keyCode == value.keyCode }) {
+                return self.english ? "This key is used by AI Assistant." : "此按键已用于 AI 助手。"
             }
-            if self.dockScenes.usesShortcut(keyCode:value.keyCode,flags:value.modifiers) {return self.english ? "This shortcut is used by Dock Scenes." : "此快捷键已用于 Dock 场景。"}
-            return VoiceConflictPolicy.issue(value,selection:self.selectionLab.selectionReservedBinding,pocket:self.pocket.settings,reservedKeys:self.configuredKeysEnabled ? Set(self.keyConfiguration.map{$0.keyCode}):[]).map{VoiceL10n.text($0)}
+            return self.existingShortcutIssue(value)
+        }
+        colorPicker.activityChanged = { [weak self] in
+            guard let self else { return }
+            self.selectionLab.setExternalShortcutRecording(self.colorPicker.busy || self.voiceControl.shortcut.isRecording || self.voiceInput.isBusy || self.voiceShortcutRecording || self.pocketShortcutRecording)
+            self.typingSounds.setPaused("colorPicker",active:self.colorPicker.busy)
+            self.setMusicCapture("colorPicker",active:self.colorPicker.busy)
+            self.refreshHotkeys()
+        }
+        colorPicker.showNotice = { [weak self] color, hex in
+            guard let self else { return }
+            self.colorNotice.show(color:color,hex:hex,english:self.english)
+        }
+        colorPicker.hideNotice = { [weak self] in self?.colorNotice.hide() }
+        colorPicker.stateChanged = { [weak self] in
+            self?.web?.evaluateJavaScript("window.dispatchEvent(new Event('nuphylab:color-picker'))",completionHandler:nil)
         }
         voiceControl.setInputShortcut = { [weak self] value in
             guard let self else {throw CocoaError(.userCancelled)}
@@ -790,7 +838,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }
         voiceControl.shortcut.recordingChanged = { [weak self] active in
             guard let self else{return}
-            self.selectionLab.setExternalShortcutRecording(active || self.voiceControl.shortcut.isRecording || self.voiceInput.isBusy || self.pocketShortcutRecording)
+            self.selectionLab.setExternalShortcutRecording(active || self.colorPicker.busy || self.voiceControl.shortcut.isRecording || self.voiceInput.isBusy || self.pocketShortcutRecording)
             self.typingSounds.setPaused("commandShortcutRecorder",active:active)
             self.refreshHotkeys()
         }
@@ -819,7 +867,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }
         voiceInput.conflictIssue = { [weak self] settings in
             guard let self else{return "Unavailable"}
-            if self.voiceControl.enabled, VoiceConflictPolicy.shortcut(settings)==self.voiceControl.shortcut.value {return self.commandShortcutConflictText}
+            if self.colorPicker.reservedShortcut == VoiceConflictPolicy.shortcut(settings) {return self.colorShortcutConflict}
+            if VoiceConflictPolicy.shortcut(settings)==self.voiceControl.reservedShortcut {return self.commandShortcutConflictText}
             let binding=VoiceConflictPolicy.shortcut(settings)
             if binding.mouseButton == nil, self.dockScenes.usesShortcut(keyCode:binding.keyCode,flags:binding.modifiers) {return self.english ? "This shortcut is used by Dock Scenes." : "此快捷键已用于 Dock 场景。"}
             return VoiceConflictPolicy.issue(settings,selection:self.selectionLab.selectionReservedBinding,pocket:self.pocket.settings,reservedKeys:self.configuredKeysEnabled ? Set(self.keyConfiguration.map{$0.keyCode}):[])
@@ -829,21 +878,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             if active {self.audioCapture.stop();self.pendingAudio=nil}
             self.typingSounds.setPaused("voiceInput",active:active)
             self.setMusicCapture("voiceInput",active:active)
-            self.selectionLab.setExternalShortcutRecording(active || self.voiceControl.shortcut.isRecording || self.voiceShortcutRecording || self.pocketShortcutRecording)
+            self.selectionLab.setExternalShortcutRecording(active || self.colorPicker.busy || self.voiceControl.shortcut.isRecording || self.voiceShortcutRecording || self.pocketShortcutRecording)
             self.refreshHotkeys()
         }
         voiceInput.recordingChanged = { [weak self] active in
             guard let self else{return};self.voiceShortcutRecording=active
             self.typingSounds.setPaused("voiceShortcut",active:active)
-            self.selectionLab.setExternalShortcutRecording(active || self.voiceControl.shortcut.isRecording || self.voiceInput.isBusy || self.pocketShortcutRecording)
+            self.selectionLab.setExternalShortcutRecording(active || self.colorPicker.busy || self.voiceControl.shortcut.isRecording || self.voiceInput.isBusy || self.pocketShortcutRecording)
             self.refreshHotkeys()
         }
         dockScenes.window = window
+        dockScenes.shortcutSaveIssue = { [weak self] code, flags in
+            guard let self else { return nil }
+            let value = VoiceShortcutValue(keyCode: code, modifiers: UInt64(flags.intersection([.command, .control, .option, .shift]).rawValue))
+            return self.colorPicker.reservedShortcut == value ? self.colorShortcutConflict : nil
+        }
         dockScenes.web = web
         dockScenes.english = english
         dockScenes.allowSwitch = { [weak self] in
             guard let self else { return false }
-            return !self.dockQuitWaiting && !self.terminating && !self.applicationQuitPending && !self.preparingUpdate
+            return !self.colorPicker.busy && !self.dockQuitWaiting && !self.terminating && !self.applicationQuitPending && !self.preparingUpdate
                 && !self.updateInstallCommitted && !self.updateAbortRecoveryRequested && !self.permissionRelaunchPending
                 && !self.keySessionSuspended && !self.capturingKey && !self.voiceShortcutRecording && !self.voiceControl.shortcut.isRecording && !self.voiceControl.capturing
                 && !self.selectionShortcutRecording && !self.pocketShortcutRecording
@@ -857,7 +911,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         // global-hotkey events. Share the same held-key gate and action path.
         localKeyMonitor=NSEvent.addLocalMonitorForEvents(matching:[.keyDown,.keyUp,.flagsChanged]){[weak self] event in
             guard let self=self else{return event}
-            if self.pocketShortcutRecording || self.voiceShortcutRecording || self.voiceControl.shortcut.isRecording || self.voiceInput.isBusy || self.dockScenes.isRecording {return event}
+            if self.colorPicker.busy || self.pocketShortcutRecording || self.voiceShortcutRecording || self.voiceControl.shortcut.isRecording || self.voiceInput.isBusy || self.dockScenes.isRecording {return event}
             if self.selectionLab.consumeLocal(event){return nil}
             guard event.type == .keyDown || event.type == .keyUp else{return event}
             return self.handleLocalKey(event)
@@ -1244,7 +1298,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             }
         }.resume()
     }
-    @objc func willSleep(){ voiceControl.cancel();voiceInput.cancel();voiceInput.suspend(); dragConvert.suspend();pocket.suspend(); stopMusic(suspend:true); selectionLab.cancel(); keySessionSuspended=true;setHotkeysEnabled(false);audioCapture.stop();pendingAudio=nil }
+    @objc func willSleep(){ colorPicker.interrupt();voiceControl.cancel();voiceInput.cancel();voiceInput.suspend(); dragConvert.suspend();pocket.suspend(); stopMusic(suspend:true); selectionLab.cancel(); keySessionSuspended=true;setHotkeysEnabled(false);audioCapture.stop();pendingAudio=nil }
     @objc func didWake(){ voiceInput.resume(); keySessionSuspended=false;if !terminating && !preparingUpdate && !updateInstallCommitted && !updateAbortRecoveryRequested {dragConvert.resume();pocket.resume();post(["op":"resumeConnection"]);refreshHotkeys()} }
     func post(_ data:[String:Any]){guard let base=baseURL else{return};var request=URLRequest(url:base.appendingPathComponent("api/command"));request.httpMethod="POST";request.setValue(apiToken,forHTTPHeaderField:"X-Air-Token");request.setValue("application/json",forHTTPHeaderField:"Content-Type");request.httpBody=try? JSONSerialization.data(withJSONObject:data);URLSession.shared.dataTask(with:request).resume()}
     func activateSlot(_ index:Int,phase:String="down",gesture:NativeKeyGesture?=nil,
@@ -1430,13 +1484,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         typingSounds.setPaused("music",active:false)
         web?.evaluateJavaScript("window.dispatchEvent(new Event('nuphylab:music-release'))",completionHandler:nil)
     }
-    func windowWillClose(_ notification:Notification){if (notification.object as? NSWindow) === window {voiceControl.cancel();pocket.cancelShortcutRecording()};stopMusic(suspend:true)}
-    func windowDidMiniaturize(_ notification:Notification){if (notification.object as? NSWindow) === window {voiceControl.cancel();pocket.cancelShortcutRecording()};stopMusic(suspend:true)}
+    func windowWillClose(_ notification:Notification){if (notification.object as? NSWindow) === window {colorPicker.cancelRecording();voiceControl.cancel();pocket.cancelShortcutRecording()};stopMusic(suspend:true)}
+    func windowDidMiniaturize(_ notification:Notification){if (notification.object as? NSWindow) === window {colorPicker.cancelRecording();voiceControl.cancel();pocket.cancelShortcutRecording()};stopMusic(suspend:true)}
     func webView(_ webView:WKWebView,didStartProvisionalNavigation navigation:WKNavigation!){
-        if webView === web {voiceControl.cancel();pocket.invalidatePage()}
+        if webView === web {colorPicker.cancelRecording();voiceControl.cancel();pocket.invalidatePage()}
     }
     func webViewWebContentProcessDidTerminate(_ webView:WKWebView){
-        if webView === web {voiceControl.cancel();pocket.invalidatePage()}
+        if webView === web {colorPicker.cancelRecording();voiceControl.cancel();pocket.invalidatePage()}
         musicActive=false;refreshMusicPause()
         guard musicEverUsed else{return}
         musicDocumentLost=true;musicSaveFailed=true
@@ -1460,7 +1514,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     @discardableResult func syncFeatureAvailability(fallback:Any?=nil)->Bool {
         let file=dataDirectory.appendingPathComponent("sidebar-features.json")
         let saved=(try? Data(contentsOf:file)).flatMap{try? JSONSerialization.jsonObject(with:$0)}
-        let known:Set<String>=["studio","library","codex","game","typing-sounds","music","selection-question","drag-convert","keyboard-pocket","voice-input","dock-scenes"]
+        let known:Set<String>=["studio","library","codex","game","typing-sounds","music","selection-question","drag-convert","keyboard-pocket","voice-input","dock-scenes","color-picker"]
         func valid(_ value:Any?)->[String]? {
             guard let values=value as? [String],Set(values).count==values.count,Set(values).isSubset(of:known) else{return nil};return values
         }
@@ -1470,6 +1524,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         selectionLab.setFeatureAdded(addedFeatures.contains("selection-question"))
         dragConvert.setFeatureAdded(addedFeatures.contains("drag-convert"))
         dockScenes.setAdded(addedFeatures.contains("dock-scenes"))
+        colorPicker.setAdded(addedFeatures.contains("color-picker"))
         pocket.setFeatureAdded(addedFeatures.contains("keyboard-pocket"))
         voiceInput.setFeatureAdded(addedFeatures.contains("voice-input"))
         typingSounds.setFeatureAdded(addedFeatures.contains("typing-sounds"))
@@ -1513,6 +1568,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         if message.name == "voiceControl" {
             voiceControl.english = english
             voiceControl.handle(body, reply:replyHandler)
+            return
+        }
+        if message.name == "colorPicker" {
+            guard !terminating, !applicationQuitPending, !preparingUpdate, !updateInstallCommitted,
+                  syncFeatureAvailability(fallback:featureAvailabilityReady ? Array(addedFeatures) : nil) else {
+                replyHandler(nil, english ? "Finishing the current operation." : "正在完成当前操作。"); return
+            }
+            colorPicker.english = (body["language"] as? String).map { $0 == "en" } ?? english
+            colorPicker.handle(body,reply:replyHandler)
             return
         }
         if message.name == "voiceInput" {
@@ -1638,7 +1702,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             captureReady:!stale && (!hotkeysEnabled || functionKeyTapIsActive()),now:now,
             freshGrantNeedsRelaunch:fresh != nil && granted && stale)
         let canRecover = NSApp?.isActive == true && worker?.isRunning == true && !IsSecureEventInputEnabled()
-            && !applicationQuitPending && !dockScenes.isApplying && !dockScenes.isRecording && !dragConvert.busy && !dragConvert.isFileDragActive
+            && !colorPicker.busy && !applicationQuitPending && !dockScenes.isApplying && !dockScenes.isRecording && !dragConvert.busy && !dragConvert.isFileDragActive
             && !musicSaveFailed && !musicActive && !musicExportActive && !musicFlushInProgress
             && !selectionLab.isBusy && !voiceControl.capturing && !voiceControl.shortcut.isRecording && !voiceInput.isBusy && !pocket.isBusy && !pocket.isInteracting && !capturingKey && keyGestureGate.activeCount==0
             && !driverOpenInFlight && !preparingUpdate && !updateInstallCommitted
@@ -1939,13 +2003,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         refreshHotkeys()
     }
     func refreshHotkeys(){
-        voiceControl.shortcut.refresh(enabled:voiceControl.enabled && !terminating && !keySessionSuspended && !applicationQuitPending && !preparingUpdate)
-        if voiceControl.capturing || voiceControl.shortcut.isRecording || capturingKey || selectionShortcutRecording || pocketShortcutRecording || keySessionSuspended || terminating || preparingUpdate || permissionRelaunchPending || applicationQuitPending {if !voiceInput.busy {voiceInput.suspend()}}
+        colorPicker.refresh()
+        voiceControl.shortcut.refresh(enabled:voiceControl.enabled && !colorPicker.busy && !terminating && !keySessionSuspended && !applicationQuitPending && !preparingUpdate)
+        if colorPicker.busy || voiceControl.capturing || voiceControl.shortcut.isRecording || capturingKey || selectionShortcutRecording || pocketShortcutRecording || keySessionSuspended || terminating || preparingUpdate || permissionRelaunchPending || applicationQuitPending {if !voiceInput.busy {voiceInput.suspend()}}
         else {voiceInput.resume()}
-        if voiceControl.capturing || voiceControl.shortcut.isRecording || voiceInput.isBusy || voiceShortcutRecording || capturingKey || selectionShortcutRecording || keySessionSuspended || terminating || applicationQuitPending || preparingUpdate || updateInstallCommitted || updateAbortRecoveryRequested || permissionRelaunchPending || musicFlushInProgress {pocket.suspend()}
+        if colorPicker.busy || voiceControl.capturing || voiceControl.shortcut.isRecording || voiceInput.isBusy || voiceShortcutRecording || capturingKey || selectionShortcutRecording || keySessionSuspended || terminating || applicationQuitPending || preparingUpdate || updateInstallCommitted || updateAbortRecoveryRequested || permissionRelaunchPending || musicFlushInProgress {pocket.suspend()}
         else {pocket.resume()}
         typingSounds.setPaused("commandShortcut",active:capturingKey)
-        setHotkeysEnabled(configuredKeysEnabled && !voiceControl.capturing && !voiceControl.shortcut.isRecording && !voiceInput.isBusy && !voiceShortcutRecording && !selectionShortcutRecording && !pocketShortcutRecording && !keySessionSuspended && !capturingKey && !(editingField && NSApp.isActive) && !terminating && hotkeyPollTimer != nil)
+        setHotkeysEnabled(configuredKeysEnabled && !colorPicker.busy && !voiceControl.capturing && !voiceControl.shortcut.isRecording && !voiceInput.isBusy && !voiceShortcutRecording && !selectionShortcutRecording && !pocketShortcutRecording && !keySessionSuspended && !capturingKey && !(editingField && NSApp.isActive) && !terminating && hotkeyPollTimer != nil)
         if hotkeysEnabled { refreshReservedKeyCapture() }
         if capturingKey && NSApp.isActive && !terminating { _ = startReservedKeyCapture() }
         else if !hotkeysEnabled { stopReservedKeyCapture() }
@@ -1998,7 +2063,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                 let grants=PermissionProbe.keys.compactMap { helper?[$0] as? Bool }
                 self.permissionHelperReady=grants.contains(false) ? false : (grants.count==PermissionProbe.keys.count ? true : nil)
                 if let value=settings?["language"] as? String, ["en","zh-CN"].contains(value), self.english != (value == "en") {
-                    self.english = value == "en"; self.dockScenes.english = self.english; self.buildMenus(); self.selectionLab.updateLanguage(self.english ? .en:.zh); self.dragConvert.updateLanguage(english:self.english);self.pocket.updateLanguage(english:self.english);self.voiceInput.updateLanguage(english:self.english)
+                    self.english = value == "en"; self.colorPicker.english = self.english; self.dockScenes.english = self.english; self.buildMenus(); self.selectionLab.updateLanguage(self.english ? .en:.zh); self.dragConvert.updateLanguage(english:self.english);self.pocket.updateLanguage(english:self.english);self.voiceInput.updateLanguage(english:self.english)
                     #if canImport(Sparkle)
                     self.updateUserDriver?.refreshLanguage()
                     #endif
@@ -2212,7 +2277,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     func sendCapturedFunctionKey(_ code:String,phase:String) {
         web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('nuphylab:function-key',{detail:{code:'\(code)',phase:'\(phase)'}}));",completionHandler:nil)
     }
-    func applicationWillTerminate(_ notification:Notification) { voiceControl.cancel();voiceControl.shortcut.shutdown();voiceInput.shutdown(); pocket.shutdown();dragConvert.shutdown(); typingSounds.shutdown() }
+    func applicationWillTerminate(_ notification:Notification) { colorPicker.shutdown();voiceControl.cancel();voiceControl.shortcut.shutdown();voiceInput.shutdown(); pocket.shutdown();dragConvert.shutdown(); typingSounds.shutdown() }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender:NSApplication)->Bool{return false}
     func applicationShouldHandleReopen(_ sender:NSApplication,hasVisibleWindows:Bool)->Bool{show();return true}
     func unlockMusicTransition(){if !terminating && !preparingUpdate && !updateInstallCommitted && !updateAbortRecoveryRequested && !keySessionSuspended {voiceInput.resume();dragConvert.resume();pocket.resume()};web?.evaluateJavaScript("window.dispatchEvent(new Event('nuphylab:music-quit-finished'))",completionHandler:nil)}
@@ -2318,6 +2383,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
 
     private func beginApplicationQuit(_ sender:NSApplication)->NSApplication.TerminateReply{
+        colorPicker.interrupt()
         voiceControl.cancel()
         voiceInput.cancel();voiceInput.suspend()
         guard !dragConvert.busy else{presentDragBusyNotice();return .terminateCancel}

@@ -10,11 +10,15 @@ It includes drawing, animation, key-triggered effects, games, audio-reactive lig
 
 Save a model and API key in **Settings → Models & API**, turn on **Voice Control** in the page header, then click **Speak a command**. Try “Add Keyboard Pocket to my sidebar and turn it on,” “Remove Lighting Games,” or “Set keyboard brightness to 35 percent.” Allow microphone and speech recognition access when macOS asks. Your Mac transcribes the audio and your selected model interprets the command text. Use **Voice Input** for dictation into other apps.
 
-Press Control + Shift + Space to speak, then press it again to run the command. Open the settings beside Voice Control to see the current shortcut. To change it, click the displayed key, then press and release the new key or chord. Say “Set the dictation shortcut to left Ctrl” or “Set the dictation shortcut to Q” to change the separate Voice Input shortcut.
+Press Control + Shift + Space to speak, then press it again to run the command. Open the settings beside Voice Control to see the current shortcut. To change it, click the displayed key, then press and release a keyboard shortcut or mouse side button. Click × beside the shortcut to clear it. You can still click **Speak a command**. Say “Set the dictation shortcut to left Ctrl” or “Set the dictation shortcut to Q” to change the separate Voice Input shortcut.
+
+## Color Picker
+
+Add **Color Picker** in **Feature Center** and click **Pick a color**. Click a pixel anywhere on the screen to copy its sRGB HEX code (for example, `#336699`). A brief message appears at the top of the screen. Press Esc to cancel and keep the current clipboard. Set one **Color picker shortcut** using a key, a key combination or a mouse side button, then turn on **Global shortcut**. Click the saved shortcut to replace it, or click × to clear it.
 
 ## Feature Center and Library
 
-For new users, the sidebar starts with Lighting Studio, Library and AI Assistant. Upgrading keeps entries for tools already used or enabled; you can remove them at any time. Open **Feature Center** to add Lighting Games, Typing Sounds, Music Mode, Smart Selection, Drag Convert, Keyboard Pocket, Voice Input or Dock Scenes. The three default entries can also be removed. Feature Center, Device and Settings always remain available. Removing a tool turns it and its shortcuts off while retaining its content and preferences. Re-add it, then enable it when needed.
+For new users, the sidebar starts with Lighting Studio, Library and AI Assistant. Upgrading keeps entries for tools already used or enabled; you can remove them at any time. Open **Feature Center** to add Lighting Games, Typing Sounds, Music Mode, Smart Selection, Drag Convert, Keyboard Pocket, Voice Input, Dock Scenes or Color Picker. The three default entries can also be removed. Feature Center, Device and Settings always remain available. Removing a tool turns it and its shortcuts off while retaining its content and preferences. Re-add it, then enable it when needed.
 
 **Library** brings lighting and music together, with All, Lighting and Music filters. Music Mode opens this same library. Editing and saving updates the original work. If its editor is not in the sidebar, choose **Add Music Mode & edit** or **Add Lighting Studio & edit**. Music works support preview, duplication, renaming, project export and recovery from Recently deleted. Export WAV audio from the music editor.
 

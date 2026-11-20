@@ -207,7 +207,7 @@ struct VoiceHotkeyState {
         return .init(fire:true,consume:true)
     }
 }
-struct VoiceShortcutValue:Equatable {let keyCode:UInt32;let modifiers:UInt64;var mouseButton:UInt32?=nil}
+struct VoiceShortcutValue:Equatable,Codable {let keyCode:UInt32;let modifiers:UInt64;var mouseButton:UInt32?=nil}
 enum VoiceShortcutCaptureResult:Equatable {case pass,consume,cancel,invalid,complete(VoiceShortcutValue)}
 /// Foreground capture finishes ordinary chords on key-up, single modifiers on release.
 struct VoiceShortcutCaptureState {
@@ -518,7 +518,7 @@ struct VoiceEscapeState {
         transferRuntimeMouseOwnership()
         // Reuse the already-authorized tap while this app is frontmost. WebKit
         // does not reliably deliver every flagsChanged event to a local monitor.
-        if tap==nil,AXIsProcessTrusted(){try? installTap()}
+        if listenToSystemEvents,tap==nil,AXIsProcessTrusted(){try? installTap()}
         if let tap{CGEvent.tapEnable(tap:tap,enable:true)}
         capture=VoiceShortcutCaptureState(initialFlags:UInt64(NSEvent.modifierFlags.rawValue),initialKeys:Self.heldOrdinaryKeys(),initialMouseButtons:Self.heldMouseButtons())
         recordingDelivery=VoiceShortcutDelivery();recordingCompletionPending=false

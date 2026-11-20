@@ -115,5 +115,15 @@ import WebKit
     precondition(dictationStarts==1 && !host.capturing && bridge.operations.filter{$0=="listen"}.count==listens)
     try await remap("把语音输入的快捷键给我改成 Q",feedback:"已设为 Q",keyCode:UInt16(VoiceHotkey.namedShortcut("Q")!.keyCode))
     precondition(dictationStarts==1)
-    print("WebKit verified saved Left Control (59) from the reported Chinese command and a previous mouse binding. Right Control (62) still only starts/finishes commands. Dictation alone responds to a left tap. Q remapping also persisted. Temporary settings, simulated speech and key events.")
+    let beforeClear=dictation.store.settings
+    _=try await web.evaluateJavaScript("document.querySelector('.lvc-shortcut-clear').click();true")
+    try await wait("document.querySelector('#lvc-shortcut-value')?.textContent==='未设置'","WebKit clears the real native binding")
+    precondition(host.enabled && host.reservedShortcut==nil && dictation.store.settings==beforeClear)
+    let reopened=LabCommandShortcut(defaults:prefs,monitor:VoiceHotkey(listenToSystemEvents:false))
+    precondition(reopened.value==nil && !monitor.isReady)
+    let afterClear=bridge.operations.filter{$0=="listen"}.count
+    tapControl(62)
+    try await Task.sleep(for:.milliseconds(50))
+    precondition(bridge.operations.filter{$0=="listen"}.count==afterClear)
+    print("WebKit verified independent right Control commands and dictation remaps to left Control and Q. Clearing the command shortcut in the panel released the old key, survived reopening preferences, and preserved the enabled state and dictation settings. Temporary settings, simulated speech and key events.")
 }

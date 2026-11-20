@@ -39,10 +39,13 @@ export function VoiceControl(props:Props) {
   }
   useEffect(()=>{
     let live=true;
-    void bridge()?.postMessage({op:'status'}).then(r=>{if(live){active.current=r.enabled===true;setEnabled(active.current);updateShortcut(r);setReady(true);}}).catch(()=>{});
+    void bridge()?.postMessage({op:'status',language:en?'en':'zh-CN'}).then(r=>{if(live){active.current=r.enabled===true;setEnabled(active.current);updateShortcut(r);setReady(true);}}).catch(()=>{});
+    return ()=>{live=false;};
+  },[en]);
+  useEffect(()=>{
     const pressed=(event:Event)=>{const id=(event as CustomEvent).detail;if(typeof id==='string')onShortcut.current(id);};
     window.addEventListener('nuphylab:voice-control-shortcut',pressed);
-    return ()=>{live=false;window.removeEventListener('nuphylab:voice-control-shortcut',pressed);++ticket.current;confirmReply.current?.(false);void bridge()?.postMessage({op:'cancel'}).catch(()=>{});};
+    return ()=>{window.removeEventListener('nuphylab:voice-control-shortcut',pressed);++ticket.current;confirmReply.current?.(false);void bridge()?.postMessage({op:'cancel'}).catch(()=>{});};
   },[]);
   useEffect(()=>{
     if(props.unavailable)cancel(true);
@@ -69,7 +72,7 @@ export function VoiceControl(props:Props) {
     savingLock.current=true;setSaving(true);
     if(!value){active.current=false;cancel(true);}
     try{
-      const result=await bridge()?.postMessage({op:'enable',enabled:value});
+      const result=await bridge()?.postMessage({op:'enable',enabled:value,language:en?'en':'zh-CN'});
       if(result?.enabled!==value)throw new Error(copy('未能保存语音控制设置。','Could not save the Voice Control setting.'));
       updateShortcut(result);
       active.current=value;setEnabled(value);setShow(value);setEntry(false);setNotice('');setPhase('idle');
@@ -134,11 +137,23 @@ export function VoiceControl(props:Props) {
     const id=++ticket.current;
     recordingKeyRef.current=true;setRecordingKey(true);setPhase('idle');setNotice('');
     try {
-      const result=await host.postMessage({op:'recordShortcut'});
+      const result=await host.postMessage({op:'recordShortcut',language:en?'en':'zh-CN'});
       if(id===ticket.current&&!result.cancelled)updateShortcut(result);
     } catch(e) {
       if(id===ticket.current){setNotice(e instanceof Error?e.message:String(e));setPhase('error');}
     } finally {if(id===ticket.current){recordingKeyRef.current=false;setRecordingKey(false);}}
+  }
+  async function clearShortcut() {
+    const host=bridge();
+    if(!host||locked.current||savingLock.current||recordingKeyRef.current)return;
+    savingLock.current=true;setSaving(true);setNotice('');setPhase('idle');
+    try {
+      const result=await host.postMessage({op:'clearShortcut',language:en?'en':'zh-CN'});
+      if(result.shortcutLabel!=='')throw new Error(copy('未能清除指令快捷键。','Could not clear the command shortcut.'));
+      updateShortcut(result);
+    } catch(e) {
+      setNotice(e instanceof Error?e.message:String(e));setPhase('error');
+    } finally {savingLock.current=false;setSaving(false);}
   }
   const toggle=()=>{void changeEnabled(!enabled).catch(()=>{});};
   const finish=()=>{void bridge()?.postMessage({op:'finish'}).catch(()=>cancel(false));};
@@ -155,8 +170,11 @@ export function VoiceControl(props:Props) {
     {show&&<section className="lvc-panel" aria-label={copy('语音指令','Voice commands')}>
       <header><strong>{copy('语音控制','Voice Control')}</strong><button className="lvc-icon" aria-label={copy('关闭面板','Close panel')} onClick={()=>cancel(true)}><X size={15}/></button></header>
       {!busy&&!entry&&<div className="lvc-shortcut"><div><span>{copy('指令快捷键','Command shortcut')}</span>
-        <button type="button" id="lvc-shortcut-value" aria-label={recordingKey?copy('正在录制指令快捷键','Recording command shortcut'):copy('更改指令快捷键，当前为 ','Change command shortcut, currently ')+shortcut} onClick={()=>void recordShortcut()} disabled={recordingKey||saving}>{recordingKey?copy('请按键…','Press keys…'):shortcut||copy('设置','Set')}</button></div>
-        <small>{recordingKey?copy('按下并松开单键或组合键，Esc 取消。','Press and release a key or chord. Esc cancels.'):copy('按一次开始说，再按一次执行。','Press once to speak. Press again to run.')}</small>
+        <div className="lvc-shortcut-controls">
+          <button type="button" id="lvc-shortcut-value" aria-label={recordingKey?copy('正在录制指令快捷键','Recording command shortcut'):shortcut?copy('更改指令快捷键，当前为 ','Change command shortcut, currently ')+shortcut:copy('设置指令快捷键','Set command shortcut')} onClick={()=>void recordShortcut()} disabled={recordingKey||saving}>{recordingKey?copy('请按键或侧键…','Press a key or side button…'):shortcut||copy('未设置','Not set')}</button>
+          {shortcut&&!recordingKey&&<button type="button" className="lvc-shortcut-clear" aria-label={copy('清除指令快捷键','Clear command shortcut')} title={copy('清除指令快捷键','Clear command shortcut')} onClick={()=>void clearShortcut()} disabled={saving}><X size={14} aria-hidden="true"/></button>}
+        </div></div>
+        <small>{recordingKey?copy('按下并松开键盘快捷键或鼠标侧键，Esc 取消。','Press and release a keyboard shortcut or mouse side button. Esc cancels.'):shortcut?copy('按一次开始说，再按一次执行。','Press once to speak. Press again to run.'):copy('点「说指令」即可使用语音控制。','Click Speak a command to use Voice Control.')}</small>
         {enabled&&shortcutIssue&&<small role="status">{shortcutIssue}</small>}</div>}
       {entry?<form onSubmit={event=>{event.preventDefault();void runCommand(false);}}>
         <label htmlFor="lvc-command">{copy('指令','Command')}</label><input autoFocus id="lvc-command" value={words} maxLength={600} onChange={event=>setWords(event.target.value)} placeholder={copy('把键盘口袋添加到侧栏','Add Keyboard Pocket to my sidebar')}/>

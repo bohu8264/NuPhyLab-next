@@ -27,7 +27,10 @@ enum VoiceFormalMigration {
 
 enum VoiceConflictPolicy {
     static func shortcut(_ value:VoiceSettings)->VoiceShortcutValue {
-        .init(keyCode:UInt32(value.shortcutKeyCode),modifiers:value.activeShortcutModifiers,mouseButton:value.shortcutMouseButton)
+        // Dictation retains the previous keyboard key when switched to a mouse button.
+        // The recorder represents mouse shortcuts with keyCode zero.
+        .init(keyCode:value.shortcutMouseButton == nil ? UInt32(value.shortcutKeyCode) : 0,
+              modifiers:value.activeShortcutModifiers,mouseButton:value.shortcutMouseButton)
     }
     static func binding(_ value:VoiceSettings)->InputBinding {
         binding(shortcut(value))

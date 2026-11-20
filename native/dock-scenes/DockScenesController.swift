@@ -26,6 +26,7 @@ final class DockScenesController: ObservableObject {
     @Published private var shortcutWarnings: [String: String] = [:]
     @Published private(set) var recordingSceneID: String?
     @Published private(set) var shortcutEditorWarning: String?
+    var shortcutSaveIssue: (UInt32, NSEvent.ModifierFlags) -> String? = { _, _ in nil }
     @Published private(set) var shortcutEditorDidSave = false
 
     private(set) var isRecordingShortcut = false
@@ -306,6 +307,10 @@ final class DockScenesController: ObservableObject {
     @discardableResult
     func setShortcut(keyCode: UInt32, modifiers: NSEvent.ModifierFlags) -> Bool {
         guard isRecordingShortcut else { return false }
+        if let issue = shortcutSaveIssue(keyCode, modifiers) {
+            shortcutEditorWarning = issue
+            return false
+        }
         do {
             return setShortcut(try DockShortcut(keyCode: keyCode, flags: modifiers))
         } catch {

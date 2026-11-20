@@ -21,6 +21,7 @@ final class DockScenesFeature {
     weak var window: NSWindow?
     weak var web: WKWebView?
     var allowSwitch: () -> Bool = { false }
+    var shortcutSaveIssue: (UInt32, NSEvent.ModifierFlags) -> String? = { _, _ in nil }
     var english = false { didSet { controller?.english = english } }
     var isApplying: Bool { controller?.isApplying == true }
     var isRecording: Bool { editor != nil }
@@ -77,6 +78,7 @@ final class DockScenesFeature {
                 controller.refresh()
             } else {
                 let core = DockScenesController(directory: profile)
+                core.shortcutSaveIssue = { [weak self] code, flags in self?.shortcutSaveIssue(code, flags) }
                 core.english = english
                 core.setShortcutsEnabled(enabled)
                 core.sceneShortcutsAvailable = { [weak self] in
