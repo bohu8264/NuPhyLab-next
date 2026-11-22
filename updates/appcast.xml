@@ -6,29 +6,35 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>NuPhy Lab</title>
         <item>
-            <title>1.2.53</title>
-            <pubDate>Fri, 20 Nov 2026 15:14:21 +0800</pubDate>
+            <title>1.2.54</title>
+            <pubDate>Sun, 22 Nov 2026 21:49:17 +0800</pubDate>
             <link>https://github.com/bohu8264/NuPhyLab-next</link>
-            <sparkle:version>1.2.53</sparkle:version>
-            <sparkle:shortVersionString>1.2.53</sparkle:shortVersionString>
+            <sparkle:version>1.2.54</sparkle:version>
+            <sparkle:shortVersionString>1.2.54</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.5</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <description sparkle:format="plain-text"><![CDATA[NUPHY-RELEASE-NOTES 1
-version:1.2.53
+version:1.2.54
 [zh-CN]
-NuPhy Lab 1.2.53
+NuPhy Lab 1.2.54
 
-• 在功能中心添加「刚刚怎么了」，开启全屏回放后，可用按钮或自定义快捷键保存刚过去的 15 秒。画面在本机缓存，MP4 保存到「影片 / NuPhy Lab / Replays」。关闭回放或锁屏会清空未保存的画面。
+• 在「作品库 → 灯光 → 默认预设」中新增圣诞帽、拐杖糖、圣诞树、圣诞袜、礼物盒和铃铛。
+• 新增「Bad Apple」，一段 30 帧的原创无声灯光动画。动画预览中，熄灭的按键显示为黑色，白色剪影更清晰。
+• 「流星划过」「琥珀落雨」「青绿扫描」已从默认预设移除。之前保存到「我的作品」的副本仍可使用。
+• 「一颗小心意」改用 #DC1210，「星光闪闪」改用 #DC9B1F。作品库各分类默认展示预设。打开灯光作品编辑时，已连接的兼容 USB 键盘同步显示该作品。画笔的颜色应用范围默认为「当前图案」。
 [en]
-NuPhy Lab 1.2.53
+NuPhy Lab 1.2.54
 
-• Add Instant Replay from Feature Center. Turn it on to save the last 15 seconds of your display with a button or a custom shortcut. Silent clips are buffered locally and saved as MP4 files in Movies / NuPhy Lab / Replays. Turning replay off or locking your Mac clears the unsaved buffer.
+• Find Santa Hat, Candy Cane, Christmas Tree, Christmas Stocking, Gift Box, and Christmas Bell in Library → Lighting → Presets.
+• Bad Apple is an original 30-frame silent lighting loop. Animation previews show unlit keys in black so white silhouettes stand out.
+• Meteor, Amber rain, and Teal sweep have been retired from Presets. Copies you saved to My works are still available.
+• A Little Heart now uses #DC1210 and Starlight uses #DC9B1F. Each Library category opens on Presets. Opening a lighting work in the editor also displays it on a compatible USB keyboard. The brush defaults to Current pattern.
 ]]></description>
-            <enclosure url="https://github.com/bohu8264/NuPhyLab-next/releases/download/v1.2.53/NuPhyLab-1.2.53-macOS-AppleSilicon.dmg" length="52059879" type="application/octet-stream" sparkle:edSignature="taN/GH6MmJ2BwIxPuCGRzxdnBuKlIMTKMCO8PIZsLzHSn2aewVEmIPP6EcdGHN9AzjznVH7CFr97HqNpRUqEBA=="/>
+            <enclosure url="https://github.com/bohu8264/NuPhyLab-next/releases/download/v1.2.54/NuPhyLab-1.2.54-macOS-AppleSilicon.dmg" length="52062547" type="application/octet-stream" sparkle:edSignature="3C7spGHpi3IxM+Ef98TQE4bdBu3xmno+ig/pGdl2E+EaoUnWpar00BdGIBSyO0ZF63YzULbWePdHre3YzfaeCw=="/>
         </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: nzklT8OXIYcoGqqWE7miV60cNzGVUESm4Qs1jtGuc45DSwoMJKmPd0jIxAVJqmJzW65Cp8JaIuPdkpYYz9RyAA==
-length: 1931
+edSignature: gvvglcf6wG9IfcwVeDqWcJgTXjdD/ZutOkTslru/i37YpqKo+3F6iasPBCLgosrJTLZcR5z8x54UDObop0UaDA==
+length: 2675
 -->
