@@ -1,8 +1,10 @@
 # NuPhy Lab release workflow
 
-[简体中文](RELEASING.md) · [Documentation index](README.md)
+[Documentation index](README.md) · [简体中文](RELEASING.md)
 
 [NuPhy Lab releases](https://github.com/bohu8264/NuPhyLab-next/releases)
+
+Write the English project description, README and GitHub release notes first, followed by the complete Simplified Chinese text. On bilingual pages, link to both languages at the top. Before publishing, preview the README and release notes on GitHub and check the language order and download links.
 
 1. Increase the version in `package.json` and add `updates/release-notes/<version>.json`. Its `version` must match exactly. Both `zh-CN` and `en` arrays must describe changes actually completed for this version, without generic or placeholder text. Run `npm run build` and `npm test`.
 2. Package with a valid NuPhy Developer ID identity. Do not distribute ad-hoc-signed builds. `scripts/signing.mjs` signs Sparkle's nested code individually.

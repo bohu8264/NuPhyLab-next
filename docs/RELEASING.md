@@ -1,8 +1,10 @@
 # NuPhy Lab 发布流程
 
-[English](RELEASING.en.md) · [文档目录](README.md)
+[English](RELEASING.en.md) · [文档目录](README.md#中文)
 
 [NuPhy Lab 发行页](https://github.com/bohu8264/NuPhyLab-next/releases)
+
+GitHub 的项目简介、双语 README 和发行说明统一先写完整英文，再写完整简体中文。双语页面顶部提供语言跳转。发布前预览 README 和发行说明，核对语言顺序与下载链接。
 
 1. 同时增加 `package.json` 的版本号，并新增 `updates/release-notes/<版本>.json`：`version` 必须完全一致，`zh-CN` 与 `en` 数组填写这一版真实完成的更新说明，不用通用文案或占位内容。运行 `npm run build` 和 `npm test`。
 2. 使用本机有效的 NuPhy Developer ID 身份打包。发布不得使用 ad-hoc 签名。Sparkle 的嵌套代码由 `scripts/signing.mjs` 逐层签名。
