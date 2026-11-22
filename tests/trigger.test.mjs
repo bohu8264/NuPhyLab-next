@@ -19,7 +19,7 @@ test("default heart follows the new reference's nineteen keys, including right C
   assert.deepEqual(layout.filter((key) => colors[key.index] !== "#000000").map((key) => key.code), expected);
   assert.equal(colors.filter((color) => color !== "#000000").length, 19);
   assert.equal(colors[83], "#000000");
-  assert.deepEqual(new Set(colors), new Set(["#000000", "#dc847b"]));
+  assert.deepEqual(new Set(colors), new Set(["#000000", "#dc1210"]));
   assert.deepEqual(presets().find((preset) => preset.id === "heart").colors, colors);
   assert.equal(presets().find((preset) => preset.id === "heart").animation.effect, "pulse");
   assert.equal(layout.find((key) => key.code === "Insert").label, "Ins");

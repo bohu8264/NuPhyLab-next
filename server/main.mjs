@@ -375,6 +375,7 @@ function agentLightingPauseReason(source = agentSource()) {
   if (hardware.state.readOnly === true || hardware.state.capabilities?.perKey === false) return 'unsupported';
   if (keyCapture.active) return 'recording';
   if (['game', 'trigger'].includes(playback.mode)) return playback.mode;
+  if (playback.editorId && ['static','animation','paused'].includes(playback.mode)) return 'editing';
   if (integrationsSuspended || !hardware.state.armed || !['agent', 'static', 'animation', 'paused', 'audio'].includes(playback.mode)) return 'waitingOutput';
   return null;
 }
@@ -789,7 +790,7 @@ async function resumeReconnectPlayback() {
   if(saved.modelId!==getLayoutModel()){reconnectPlayback=null;return false;}
   await activate();
   started=performance.now()-saved.elapsed;
-  playback={...playback,mode:saved.mode,playing:saved.playing,elapsed:saved.elapsed,lastError:null};
+  playback={...playback,mode:saved.mode,playing:saved.playing,elapsed:saved.elapsed,lastError:null,editorId:undefined};
   await output(saved.mode==='static'?baseColors:renderAnimation(baseColors,animation,saved.elapsed));
   reconnectPlayback=null;
   return true;
@@ -922,6 +923,7 @@ async function fireTrigger(code, at = performance.now()) {
 }
 async function stop({restore = true, resumeAgent = true, expectedProfile, recoverCurrentProfile = false} = {}) {
   cancelConnectionWake('stopped');
+  delete playback.editorId;
   audio.stop();
   let keyReleaseError;
   try { await codexGestures.release(); } catch(error) { keyReleaseError=error; }
@@ -1300,6 +1302,9 @@ async function serialized(fn) {
   return result;
 }
 async function command(req) {
+  const editorId=typeof req.editorId==='string' && req.editorId.length<=80 ? req.editorId || undefined : undefined;
+  if(editorId && req.connectionSessionId!==undefined && req.connectionSessionId!==hardware.state.connectionSessionId)
+    throw new Error('键盘连接已更改，请重新打开作品。');
   const feature = ['preview','play','triggerArm','audioStart','nativeLighting'].includes(req.op) ? 'studio'
     : ['gameStart','gameRestart','gameSelect'].includes(req.op) ? 'game' : null;
   if (feature && !store.data.settings.sidebarFeatures.includes(feature))
@@ -1534,6 +1539,9 @@ async function command(req) {
     }
     case "stop":
       return stop();
+    case "endEditorLighting":
+      if(editorId && playback.editorId===editorId)delete playback.editorId;
+      return {};
     case "pause":
       if (["idle", "agent"].includes(playback.mode)) return playback;
       if (["trigger","audio"].includes(playback.mode)) return stop();
@@ -1563,7 +1571,7 @@ async function command(req) {
       suspendedScene = null;
       pendingSceneRestore = false;
       await activate();
-      playback = { ...playback, mode: "static", playing: false };
+      playback = { ...playback, mode: "static", playing: false, editorId };
       await output(baseColors);
       return playback;
     case "play":
@@ -1580,6 +1588,7 @@ async function command(req) {
       playback = {
         ...playback,
         mode: animation.effect === "static" ? "static" : "animation",
+        editorId,
         playing: true,
         elapsed: 0,
       };
@@ -1750,7 +1759,7 @@ async function command(req) {
         await activate();
         await muteGameSide();
         trigger.start(pattern, config);
-        playback = { ...playback, mode: "trigger", playing: false };
+        playback = { ...playback, mode: "trigger", playing: false, editorId };
         await output(blank());
         try {
           await hardware.request("triggerMonitor", {

@@ -65,6 +65,8 @@ type Props = {
   connectionDisplay?: ConnectionDisplay;
   command: Command;
   draft: Scene;
+  initiallyPlaying?: boolean;
+  editorId?: string;
   setDraft: (scene: Scene) => void;
   onSave: () => void;
   onBrowsePresets: () => void;
@@ -108,6 +110,8 @@ export function Studio({
   connectionDisplay,
   command,
   draft,
+  initiallyPlaying = false,
+  editorId,
   setDraft,
   onSave,
   onBrowsePresets,
@@ -128,9 +132,9 @@ export function Studio({
   const previewPeak = useMemo(() => lightingPeak([draft.colors, ...(draft.animation.frames || []).map(frame => frame.colors)]
     .map(colors => applyArtworkAppearance(colors, {...draft.animation, brightness: 100}))), [draft.colors, draft.animation]);
   const [tool, setTool] = useState<"paint" | "select" | "erase">("paint");
-  const [color, setColor] = useState(DEFAULT_COLOR);
+  const [color, setColor] = useState(() => (draft.colors.find(value => value.toLowerCase() !== "#000000") ?? DEFAULT_COLOR).toUpperCase());
   const colorMemory = useRef<HSV | null>(null);
-  const [colorScope,setColorScope] = useState("brush");
+  const [colorScope,setColorScope] = useState("pattern");
   const colorGesture = useRef({active:false,recorded:false});
   const colorTargets = useRef<{signature:string;scope:string;selection:string;indices:number[]}|null>(null);
   const [hex, setHex] = useState(color);
@@ -161,11 +165,13 @@ export function Studio({
   ));
   const [playBusy, setPlayBusy] = useState(false);
   const playLock = useRef(false);
-  const appliedAnimation = useRef<{signature: string; context: string} | null>(null);
   const playbackGeneration = useRef(0);
   const playbackContext = `${state?.device.modelId ?? ""}:${state?.device.connectionSessionId ?? ""}`;
   const animationSignature = animationContent(draft);
-  useEffect(() => {
+  const appliedAnimation = useRef<{signature: string; context: string} | null>(
+    initiallyPlaying ? {signature: animationSignature, context: playbackContext} : null,
+  );
+  useEffect(() => () => {
     playbackGeneration.current++;
     appliedAnimation.current = null;
   }, [playbackContext, state?.device.connected]);
@@ -211,12 +217,12 @@ export function Studio({
       // A manual paint submission may have applied this same canvas meanwhile.
       if (signature === lastPreview.current) return;
       lastPreview.current = signature;
-      void command({ op: "preview", colors: applyArtworkAppearance(draft.colors, draft.animation) }).catch(() => {
+      void command({ op: "preview", colors: applyArtworkAppearance(draft.colors, draft.animation), ...(editorId&&{editorId,connectionSessionId:state.device.connectionSessionId}) }).catch(() => {
         if (lastPreview.current === signature) lastPreview.current = "";
       });
     }, 100);
     return () => clearTimeout(timer);
-  }, [liveColorSignature, live, state?.device.connected, state?.firmware?.compatible, state?.playback.mode, state?.playback.playing, perKeySupported, tab, command]);
+  }, [liveColorSignature, live, state?.device.connected, state?.device.connectionSessionId, state?.firmware?.compatible, state?.playback.mode, state?.playback.playing, perKeySupported, tab, command, editorId]);
   const commit = (colors: string[], history = true) => {
     if (history) {
       const previous = draftRef.current.colors.slice();
@@ -304,8 +310,9 @@ export function Studio({
     }
     setDraft({ ...draft, animation: { ...draft.animation, ...patch } });
   };
-  const applyHex = () => {
+  const applyHex = (explicit = false) => {
     const next = hex.startsWith("#") ? hex : `#${hex}`;
+    if (!explicit && next.toLowerCase() === color.toLowerCase()) {setHex(color);return;}
     if (/^#[0-9a-f]{6}$/i.test(next)) changeColor(next.toUpperCase());
     else {
       setHex(color);
@@ -331,6 +338,7 @@ export function Studio({
     try {
       await command({
         op: staticSubmission ? "preview" : "play",
+        ...(editorId&&{editorId,connectionSessionId:state.device.connectionSessionId}),
         ...submitted,
         colors: staticSubmission ? applyArtworkAppearance(submitted.colors, submitted.animation) : submitted.colors,
       });
@@ -466,7 +474,7 @@ export function Studio({
     setPlayBusy(true);
     try {
       if (triggerArmed && !newPattern) await command({ op: "triggerStop" });
-      else await command({ op: "triggerArm", colors: applyArtworkAppearance(draft.colors, draft.animation), trigger: triggerPlaybackConfig(draft.trigger,draft.animation) });
+      else await command({ op: "triggerArm", colors: applyArtworkAppearance(draft.colors, draft.animation), trigger: triggerPlaybackConfig(draft.trigger,draft.animation), ...(editorId&&{editorId,connectionSessionId:state.device.connectionSessionId}) });
     } finally { setPlayBusy(false); }
   };
   const handledPlayRequest = useRef<string | null>(null);
@@ -500,7 +508,7 @@ export function Studio({
         onChangeEnd={() => { colorGesture.current.active = false; }}
         entry={<div className="color-entry">
           <span className="color-preview" style={{ background: color }} aria-label={tr(`当前颜色 ${color}`)} />
-          <input aria-label={tr("十六进制颜色")} value={hex} onChange={event => setHex(event.target.value)} onBlur={applyHex} onKeyDown={event => { if (event.key === "Enter") applyHex(); }} maxLength={7} />
+          <input aria-label={tr("十六进制颜色")} value={hex} onChange={event => setHex(event.target.value)} onBlur={() => applyHex()} onKeyDown={event => { if (event.key === "Enter") applyHex(true); }} maxLength={7} />
           <button className="v5-copy-color" type="button" aria-label={tr("复制颜色")} title={tr("复制颜色")} onClick={() => run(navigator.clipboard.writeText(color).then(() => notify("颜色已复制", "success")).catch(() => notify("无法复制，请选中颜色值复制")))}><Copy size={14} /></button>
         </div>} />
       {selected.length > 0 && <div className="v5-selected">

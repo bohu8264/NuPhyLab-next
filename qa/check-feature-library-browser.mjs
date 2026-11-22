@@ -38,21 +38,40 @@ try {
  const shot=async name=>{await settle();const value=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await writeFile(path.join(output,name+'.png'),Buffer.from(value.data,'base64'));};
  await send('Page.enable');await send('Runtime.enable');const downloads=path.join(dir,'downloads');await mkdir(downloads);await send('Page.setDownloadBehavior',{behavior:'allow',downloadPath:downloads});await send('Emulation.setDeviceMetricsOverride',{width:1120,height:820,deviceScaleFactor:1,mobile:false});await send('Page.navigate',{url:service.url});await page('studio');await click('稍后');
  await until(()=>evaluate(`document.querySelectorAll('.feature-sidebar-nav button').length`),n=>n===3,'default three');checks.push('fresh sidebar has only three features');
+ const collection=()=>evaluate("document.querySelector('.unified-source button[aria-pressed=true]')?.textContent.trim()");
+ await click('作品库');await page('library');
+ assert.equal(await collection(),'默认预设');
+ assert.equal(await evaluate("document.querySelector('.unified-source button').textContent.trim()"),'默认预设');
+ for(const category of ['灯光','灯光','演奏','全部']){
+   await click('我的作品');assert.equal(await collection(),'我的作品');
+   await click(category,"document.querySelector('.unified-filter')");assert.equal(await collection(),'默认预设');
+ }
+ await click('灯光',"document.querySelector('.unified-filter')");
+ await until(()=>evaluate("document.querySelectorAll('.lab-preset-library article').length"),n=>n===11,'11 lighting presets');
+ assert.equal(await evaluate("Array.from(document.querySelectorAll('.lab-preset-library h3'),n=>n.textContent).includes('Bad Apple')"),true);
+ await click('使用预设 星光闪闪');await click('放弃修改并打开');await page('studio');
+ const started=await until(()=>service.state(),state=>state.playback.mode==='animation'&&Boolean(state.playback.editorId),'editor animation on keyboard');
+ assert(started.previewColors.some(c=>c!=='#000000'));
+ await until(()=>evaluate("Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='暂停播放')"),Boolean,'editor acknowledges current playback');
+ await click('绘制');assert.equal(await evaluate("document.querySelector('#studio-color-scope').value"),'pattern');
+ assert.equal(await evaluate("document.querySelector('input[aria-label=十六进制颜色]').value.toUpperCase()"),'#DC9B1F');
+ await click('作品库');await until(()=>service.state(),state=>!state.playback.editorId,'editor releases artwork priority');
+ checks.push('Presets first on every category click; confirmed open starts the selected animation, editor shows Pause and paint defaults to Current pattern');
  await click('功能中心');await page('features');await until(()=>evaluate(`document.querySelectorAll('.feature-card').length`),n=>n===FEATURE_IDS.length,'feature cards');await shot('feature-center-zh');
  await click('添加键盘口袋');await until(()=>service.state(),s=>s.settings.sidebarFeatures.includes('keyboard-pocket'),'add pocket');
  await click('移除灯光创作');await until(()=>service.state(),s=>!s.settings.sidebarFeatures.includes('studio'),'remove default');await send('Page.reload');await page('features');await settle();if(await evaluate(`Array.from(document.querySelectorAll('[role=dialog] button')).some(b=>b.textContent.trim()==='稍后')`))await click('稍后');
  assert(!(await service.state()).settings.sidebarFeatures.includes('studio'));checks.push('add/remove and restart persistence');
  for(const id of [...(await service.state()).settings.sidebarFeatures]){await evaluate(`document.querySelector('[data-feature="${id}"] .feature-remove').click()`);await until(()=>service.state(),s=>!s.settings.sidebarFeatures.includes(id),'remove '+id);await settle();}
  assert.equal(await evaluate(`document.querySelectorAll('.feature-sidebar-nav button').length`),0);checks.push('empty personalized sidebar retains Feature Center, Devices and Settings');
- await click('添加作品库');await until(()=>service.state(),s=>s.settings.sidebarFeatures.includes('library'),'library add');await settle();await click('作品库');await page('library');await until(()=>evaluate(`document.querySelectorAll('.unified-work-grid article').length`),n=>n===3,'all works mixed');await shot('unified-library-zh');
+ await click('添加作品库');await until(()=>service.state(),s=>s.settings.sidebarFeatures.includes('library'),'library add');await settle();await click('作品库');await page('library');await click('我的作品');await until(()=>evaluate(`document.querySelectorAll('.unified-work-grid article').length`),n=>n===3,'all works mixed');await shot('unified-library-zh');
  checks.push('existing lighting + music visible without adding their editors');
- await click('演奏');await until(()=>evaluate(`document.querySelectorAll('.unified-work-grid article').length`),n=>n===2,'music filter');await click('添加演奏模式并编辑');await page('music');await until(()=>evaluate(`document.querySelector('input[aria-label="演奏名称"]')?.disabled`),v=>v===false,'editor read');
+ await click('演奏');await click('我的作品');await until(()=>evaluate(`document.querySelectorAll('.unified-work-grid article').length`),n=>n===2,'music filter');await click('添加演奏模式并编辑');await page('music');await until(()=>evaluate(`document.querySelector('input[aria-label="演奏名称"]')?.disabled`),v=>v===false,'editor read');
  const chosenName=await evaluate(`document.querySelector('input[aria-label="演奏名称"]').value`);assert(['Morning Notes','Quiet Rhythm'].includes(chosenName));
  const all=(await musicRequest('works')).works,chosen=all.find(w=>w.name===chosenName);const before=(await musicRequest('works/'+chosen.id)).work.session;
  await evaluate(`(()=>{const field=document.querySelector('input[aria-label="演奏名称"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(field,'Edited in unified library');field.dispatchEvent(new Event('input',{bubbles:true}));})()`);
  await until(()=>musicRequest('works/'+chosen.id),x=>x.work.session.name==='Edited in unified library','autosave existing');await click('作品库',`document.querySelector('.ml-tabs')`);await page('library');
  assert.equal(await evaluate(`document.querySelector('.unified-filter button[aria-pressed="true"]').textContent.trim()`),'演奏');const after=(await musicRequest('works/'+chosen.id)).work.session;assert.equal(after.projectId,before.projectId);assert.deepEqual(after.events,before.events);assert.equal((await musicRequest('works')).works.length,2);checks.push('add editor + reopen + save updates original ID/events and returns to music filter');
- await click('查看作品Edited in unified library');await click('导出工程');const exported=await until(()=>readFile(path.join(downloads,'Edited in unified library.nuphy-music'),'utf8').catch(()=>''),Boolean,'project export');assert.deepEqual(JSON.parse(exported).events,before.events);assert.deepEqual(JSON.parse(exported).clips,before.clips);checks.push('project export preserves notes and imported-clip configuration');await click('复制作品');await until(()=>musicRequest('works'),x=>x.works.length===3,'duplicate');
+ await click('我的作品');await click('查看作品Edited in unified library');await click('导出工程');const exported=await until(()=>readFile(path.join(downloads,'Edited in unified library.nuphy-music'),'utf8').catch(()=>''),Boolean,'project export');assert.deepEqual(JSON.parse(exported).events,before.events);assert.deepEqual(JSON.parse(exported).clips,before.clips);checks.push('project export preserves notes and imported-clip configuration');await click('复制作品');await until(()=>musicRequest('works'),x=>x.works.length===3,'duplicate');
  await click('重命名');await evaluate(`(()=>{const field=document.querySelector('input[aria-label="新的作品名称"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(field,'Renamed music');field.dispatchEvent(new Event('input',{bubbles:true}));})()`);await click('保存名称');await until(()=>musicRequest('works/'+chosen.id),x=>x.work.session.name==='Renamed music','rename');
  await click('查看作品Renamed music');await click('移到最近删除');await click('移到最近删除',`document.querySelector('[role="dialog"]')`);await until(()=>musicRequest('works?deleted=1'),x=>x.works.some(w=>w.id===chosen.id),'delete');await click('最近删除');await click('恢复作品');await until(()=>musicRequest('works'),x=>x.works.some(w=>w.id===chosen.id),'restore');
  await click('我的作品');await settle();await click('继续编辑');await page('music');await until(()=>evaluate(`document.querySelector('input[aria-label="演奏名称"]')?.disabled`),v=>v===false,'restored editor');checks.push('duplicate/rename/delete/restore keep full project and subsequent editor works');

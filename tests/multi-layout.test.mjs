@@ -60,8 +60,8 @@ test("generated artwork uses the active model and leaves nonexistent Kick slots 
   setLayoutModel("kick75");
   const colors = heart();
   assert.equal(colors.length, 84);
-  assert.equal(colors[byCode(kickLayout, "KeyU").index], "#dc847b");
-  assert.equal(colors[byCode(kickLayout, "AltRight").index], "#dc847b");
+  assert.equal(colors[byCode(kickLayout, "KeyU").index], "#dc1210");
+  assert.equal(colors[byCode(kickLayout, "AltRight").index], "#dc1210");
   assert.equal(colors.filter((color) => color !== "#000000").length, 19);
   assert.deepEqual(colors.slice(80), Array(4).fill("#000000"));
   const catalog = presets();
@@ -74,7 +74,7 @@ test("generated artwork uses the active model and leaves nonexistent Kick slots 
       assert.deepEqual(frame.colors.slice(80), Array(4).fill("#000000"), preset.id);
   }
   setLayoutModel("air75-v3");
-  assert.equal(heart()[byCode(airLayout, "KeyU").index], "#dc847b");
+  assert.equal(heart()[byCode(airLayout, "KeyU").index], "#dc1210");
 });
 
 test("Kick's six physical rows form a connected board without phantom keys", () => {

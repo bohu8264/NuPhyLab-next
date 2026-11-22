@@ -166,6 +166,7 @@ export type AppState = {
   };
   playback: {
     mode: string;
+    editorId?: string;
     playing: boolean;
     fps?: number;
     framesSent?: number;

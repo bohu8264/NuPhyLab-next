@@ -32,6 +32,7 @@ async function run(runtimePath, reportPath, includeTrigger) {
     process.exitCode = 1;
     return;
   }
+  const catalog = createPresets(kickLayout);
   const report = {
     schemaVersion: 1,
     startedAt: new Date().toISOString(),
@@ -161,8 +162,6 @@ async function run(runtimePath, reportPath, includeTrigger) {
       brightness: 10, lightDurationMs: 0, lightIdleMs: 0,
     } });
     await command("stop");
-    const catalog = createPresets(kickLayout);
-    assert.equal(catalog.length, 7, "Expected the curated seven-preset catalog");
     for (const preset of catalog) {
       ensureRunning();
       const before = (await state()).playback.framesSent;
@@ -296,7 +295,7 @@ async function run(runtimePath, reportPath, includeTrigger) {
   }
   report.finishedAt = new Date().toISOString();
   report.passed = report.testCasesCompleted === true && !report.error && !interrupted
-    && report.presets.length === 7 && report.presets.some((preset) => preset.id === "typing-cross" && preset.remainsArmed)
+    && report.presets.length === catalog.length && report.presets.some((preset) => preset.id === "typing-cross" && preset.remainsArmed)
     && report.games.length === 4
     && report.cleanup.original17BytesRestored === true && report.cleanup.errors.length === 0;
   try { await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n", { mode: 0o600 }); }
@@ -305,7 +304,7 @@ async function run(runtimePath, reportPath, includeTrigger) {
     process.exitCode = 1;
     return;
   }
-  if (report.passed) console.log("Kick75 application acceptance passed: 7 presets, 4 games and complete restoration.");
+  if (report.passed) console.log(`Kick75 application acceptance passed: ${catalog.length} presets, 4 games and complete restoration.`);
   else {
     const reason = report.error ?? (report.cleanup.errors.map((item) => item.error).join("; ") || "interrupted or incomplete");
     console.error("Kick75 application acceptance failed: " + reason);

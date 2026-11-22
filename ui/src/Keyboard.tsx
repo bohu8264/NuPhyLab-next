@@ -28,7 +28,7 @@ export type KeyboardProps = {
   sideColor?: string;
   airTopRightModule?: AirTopRightModule;
 };
-export function Keyboard({ modelId, layout, geometry = keyboardGeometry[modelId], colors, selected = [], mini = false,
+export function Keyboard({ modelId, layout, geometry = keyboardGeometry[modelId], colors, selected = [], mini = false, lightPreview = false,
   onKey, onGameKey, onStrokeStart, sideColor, airTopRightModule }: KeyboardProps) {
   const preference = useContext(KeyboardModuleContext);
   const stroke = useRef<{pointerId: number; modelId: string; last: number | null} | null>(null);
@@ -45,10 +45,13 @@ export function Keyboard({ modelId, layout, geometry = keyboardGeometry[modelId]
     left: `${x / width * 100}%`, top: `${y / height * 100}%`, width: `${w / width * 100}%`, height: `${h / height * 100}%`,
   });
   const keyStyle = (key: KeyboardLayoutKey): CSSProperties => {
-    const color = colorAt(key.index), lit = !/^#0{3}(0{3})?$/i.test(color);
+    const color = colorAt(key.index);
+    // In a light show, an off LED is black. The paint canvas uses a pale
+    // unpainted key so its legend stays visible while editing.
+    const showLEDColor = lightPreview || !/^#0{3}(0{3})?$/i.test(color);
     const [r, g, b] = [1, 3, 5].map(i => parseInt(color.slice(i, i + 2), 16) || 0);
-    return {...positionStyle(geometry.keys[key.index]), '--key-color': lit ? color : '#FCFCFC',
-      '--key-text': lit && r * .299 + g * .587 + b * .114 < 128 ? '#ffffff' : '#747474'} as CSSProperties;
+    return {...positionStyle(geometry.keys[key.index]), '--key-color': showLEDColor ? color : '#FCFCFC',
+      '--key-text': showLEDColor && r * .299 + g * .587 + b * .114 < 128 ? '#ffffff' : '#747474'} as CSSProperties;
   };
   const englishLabels: Record<string, string> = {
     PrintScreen: 'PrtSc', LockScreen: 'Lock', ShowDesktop: 'Desk', ControlCenter: 'Ctrl Ctr', TaskManager: 'Task',

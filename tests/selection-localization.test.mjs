@@ -79,6 +79,10 @@ test('existing Chinese preset titles display in English without changing artwork
   assert.equal(displayPresetName(english,value=>value),preset.name);assert.deepEqual(preset,copy);
  }
  assert.equal(displayPresetName('一石二鸟',value=>translate('en',value)),'One stone, two birds');
+ for(const [zh,en] of [['流星划过','Meteor'],['琥珀落雨','Amber rain'],['青绿扫描','Teal sweep']]){
+  assert.equal(displayPresetName(zh,value=>translate('en',value)),en);
+  assert.equal(displayPresetName(en,value=>value),zh);
+ }
  for(const name of ['设置','我的灯效','中文任务 · 作品库'])assert.equal(displayPresetName(name,value=>translate('en',value)),name);
 });
 test('changing the app language updates the native HUD immediately without requesting capture or changing preferences',async()=>{

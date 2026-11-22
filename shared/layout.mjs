@@ -124,7 +124,7 @@ export function hsv(h, s = 0.55, v = 0.85) {
   };
   return "#" + f(5) + f(3) + f(1);
 }
-export function heart(color = "#dc847b") {
+export function heart(color) {
   return heartColors(layout, color);
 }
 export const defaultAnimation = {

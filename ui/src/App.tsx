@@ -31,6 +31,7 @@ import {AudioPendingNotice} from './AudioPendingNotice';
 import { NativeLighting } from "./NativeLighting";
 import { Studio } from "./Studio";
 import { UnifiedLibrary, type LibraryFilter } from './UnifiedLibrary';
+import type { WorkSource } from './music/MusicWorks';
 import { FeatureCenter,features } from './FeatureCenter';
 import { sidebarFeatures,type FeatureId } from '../../shared/sidebar-features.mjs';
 import type { MusicEntry } from './music/MusicLab';
@@ -75,7 +76,7 @@ const sceneSignature = (scene: Scene) => JSON.stringify([
   scene.trigger ? Object.entries(scene.trigger).sort(([left],[right])=>left.localeCompare(right))
     .map(([key,value])=>[key,key==='color'&&typeof value==='string'?value.toLowerCase():value]) : null,
 ]);
-type LibraryPlayRequest = { id: string; scene: Scene; action: 'open' | 'new'; context: string; generation: number; restoreKey?: string; saved?: boolean };
+type LibraryPlayRequest = { id: string; scene: Scene; action: 'open' | 'new'; context: string; generation: number; navigation: number; restoreKey?: string; saved?: boolean };
 export default function App() {
   const language=useLanguage();
   const [draftSession, setDraftSession] = useState(0);
@@ -93,11 +94,23 @@ export default function App() {
   const [studioMode, setStudioMode] = useState<StudioMode>("paint");
   const [focusCodexColors,setFocusCodexColors] = useState(false);
   const [libraryFilter,setLibraryFilter] = useState<LibraryFilter>('all');
-  const [librarySource,setLibrarySource] = useState<'saved'|'presets'>('saved');
+  const [librarySource,setLibrarySource] = useState<WorkSource>('presets');
   const [musicEntry,setMusicEntry] = useState<MusicEntry|null>(null);
   const [featureBusy,setFeatureBusy] = useState(false);
   const featureLock=useRef(false),initialNavigation=useRef(false),navigationEpoch=useRef(0);
-  function setPage(next:Page){navigationEpoch.current++;commitPage(next);}
+  const editorOutput=useRef<{id:string;scene:Scene;context:string}|null>(null);
+  function releaseEditorOutput(id:string){
+    void command({op:'endEditorLighting',editorId:id},{silent:true}).catch(()=>{});
+  }
+  function setPage(next:Page){
+    navigationEpoch.current++;
+    if(next!=='studio'&&editorOutput.current){
+      releaseEditorOutput(editorOutput.current.id);
+      editorOutput.current=null;
+    }
+    if(next==='library')setLibrarySource('presets');
+    commitPage(next);
+  }
   const [page, commitPage] = useState<Page>("studio"),
     [draft, setDraft] = useState<Scene>({
       name: "一颗小心意",
@@ -170,14 +183,18 @@ export default function App() {
     const [id,tab]=destination.split('.');
     if(id==='settings'&&tab)setSettingsTab(tab as typeof settingsTab);
     if(id==='studio'&&tab)setStudioMode(tab as StudioMode);
-    if(id==='library'&&tab){setLibraryFilter(tab as LibraryFilter);setLibrarySource('saved');}
+    if(id==='library')setLibraryFilter((tab as LibraryFilter)||'all');
     if(id==='music'&&page!=='music')setMusicEntry(null);
     setPage(id as VoicePage);
   }
   const editMusic=async(entry:MusicEntry)=>{const epoch=++navigationEpoch.current;try{await prepareMusicLibraryAction();if(epoch!==navigationEpoch.current)return;if(await ensureFeature('music')&&epoch===navigationEpoch.current){setMusicEntry(entry);setPage('music');}}catch(error){notify(language==='en'?'Save your current music project before opening another work.':'请先完成当前演奏的保存，再打开其他作品。');}};
-  const loadFromLibrary=async(scene:Scene,create=false)=>{const epoch=++navigationEpoch.current;if(await ensureFeature('studio')&&epoch===navigationEpoch.current)load(scene,{create});};
-  const browseMusic=()=>{setLibraryFilter('music');setLibrarySource('saved');setPage('library');};
-  useEffect(()=>{if(state&&!initialNavigation.current){initialNavigation.current=true;if(navigationEpoch.current===0&&!sidebarFeatures(state.settings.sidebarFeatures).includes('studio'))setPage('features');}},[state]);
+  const loadFromLibrary=async(scene:Scene,create=false)=>{
+    if(directLibraryPlay.current||libraryPlayRequest.current||saveLock.current||transitionLock.current)return;
+    const epoch=++navigationEpoch.current,generation=libraryPlayGeneration.current;
+    if(await ensureFeature('studio')&&epoch===navigationEpoch.current&&generation===libraryPlayGeneration.current)load(scene,{create});
+  };
+  const browseMusic=()=>{setLibraryFilter('music');setPage('library');};
+  useEffect(()=>{if(state&&!initialNavigation.current){initialNavigation.current=true;if(state.playback.editorId)releaseEditorOutput(state.playback.editorId);if(navigationEpoch.current===0&&!sidebarFeatures(state.settings.sidebarFeatures).includes('studio'))setPage('features');}},[state]);
   const modelId = isKeyboardModel(state?.device.modelId) ? state.device.modelId : getLayoutModel();
   const nativeOnly = nativeLightingOnly(state);
   const connectionDisplay=presentConnectionDisplay(deriveConnectionDisplay({state,serviceError,canvasModelId:layout.length ? modelId : null,keyRecoveryProblem:keyRecoveryProblem(state)}));
@@ -283,22 +300,44 @@ export default function App() {
     if(!id||libraryPlayRequest.current?.id!==id)return;
     libraryPlayRequest.current=null;setPendingLibraryPlay(null);setLibraryPlayBusy(false);
   };
+  const sendLibraryScene = async (scene:Scene,editorId?:string) => {
+    const {colors,animation,trigger}=scene;
+    const editor=editorId?{editorId,connectionSessionId:state?.device.connectionSessionId}:{};
+    if(trigger){
+      const appearance=applyArtworkAppearance(colors,animation);
+      const config=triggerPlaybackConfig(trigger,animation);
+      const lit=config.effect==='cross' ? config.color?.toLowerCase()!=='#000000'
+        : layout.some(key=>appearance[key.index]&&appearance[key.index].toLowerCase()!=='#000000');
+      if(lit){await command({op:'triggerArm',colors:appearance,trigger:config,...editor},{silent:true});return;}
+      // An unlit trigger is editable. Show its unlit state without arming it.
+      if(editorId){await command({op:'preview',colors:colors.map(()=>'#000000'),...editor},{silent:true});return;}
+      throw new Error((animation.brightness??100)===0?'作品亮度为 0%，调高后可启用按键触发。':'当前设置下图案没有亮起的按键，请调整颜色或作品亮度。');
+    }
+    const still=animation.effect==='static';
+    await command({op:still?'preview':'play',colors:still?applyArtworkAppearance(colors,animation):colors,animation,...editor},{silent:true});
+  };
   const adoptLibraryPlay = async (request:LibraryPlayRequest) => {
-    const epoch=navigationEpoch.current;
     if(libraryPlayRequest.current?.id!==request.id || request.generation!==libraryPlayGeneration.current
       || request.context!==latestLibraryContext.current.context || transitionLock.current)return;
+    if(request.navigation!==navigationEpoch.current){finishLibraryPlay(request.id);return;}
     transitionLock.current=request.id;setDraftTransitionBusy(true);
+    const playOnOpen=!request.restoreKey&&request.action==='open'&&latestLibraryContext.current.canPlay;
     try {
-      if(!request.restoreKey&&state&&(state.playback.mode!=='idle'||state.game.status!=='idle'||state.device.armed))await command({op:'stop'},{silent:true});
+      if(playOnOpen)await sendLibraryScene(request.scene,request.id);
+      else if(request.action==='new'&&state&&(state.playback.mode!=='idle'||state.game.status!=='idle'||state.device.armed))await command({op:'stop'},{silent:true});
       if(libraryPlayRequest.current?.id!==request.id || request.generation!==libraryPlayGeneration.current
-        || request.context!==latestLibraryContext.current.context)return;
-      if(epoch!==navigationEpoch.current){finishLibraryPlay(request.id);return;}
+        || request.context!==latestLibraryContext.current.context || request.navigation!==navigationEpoch.current){
+        if(playOnOpen)releaseEditorOutput(request.id);
+        finishLibraryPlay(request.id);return;
+      }
       if(request.restoreKey){blockedDraftKeys.current.delete(request.restoreKey);setDraftStorageIssue(null);}
       untouchedNewDraft.current=request.action==='new'&&!request.restoreKey
         ?{model:modelId,signature:sceneSignature(request.scene)}:null;
-      setDraft(cloneScene(request.scene));setStudioMode(modeForScene(request.scene));
+      setDraft(request.scene);setStudioMode(modeForScene(request.scene));
       setDraftSession(value=>value+1);setPage(nativeOnly?'offline':'studio');setSaveError('');finishLibraryPlay(request.id);
+      editorOutput.current=playOnOpen?{id:request.id,scene:request.scene,context:request.context}:null;
     } catch(error){
+      if(playOnOpen)releaseEditorOutput(request.id);
       const message=tr(request.saved?(request.action==='new'?'当前草稿已保存，但新建尚未完成。当前画布未替换，请重试。':'当前草稿已保存，但打开尚未完成。当前画布未替换，请重试。'):'未能切换作品，当前草稿已保留，请重试。')+(error instanceof Error?` ${tr(error.message)}`:'');
       if(libraryPlayRequest.current?.id===request.id){
         if(pendingLibraryPlay)setSaveError(message);else{notify(message);finishLibraryPlay(request.id);}
@@ -311,16 +350,8 @@ export default function App() {
     directLibraryPlay.current=id;setLibraryPlayBusy(true);
     try {
       if(!await ensureFeature('studio'))return;
-      if(context!==latestLibraryContext.current.context||!latestLibraryContext.current.canPlay)return;
-      const submitted=cloneScene(scene),appearance=applyArtworkAppearance(submitted.colors,submitted.animation);
-      if(submitted.trigger){
-        const trigger=triggerPlaybackConfig(submitted.trigger,submitted.animation);
-        const lit=trigger.effect==='cross' ? trigger.color?.toLowerCase()!=='#000000'
-          : layout.some(key=>appearance[key.index]&&appearance[key.index].toLowerCase()!=='#000000');
-        if(!lit){notify((submitted.animation.brightness??100)===0?'作品亮度为 0%，调高后可启用按键触发。':'当前设置下图案没有亮起的按键，请调整颜色或作品亮度。');return;}
-        await command({op:'triggerArm',colors:appearance,trigger},{silent:true});
-      }else await command({op:submitted.animation.effect==='static'?'preview':'play',
-        colors:submitted.animation.effect==='static'?appearance:submitted.colors,animation:submitted.animation},{silent:true});
+      if(generation!==libraryPlayGeneration.current||context!==latestLibraryContext.current.context||!latestLibraryContext.current.canPlay)return;
+      await sendLibraryScene(scene);
     }catch(error){
       if(generation===libraryPlayGeneration.current&&context===latestLibraryContext.current.context)
         notify(error instanceof Error?error.message:'操作失败');
@@ -342,7 +373,7 @@ export default function App() {
   };
   const load = (scene: Scene, options?:{create?:boolean;restoreKey?:string}) => {
     if(directLibraryPlay.current||libraryPlayRequest.current||saveLock.current)return;
-    const request:LibraryPlayRequest={id:crypto.randomUUID(),scene:cloneScene(scene),action:options?.create?'new':'open',context:libraryPlayContext,generation:libraryPlayGeneration.current,restoreKey:options?.restoreKey};
+    const request:LibraryPlayRequest={id:crypto.randomUUID(),scene:cloneScene(scene),action:options?.create?'new':'open',context:libraryPlayContext,generation:libraryPlayGeneration.current,navigation:navigationEpoch.current,restoreKey:options?.restoreKey};
     libraryPlayRequest.current=request;setLibraryPlayBusy(true);setSaveError('');
     const saved=draft.id?state?.scenes.find(item=>item.id===draft.id):undefined;
     const untouchedNew=draftReady&&draftModel===modelId&&!draftStorageIssue&&!serviceError
@@ -369,7 +400,7 @@ export default function App() {
         <div className="window-lights" aria-hidden="true"><i/><i/><i/></div>
         <div className="brand"><img className="brand-symbol" src="/nuphy-studio.png" alt="" width={32} height={32}/><span>NuPhy Lab</span></div>
         <nav className="feature-sidebar-nav" aria-label={tr("主导航")}>
-          {addedFeatures.map(id=>{const feature=features.find(item=>item.id===id)!;const Icon=feature.icon;const active=id==='studio'?creative:page===id;const label=language==='en'?feature.en:feature.zh;return <button key={id} aria-label={label} title={label} className={active?'active':''} aria-current={active?'page':undefined} onClick={()=>{if(id==='music')setMusicEntry(null);if(id==='library'){setLibraryFilter('all');setLibrarySource('saved');}setPage(id);}}><Icon size={18} strokeWidth={1.5}/><span>{label}</span></button>;})}
+          {addedFeatures.map(id=>{const feature=features.find(item=>item.id===id)!;const Icon=feature.icon;const active=id==='studio'?creative:page===id;const label=language==='en'?feature.en:feature.zh;return <button key={id} aria-label={label} title={label} className={active?'active':''} aria-current={active?'page':undefined} onClick={()=>{if(id==='music')setMusicEntry(null);if(id==='library')setLibraryFilter('all');setPage(id);}}><Icon size={18} strokeWidth={1.5}/><span>{label}</span></button>;})}
         </nav>
         <div className="sidebar-bottom">
           <nav aria-label={language==='en'?'Feature Center':'功能中心'}><button title={language==='en'?'Feature Center':'功能中心'} aria-label={language==='en'?'Feature Center':'功能中心'} className={'feature-center-link '+(page==='features'?'active':'')} aria-current={page==='features'?'page':undefined} onClick={()=>setPage('features')}><LayoutGrid size={18} strokeWidth={1.5}/><span>{language==='en'?'Feature Center':'功能中心'}</span></button></nav>
@@ -405,9 +436,11 @@ export default function App() {
               connectionDisplay={connectionDisplay}
               command={command}
               draft={draft}
+              editorId={editorOutput.current?.context===libraryPlayContext?editorOutput.current.id:undefined}
+              initiallyPlaying={editorOutput.current?.scene===draft&&editorOutput.current.context===libraryPlayContext}
               setDraft={setStudioDraft}
               onSave={openSave}
-              onBrowsePresets={() => {setLibraryFilter("lighting");setLibrarySource("presets");setPage("library");}}
+              onBrowsePresets={() => {setLibraryFilter("lighting");setPage("library");}}
               onNavigateDevice={() => setPage("device")}
               onEditCodexColors={()=>{setFocusCodexColors(true);setPage("codex");}}
               notify={notify}
@@ -416,7 +449,7 @@ export default function App() {
           {page === "audio" && !nativeOnly && <AudioPanel state={state} layout={layout} command={command}/>}
           {tr(page === "library" && (
             <UnifiedLibrary
-              filter={libraryFilter} onFilter={setLibraryFilter} initialSource={librarySource}
+              filter={libraryFilter} onFilter={setLibraryFilter} source={librarySource} onSource={setLibrarySource}
               lightingAdded={addedFeatures.includes('studio')} musicAdded={addedFeatures.includes('music')}
               onMusicEdit={editMusic} onBrowse={()=>{navigationEpoch.current++;}}
               layout={layout}

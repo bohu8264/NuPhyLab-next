@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createVMEnvironment,plain,walkAll,textOf} from './helpers/source-ui-vm.mjs';
 import {airLayout} from '../shared/layout.mjs';
+import geometry from '../ui/src/keyboard-geometry.json' with {type:'json'};
 import * as appearance from '../shared/render-animation.mjs';
 import * as triggers from '../shared/trigger.mjs';
 import * as typing from '../shared/typing-cross.mjs';
@@ -110,4 +111,23 @@ test('ordinary preset Eye retains its existing automatic page-only animation',as
   assert.equal(f.listeners.size,0);assert.equal(f.frames.size,0);
   assert.equal(f.env.timers.size,1);assert.ok(f.colors().some(color=>color!=='#000000'));
   f.toggle();assert.equal(f.env.timers.size,0);assert.deepEqual(f.commands,[]);f.unmount();
+});
+
+test('white silhouette keys remain distinct from unlit keys in the lighting preview', async () => {
+  const env = createVMEnvironment({
+    './keyboard-geometry.json': {__esModule:true, default:geometry},
+    './i18n': {t:value=>value, language:()=>'en'},
+  });
+  env.modules['./keyboard-geometry'] = (await env.load(new URL('../ui/src/keyboard-geometry.ts', import.meta.url))).exports;
+  const {Keyboard} = (await env.load(new URL('../ui/src/Keyboard.tsx', import.meta.url))).exports;
+  const colors = Array(84).fill('#000000');
+  colors[1] = '#f2f2f2';
+  const props = {modelId:'air75-v3', layout:airLayout, colors, mini:true};
+  const keyboard = env.mount(Keyboard, {...props, lightPreview:true});
+  const capColors = () => walkAll(keyboard.tree, n => n.props?.style?.['--key-color'])
+    .map(n => n.props.style['--key-color']);
+  assert.deepEqual(capColors().slice(0,2), ['#000000','#f2f2f2']);
+  keyboard.update({...props, lightPreview:false});
+  assert.deepEqual(capColors().slice(0,2), ['#FCFCFC','#f2f2f2']);
+  keyboard.unmount();
 });

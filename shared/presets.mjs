@@ -1,6 +1,8 @@
 import {canvasCountForLayout} from './keyboard-models.mjs';
 import heartKeys from "./heart-keys.json" with { type: "json" };
 import {typingCrossThumbnail} from './typing-cross.mjs';
+import {holidayPatterns} from "./holiday-lighting.mjs";
+import {silhouetteAnimation} from "./silhouette-lighting.mjs";
 
 export const DEFAULT_COLOR = "#dc847b";
 const BLACK = "#000000";
@@ -14,7 +16,7 @@ const animation = (effect = "static", frames = [], speed = 4) => ({
 });
 const center = (key) => [key.x + key.w / 2, key.y + (key.h ?? 1) / 2];
 
-export function heartColors(keys, color = DEFAULT_COLOR) {
+export function heartColors(keys, color = "#dc1210") {
   const colors = blank(keys);
   const hasRightMeta = keys.some((key) => key.code === "MetaRight");
   for (const key of keys)
@@ -63,17 +65,6 @@ function framesFor(keys, count, duration, render) {
   });
 }
 
-function movingPreset(id, name, description, frames, previewFrame) {
-  return {
-    id,
-    name,
-    category: "motion",
-    description,
-    colors: frames[previewFrame].colors.slice(),
-    animation: animation("frames", frames),
-  };
-}
-
 export function createPresets(keys) {
   const graphic = (id, name, description, colors, render, count = 40, duration = 100) => ({
     id, name, category: "pattern", description, colors,
@@ -87,7 +78,7 @@ export function createPresets(keys) {
   const cycle = phase => (1 - Math.cos(phase * Math.PI * 2)) / 2;
   const star = stencil(keys, [
     "...#...", "#######", ".#####.", "..#.#..", ".#...#.",
-  ], "#efc366");
+  ], "#dc9b1f");
   const wings = stencil(keys, [
     "##...##", "###.###", ".#####.", ".##.##.", ".#...#.",
   ], "#d68bb5");
@@ -95,42 +86,13 @@ export function createPresets(keys) {
     "..#.#..", "..###..", "...#...", "..###..", "..#.#..",
   ], "#d68bb5");
 
-  const points = keys.map(center);
-  const minX = points.length ? Math.min(...points.map(([x]) => x)) : 0.5;
-  const maxX = points.length ? Math.max(...points.map(([x]) => x)) : 15.5;
-  const midX = (minX + maxX) / 2;
-
-  const comet = framesFor(keys, 32, 100, (key, phase) => {
-    const [x, y] = center(key);
-    const headX = minX - 2 + phase * (maxX - minX + 9);
-    const behind = headX - x;
-    const offTrack = Math.abs(y - 2.5);
-    const head = Math.max(0, 1 - Math.hypot(behind, offTrack) / 1.25);
-    const tail = behind >= 0 && behind <= 4.5 && offTrack <= 0.7
-      ? (1 - behind / 4.5) * 0.72 : 0;
-    return tint("#92cddd", Math.max(head, tail));
-  });
-
-
-  const rainColumns = [1, 3.4, 5.8, 8.2, 10.6, 13, 15];
-  const rain = framesFor(keys, 28, 120, (key, phase) => {
-    const [x, y] = center(key);
-    let glow = 0;
-    rainColumns.forEach((column, index) => {
-      const headY = -2 + ((phase + index * 0.267) % 1) * 10;
-      const behind = headY - y;
-      if (Math.abs(x - column) <= 0.66 && behind >= -0.55 && behind <= 2.2)
-        glow = Math.max(glow, behind < 0 ? 1 + behind : 1 - behind / 2.5);
-    });
-    return tint("#dfb475", glow);
-  });
-
-  const scan = framesFor(keys, 32, 100, (key, phase) => {
-    const [x] = center(key);
-    const scanX = midX - Math.cos(phase * Math.PI * 2) * ((maxX - minX) / 2 + 1.5);
-    const glow = Math.max(0, 1 - Math.abs(x - scanX) / 1.45);
-    return tint("#8fc4b0", glow);
-  });
+  const holidays = holidayPatterns(keys).map(({id, name, description, colors, accents}) =>
+    graphic(id, name, description, colors, (key, phase) => {
+      if (!accents.has(key.index)) return colors[key.index];
+      const glint = cycle(phase + key.x * 0.12 + key.y * 0.07);
+      return tint(colors[key.index], 0.78 + 0.22 * glint);
+    }, 24, 140));
+  const silhouette = silhouetteAnimation(keys);
 
   return [
     {
@@ -144,9 +106,12 @@ export function createPresets(keys) {
     }),
     graphic("butterfly", "蝴蝶振翅", "粉紫色的翅膀轻轻收拢，再慢慢展开。", wings, (key, phase) =>
       mix(wings[key.index], folded[key.index], cycle(phase)), 32, 100),
-    movingPreset("comet", "流星划过", "冰蓝光点拖着尾巴，从左向右划过。", comet, 14),
-    movingPreset("scan", "青绿扫描", "一束青绿色灯光在左右之间往返。", scan, 8),
-    movingPreset("rain", "琥珀落雨", "琥珀色光滴带着短尾，自上而下落下。", rain, 10),
+    ...holidays,
+    {
+      id: "bad-apple-silhouette", name: "Bad Apple", category: "motion",
+      description: "人影抛起苹果，画面切到特写，再从左到右反转黑白。原创无声循环。",
+      colors: silhouette.colors, animation: animation("frames", silhouette.frames),
+    },
     {
       id:'typing-cross',name:'一石二鸟',category:'motion',
       description:'按任意键，从对应位置向横纵扩散，连续按键独立叠加。',

@@ -211,6 +211,19 @@ async function studioFixture(mode){
   render();return{props,state,commands,render,flush,patch,button,walk,get tree(){return tree;},async click(label){const node=button(label);assert.ok(node,'Missing Studio action '+label);node.props.onClick();await flush();},async timers(){const work=[...timers.values()];timers.clear();for(const fn of work)fn();await flush();},unmount(){for(const hook of hooks)hook.cleanup?.();timers.clear();}};
 }
 
+test('paint starts on Current pattern; an unchanged HEX field preserves multiple colors until a color is chosen',async()=>{
+  const f=await studioFixture('paint');
+  const nodes=()=>f.walk(f.tree);
+  assert.equal(nodes().find(n=>n.props.id==='studio-color-scope').props.value,'pattern');
+  const original=[...f.props.draft.colors];
+  const wheel=nodes().find(n=>n.type?.displayName==='ColorWheel');
+  wheel.props.entry.props.children.find(n=>n.type==='input').props.onBlur();
+  assert.deepEqual([...f.props.draft.colors],original);
+  wheel.props.onChange('#0055ff');await f.flush();
+  assert.deepEqual([...f.props.draft.colors],original.map(c=>c==='#000000'?c:'#0055ff'));
+  f.unmount();
+});
+
 test('actual clear-canvas toolbar action preserves scene settings and supports Undo and Redo without sending HID commands',async()=>{
   const f=await studioFixture('paint'),before=structuredClone(f.props.draft);
   assert.equal(f.button('清空画板').props.disabled,false);await f.click('清空画板');

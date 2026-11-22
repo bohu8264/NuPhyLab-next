@@ -45,6 +45,30 @@ for(const [name,make,expected] of scenarios)test(`actual App direct ${name} play
   f.unmount();
 });
 
+for(const [name,make,expected] of scenarios)test(`approved editor open applies the ${name} output without a firmware restore`,async()=>{
+  const f=await appDraftFixture(),target=make();
+  (await library(f)).props.onLoad(target);await f.flush();
+  assert.deepEqual(f.commands,[]);
+  await f.click('放弃修改并打开');
+  assert.equal(page(f),'studio');
+  const {editorId,connectionSessionId,...output}=f.commands[0];
+  assert.equal(typeof editorId,'string');assert.equal(connectionSessionId,'fixture-session');
+  assert.deepEqual(output,copy(expected??{op:'play',colors:target.colors,animation:target.animation}));
+  assert.equal(f.commands.length,1);
+  assert.deepEqual(copy(f.draft()),copy(target));
+  await library(f);
+  assert.deepEqual(f.commands[1],{op:'endEditorLighting',editorId});
+  f.unmount();
+});
+
+test('an offline or read-only keyboard still opens artwork for editing without a hardware command',async()=>{
+  for(const device of [{connected:false},{connected:true,readOnly:true},{connected:true,capabilities:{perKey:false}}]){
+    const f=await appDraftFixture({state:{device}}),target=scene('Offline work');
+    (await library(f)).props.onLoad(target);await f.flush();await f.click('放弃修改并打开');
+    assert.equal(f.draft().name,target.name);assert.deepEqual(f.commands,[]);f.unmount();
+  }
+});
+
 test('direct playback failure stays in Library, preserves dirty work and releases the retry lock',async()=>{
   let attempts=0;
   const f=await appDraftFixture({onCommand:async()=>{if(++attempts===1)throw Error('Fixture playback failed');return{};}});

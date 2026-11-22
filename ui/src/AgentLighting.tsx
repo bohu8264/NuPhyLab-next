@@ -57,7 +57,7 @@ export function BacklightLighting({source,state,command,focusColors,serviceUnkno
       :t(`正在显示 ${name} 任务状态`)
     :!view.connected?copy('仅页面预览 · 连接 USB 后可开始显示','On-screen preview · Connect USB to start')
       :!view.capable?copy('当前键盘暂不支持状态灯，仅显示页面预览。','This keyboard does not currently support status lights. On-screen preview only.')
-      :view.enabled&&['game','trigger','recording'].includes(view.pausedReason??'')?copy('当前操作期间暂时暂停，结束后恢复模式。','Paused for the current activity. The mode resumes when it ends.')
+      :view.enabled&&['game','trigger','recording','editing'].includes(view.pausedReason??'')?copy('当前操作期间暂时暂停，结束后恢复模式。','Paused for the current activity. The mode resumes when it ends.')
       :view.enabled&&view.pausedReason==='handoff'?copy('键盘正在交给官方驱动；模式显示暂时暂停。','The official configurator is using the keyboard. Mode lighting is paused.')
       :view.enabled?copy('正在同步对话状态灯…','Synchronizing conversation status lights…')
       :copy('模式未开启 · 当前仅页面预览','Mode is off · On-screen preview only');

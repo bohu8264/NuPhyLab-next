@@ -67,9 +67,8 @@ test('cross stays armed after its tail and saved colour/speed match appearance e
   effect.cancel();assert.deepEqual(effect.render(5030),blank());assert.equal(effect.snapshot().armed,false);
 });
 
-test('the added preset defaults to white, real input, and preserves the six curated works',()=>{
+test('the typing preset defaults to white and waits for real input',()=>{
   const catalog=createPresets(airLayout),preset=catalog.find(p=>p.id==='typing-cross');
-  assert.deepEqual(catalog.slice(0,6).map(p=>p.id),['heart','star','butterfly','comet','scan','rain']);
   assert.equal(preset.name,'一石二鸟');assert.equal(preset.trigger.effect,'cross');
   assert.equal(preset.trigger.color,'#ffffff');assert.equal(preset.trigger.speed,4);
   assert.equal(preset.animation.effect,'static');assert.equal(preset.animation.frames.length,0);

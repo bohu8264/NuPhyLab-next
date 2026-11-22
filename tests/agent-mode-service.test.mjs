@@ -27,6 +27,25 @@ async function fixture(t,control={}){
 }
 const mode=(s,enabled=true,source='codex')=>s.ok({op:'agentMode',source,enabled});
 
+test('the open editor displays the artwork over whole-keyboard AI lighting until its own editor is closed',async t=>{
+  const s=await fixture(t);
+  await s.ok({op:'settings',settings:{codexLightMode:'whole',codexWholeTaskId:'mode-a'}});
+  await mode(s);
+  const original=await s.state(),connectionSessionId=original.device.connectionSessionId;
+  const colors=art.map((c,i)=>i===83?'#000000':c);
+  assert.equal((await s.command({op:'preview',editorId:'outdated',connectionSessionId:'disconnected-session',colors})).ok,false);
+  await s.ok({op:'preview',editorId:'new-editor',connectionSessionId,colors});
+  await s.ok({op:'endEditorLighting',editorId:'older-editor'});
+  const edit=await s.state();
+  assert.deepEqual(edit.previewColors,colors);
+  assert.equal(edit.codex.lighting.pausedReason,'editing');
+  assert.equal(edit.playback.editorId,'new-editor');
+  assert.equal(edit.settings.codexEnabled,true);
+  await s.ok({op:'endEditorLighting',editorId:'new-editor'});
+  await until(s.state,state=>state.codex.lighting.ownsOutput&&!state.playback.editorId,'AI lighting did not resume');
+  assert.equal((await s.state()).playback.mode,'static');
+});
+
 test('one mode command atomically selects an integration and couples its function-key adaptation',async t=>{
   const s=await fixture(t);
   await s.ok({op:'saveScene',scene:{name:'Kept artwork',colors:art,animation:{effect:'static'}}});
