@@ -354,7 +354,9 @@ fn painted_frames(data: &Observed, color: u8) -> usize {
         .filter(|frame| {
             frame[1] == 0xd8
                 && frame[8..8 + usize::from(frame[4] ^ 0x80)]
-                    .chunks_exact(4)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .all(|record| record[1..].iter().all(|&b| b ^ 0x80 == color))
         })
         .count()

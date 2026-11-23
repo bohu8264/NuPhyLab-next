@@ -26,7 +26,7 @@ try{
   const require=createRequire(import.meta.url);
   await run(process.execPath,[path.join(root,'ui/node_modules/typescript/bin/tsc'),'-b'],{cwd:path.join(root,'ui')});
   await run(process.execPath,[path.join(root,'ui/node_modules/vite/bin/vite.js'),'build'],{cwd:path.join(root,'ui')});
-  await run(process.execPath,[require.resolve('@tauri-apps/cli/tauri.js'),action,...(action==='build'?['--target','x86_64-pc-windows-msvc']:[]),...(temporary?['--config',path.join(temporary,'config.json')]:[])],{cwd:desktop});
+  await run(process.execPath,[require.resolve('@tauri-apps/cli/tauri.js'),action,...(action==='build'?['--target','x86_64-pc-windows-msvc']:[]),...(temporary?['--config',path.join(temporary,'config.json')]:[])],{cwd:desktop,interactive:action==='dev'});
   if(signed)await writeReleaseArtifacts(releaseConfig,release);
 }catch(error){console.error(error.message);process.exitCode=1;}
 finally{if(temporary)await rm(temporary,{recursive:true,force:true});}

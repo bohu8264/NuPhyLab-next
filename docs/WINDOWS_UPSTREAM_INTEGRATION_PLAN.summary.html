@@ -1426,28 +1426,25 @@ body {
 </head>
 <body>
 <div class="shell">
-<nav class="toc" aria-label="文档目录"><div class="toc-head"><span class="toc-title">目录</span><span class="toc-actions"><button class="toc-btn" type="button" data-act="expand">全展开</button><button class="toc-btn" type="button" data-act="collapse">全收起</button><button class="toc-btn" type="button" data-act="hide">隐藏</button></span></div><div class="toc-scroll"><ul class="toc-list"><li class="toc-group" data-id="g0"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#现在完成到哪里">现在完成到哪里</a></div></li><li class="toc-group" data-id="g1"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#灯光体验验证了什么">灯光体验验证了什么</a></div></li><li class="toc-group" data-id="g2"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#这次修好了哪些检查">这次修好了哪些检查</a></div></li><li class="toc-group" data-id="g3"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#接下来做什么">接下来做什么</a></div></li></ul></div></nav>
+<nav class="toc" aria-label="文档目录"><div class="toc-head"><span class="toc-title">目录</span><span class="toc-actions"><button class="toc-btn" type="button" data-act="expand">全展开</button><button class="toc-btn" type="button" data-act="collapse">全收起</button><button class="toc-btn" type="button" data-act="hide">隐藏</button></span></div><div class="toc-scroll"><ul class="toc-list"><li class="toc-group" data-id="g0"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#这次完成了什么">这次完成了什么</a></div></li><li class="toc-group" data-id="g1"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#怎样减少本地通过-远程失败">怎样减少本地通过、远程失败</a></div></li><li class="toc-group" data-id="g2"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#什么时候算检查完成">什么时候算检查完成</a></div></li><li class="toc-group" data-id="g3"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#灯光体验和使用边界">灯光体验和使用边界</a></div></li></ul></div></nav>
 <main class="doc">
-<header class="masthead"><div class="kicker">NuPhy Lab · Windows 集成与检查</div><h1>Windows 新版与检查进度</h1><p class="standfirst">核心灯光已在真实键盘验证。两端自动检查的失败已在本地修复，本地完整回归通过，等待 GitHub 复跑。</p><div class="meta-strip"><span><b>当前状态</b> 本地回归通过，待 GitHub 复跑</span><span><b>源码版本</b> 1.2.54 · 集成 2b4a1b1</span><span><b>更新日期</b> 2026-11-23</span></div></header>
+<header class="masthead"><div class="kicker">NuPhy Lab · Windows 集成与检查</div><h1>Windows 新版与检查进度</h1><p class="standfirst">本轮先在 Mac 和 Windows 完成本地检查，再提交到 GitHub。远程检查是否通过，以合并申请页面的当前结果为准。</p><div class="meta-strip"><span><b>当前状态</b> 本地检查通过，远程结果见合并申请</span><span><b>产品版本</b> 1.2.54</span><span><b>更新日期</b> 2026-11-23</span></div></header>
 
-<h2 id="现在完成到哪里">现在完成到哪里</h2>
-<p><strong>Windows 版本已集成到官方 1.2.54，并完成三项真实灯光验证。</strong> 新版使用 Tauri 桌面程序，沿用官方新版界面。已有约 29 MB 的内部安装包，尚未实际安装。</p>
-<h2 id="灯光体验验证了什么">灯光体验验证了什么</h2>
-<p>在 Windows 10、有线连接的 Air75 V3 2.0.0.7 上，爱心静态播放、连续呼吸、恢复原灯效和动画中正常退出恢复均通过。你已确认看到呼吸变化。</p>
-<p>恢复和退出后，独立读取的灯效、全部灯位颜色、休眠和键位与测试前一致，没有待恢复记录。两份原作品一致，设置变化和原备份保留。</p>
-<h2 id="这次修好了哪些检查">这次修好了哪些检查</h2>
-<ul>
-<li>Windows 准备程序的解压方式不兼容，现已换成兼容方式。</li>
-<li>Mac 自动检查缺少更新框架，现已在检查前准备。</li>
-<li>24 项旧测试没有跟上新版功能开关或接口，已修正测试准备；游戏仍默认关闭。</li>
-</ul>
-<p>Windows 解压 4 项、相关共享检查 126 项、灯光计时 9 项和 Mac 原生检查 3 项均通过。完整共享回归 1,525 项通过、0 项失败，另 4 项按平台跳过。全部共享测试由 Mac 执行，Windows 继续执行专用检查和安装包构建。</p>
-<h2 id="接下来做什么">接下来做什么</h2>
-<p>本轮修复在本地，尚未提交或推送；GitHub 两项检查还需重新运行。当前 Windows 程序没有替换，键盘和作品未被本轮测试操作。</p>
-<p>Windows 和 Mac 仍未完全一样。音乐演奏、智能框选、键盘口袋、语音和屏幕类工具等未完整移植；真实改键、实体 AI 操作、签名和自动更新继续受限。Windows 11、安装升级、保存重开、声音、真实输入和长期使用仍待验收。</p>
-<p><a href="WINDOWS_UPSTREAM_INTEGRATION_PLAN.md">完整集成与验收报告</a> · <a href="WINDOWS_UPSTREAM_INTEGRATION_PLAN.summary.md">概要 Markdown</a> · <a href="README.md">文档目录</a></p>
+<h2 id="这次完成了什么">这次完成了什么</h2>
+<p><strong>本轮已完成两台电脑上的提交前检查，并构建新的 Windows 内部安装包。</strong> 程序继续保留官方 1.2.54 的新版功能；本轮只生成并核对文件，应用留给测试者手动启动。</p>
+<h2 id="怎样减少本地通过-远程失败">怎样减少本地通过、远程失败</h2>
+<p>此前两边使用的构建工具版本不同，导致本地没有发现远程新增的检查。现在把工具版本固定到项目中，两台电脑和 GitHub 都使用同一组版本。</p>
+<p>本轮重新准备运行环境，检查两版共用功能、Windows 特有功能、程序后台和界面，并实际生成安装包。共用功能有 1,527 项自动检查通过、0 失败；另 4 项只适用于 Windows，由 Windows 检查覆盖。</p>
+<p>重启测试曾因准备步骤先后不确定而失败，现在先完成设置，再开启自动连接。网络失败会留下更完整的记录。原来的网络错误还没在本机重现，不能认定原因已经查清。</p>
+<h2 id="什么时候算检查完成">什么时候算检查完成</h2>
+<p>本机内存较少，后台检查改为逐项运行，保留所有检查标准；GitHub 仍按原方式并行检查。本地检查通过后才提交、推送；随后继续确认 GitHub 的两项检查。<strong>本地通过提高确定性，远程通过仍需查看当前结果。</strong></p>
+<p><a href="https://github.com/bohu8264/NuPhyLab-next/pull/3/checks">查看 GitHub 自动检查</a></p>
+<h2 id="灯光体验和使用边界">灯光体验和使用边界</h2>
+<p>此前在 Windows 10、有线 Air75 V3 2.0.0.7 上，静态和呼吸播放、恢复原灯效、动画中正常退出恢复均通过。原作品和设置备份保留。</p>
+<p>本轮自动检查没有操作真实键盘。新包的安装升级、保存重开、声音、真实输入、Windows 11 和长期使用继续按场景验收。Windows 目前还没有完整提供音乐演奏、智能框选等功能。将改键保存到键盘、通过真实 AI 按键执行操作，以及正式发布的签名和自动更新，仍未开放。</p>
+<p><a href="WINDOWS_UPSTREAM_INTEGRATION_PLAN.md">完整集成与验收报告</a> · <a href="WINDOWS_UPSTREAM_INTEGRATION_PLAN.summary.md">本页文字原稿</a> · <a href="README.md">文档目录</a></p>
 
-<footer class="doc-footer"><span>由通俗概要通过 doc-page 生成 · 详细依据见完整报告</span><span>本地回归通过，待 GitHub 复跑 · 1.2.54 · 集成 2b4a1b1 · 2026-11-23</span></footer>
+<footer class="doc-footer"><span>由通俗概要通过 doc-page 生成 · 详细依据见完整报告</span><span>本地检查通过，远程结果见合并申请 · 1.2.54 · 2026-11-23</span></footer>
 </main>
 </div>
 <button class="toc-fab" type="button" aria-label="打开目录">目录</button>

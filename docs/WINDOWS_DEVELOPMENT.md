@@ -2,7 +2,52 @@
 
 [通俗网页版](WINDOWS_DEVELOPMENT.summary.html) · [概要 Markdown](WINDOWS_DEVELOPMENT.summary.md) · [架构计划](WINDOWS_ARCHITECTURE_PLAN.md)
 
-## PR #3 的 CI 修复（2026 年 11 月 23 日）
+## 同版本本地检查与提交（2026 年 11 月 23 日）
+
+本轮在提交前使用 Rust 1.100.0、Node 22.23.5 和重新安装的锁定依赖，完成 Mac 与 Windows 对应检查。Mac 共享回归 1,531 项中 1,527 通过、0 失败、4 项按平台跳过；连接恢复模块 75 项通过，受影响重启场景另连续 20 次通过。Windows 专项、Rust、Clippy 和内部安装包构建通过；详细计数、失败证明与产物摘要见[集成报告](WINDOWS_UPSTREAM_INTEGRATION_PLAN.md)。
+
+工具版本分别由 rust-toolchain.toml 和 .nvmrc 指定，CI 直接读取配置。开发时先切换到 .nvmrc 指定的 Node，并确认 node --version；Rust 由项目内工具链文件选择。本轮 Windows 使用独立工具和源码目录，原运行程序与用户数据保留。以下均为 Bash 命令：
+
+```bash
+rustup show
+node --version
+npm ci
+npm ci --prefix ui
+```
+
+Mac 检查入口：
+
+```bash
+node --input-type=module -e "import {ensureSparkle} from './scripts/fetch-sparkle.mjs'; await ensureSparkle()"
+cargo build --locked -p nuphylab-hid
+cargo build --locked -p nuphylab-core --example lighting-simulator
+npm test
+npm run build:ui
+cargo clippy --locked --workspace --all-targets -- -D warnings
+```
+
+Windows 检查入口（本次 4 GB 机器的 Rust 用例采用串行；CI 保留默认并行）：
+
+```bash
+npm run build:ui
+npm run windows:prepare
+RUST_TEST_THREADS=1 npm run windows:test
+cargo clippy --locked --workspace --all-targets -- -D warnings
+npm run windows:build
+```
+
+原重启用例存在夹具准备与自动连接的竞争，本轮改为准备完成后再启用自动连接；HTTP 失败补充底层原因和进程状态，保留原异常与单次请求，不重试命令。原 CI 的 fetch 错误底层原因尚未在本地独立复现，不将准备顺序修复写成同一根因已证实。
+
+手动测试目录为 `D:\www\NuPhyLab-CI-Gate-20261123\preview`，包含六个 EXE 和完整运行资源。按用户要求，工具未主动启动 GUI。使用 Git Bash 手动启动：
+
+```bash
+cd /d/www/NuPhyLab-CI-Gate-20261123/preview
+./nuphylab-desktop.exe
+```
+
+本地检查完成后才提交推送，推送后的 GitHub 检查单独确认。新包已提供手动启动入口，工具未执行安装器或主动启动 GUI；本文后续灯光实测及旧阶段记录继续保留原日期和范围。
+
+## 首轮 CI 修复记录（e2d5482，2026 年 11 月 23 日）
 
 本轮按批准范围修复 Windows SQLite 解压、macOS 缺少 Sparkle SDK 和 24 项旧测试夹具失配。Windows 继续使用兼容的固定版本 SQLite，归档双摘要及可执行文件摘要不变；共享测试先准备已固定摘要的 Sparkle。游戏相关夹具明确启用功能，产品默认关闭和 Windows 未开放能力保持。
 
@@ -12,7 +57,7 @@ Windows 解压旧实现 4 项失败、修复后 4 项通过；受影响共享回
 
 两份概要按 doc-page 校验并生成网页；桌面/窄屏、深浅主题共 8 个视图的目录、相对链接及溢出检查通过，页面错误为 0，已实际查看桌面深色和窄屏浅色截图。
 
-改动尚未提交、推送或触发 GitHub 复跑；未替换当前 Windows 程序、执行安装器或访问真实键盘。以下灯光实测和旧阶段记录保留各自日期与范围。
+首轮改动已提交为 e2d5482 并由用户推送，触发运行 45150547992；后续检查与交付见本文开头。该轮未执行安装器或访问真实键盘。以下灯光实测和旧阶段记录保留各自日期与范围。
 
 ## 1.2.54 Windows 10 灯光实机结果（2026 年 11 月 22 日）
 
@@ -24,7 +69,7 @@ Windows 解压旧实现 4 项失败、修复后 4 项通过；受影响共享回
 
 保存重开、声音、真实输入、Windows 11、安装升级卸载、其他设备/固件与长期运行仍待验收。此前 Mac 对完整 Windows Tauri 的跨目标 Clippy 受 llvm-rc 缺失影响，未在本轮补跑；本轮 Windows 完整构建已通过。集成阶段的 24 项官方旧夹具失败已在本轮修复，结果见上节；本段保留此前实机验收范围。
 
-详细产物路径、SHA-256、设置变化字段和实机证据见[完整集成报告](WINDOWS_UPSTREAM_INTEGRATION_PLAN.md)；通俗入口见[实测概要](WINDOWS_UPSTREAM_INTEGRATION_PLAN.summary.html)。实现代码未改；验收记录与双平台差异说明单独保存为文档提交，未推送。Windows 尚未与 macOS 全量对齐，两端共享界面和业务，宿主、原生能力与验收分开维护；差异清单见完整集成报告。
+详细产物路径、SHA-256、设置变化字段和实机证据见[完整集成报告](WINDOWS_UPSTREAM_INTEGRATION_PLAN.md)；通俗入口见[实测概要](WINDOWS_UPSTREAM_INTEGRATION_PLAN.summary.html)。实现代码未改；验收记录与双平台差异说明已单独保存为文档提交，随后包含在当前 PR。Windows 尚未与 macOS 全量对齐，两端共享界面和业务，宿主、原生能力与验收分开维护；差异清单见完整集成报告。
 
 ## 官方新版集成与审查记录（2026 年 11 月 22 日）
 
@@ -859,7 +904,7 @@ npm.cmd run windows:build
 
 测试安装器前，先保存作品并正常退出已运行的源码预览。当前已验证的窗口来自源码调试程序；正式签名与签名自动更新属于后续 M5。
 
-`.github/workflows/windows-preview.yml` 在 Windows runner 准备依赖、执行预览测试并尝试打包，只上传工作流测试产物，不创建正式 Release。当前仓库没有远程仓库，该工作流尚未执行；Windows Server runner 的结果也不能替代 Windows 10/11 与实体键盘验收。
+`.github/workflows/windows-preview.yml` 在 Windows runner 准备依赖、执行预览测试并尝试打包，只上传工作流测试产物，不创建正式 Release。初版记录时尚未配置远程仓库；现已在 PR #3 执行该工作流，当前结果见本文开头的检查链接。Windows Server runner 的结果仍不能替代 Windows 10/11 与实体键盘验收。
 
 ## 本机验证范围
 
@@ -1051,4 +1096,4 @@ cargo check --locked --target x86_64-pc-windows-msvc -p nuphylab-hid
 - 新增平台、私有控制管道、桌面传输和 Windows 界面测试共 9 项全部通过，覆盖后台失联退出、输入校验、权限展示及不支持能力的真实提示。
 - Windows 首轮专项测试暴露了测试预加载模块使用磁盘路径的问题；改为 `file://` URL 后，Windows 9 项全部通过，Mac 对应的 3 项控制管道测试也通过。随后 Windows 上的 5 项 Rust 测试也通过。测试预加载路径修复没有修改运行时业务逻辑。
 - 完整 Node 回归一次执行 955 项，952 通过、3 失败。修复新界面测试的 ESM 环境后，失败文件复跑时原失败项均通过，但另一个连接动画场景出现服务启动超时；该场景单独执行也通过。没有放宽原有断言或超时，服务启动测试在本机负载下仍有偶发超时，需持续追踪，不能将此记录写成整套回归单次全绿。
-- 两份概要文档由 doc-page 校验、生成并检查了桌面/窄屏和深浅主题。构建工作流仅写入本地，尚未推送或在线执行。
+- 两份概要文档由 doc-page 校验、生成并检查了桌面/窄屏和深浅主题。该阶段构建工作流仅写入本地；后续已推送运行，当前结果见本文开头的检查入口。

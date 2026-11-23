@@ -519,7 +519,8 @@ test('removing USB during startup stops its frame producer and the next physical
 });
 
 test('helper restart cancels startup without treating its replacement as a physical insertion',async t=>{
-  const service=await fixture(t,{recordHelperPid:true,storedSettings:{autoConnect:true}});
+  const service=await fixture(t,{recordHelperPid:true});
+  await ok(service,{op:'settings',settings:{autoConnect:true}});
   const initial=await playing(service);
   const spawned=(await service.operations()).find(op=>op.event==='simulatedHelperStarted');
   assert.ok(Number.isInteger(spawned?.pid)&&spawned.pid>0);

@@ -269,7 +269,7 @@ impl Transport for Board {
                 assert_eq!(handle, self.profile);
                 assert!(length <= 52 && length.is_multiple_of(4));
                 let values: Vec<u8> = frame[8..8 + length].iter().map(|v| v ^ self.key).collect();
-                for record in values.chunks_exact(4) {
+                for record in values.as_chunks::<4>().0 {
                     let logical = self.map.iter().position(|&p| p == record[0]).unwrap();
                     self.palette[logical * 3..logical * 3 + 3].copy_from_slice(&record[1..]);
                 }

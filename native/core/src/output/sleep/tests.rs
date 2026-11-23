@@ -465,7 +465,9 @@ fn damaged_original_or_intent_stops_new_rgb_but_keeps_independent_rgb_cleanup() 
         let data = probe.shared.lock().unwrap();
         assert!(!data.frames.iter().any(|f| f[1] == 0xd8
             && f[8..8 + usize::from(f[4] ^ 0x80)]
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .all(|v| v[1..].iter().all(|&c| c ^ 0x80 == 88))));
         drop(data);
         assert_eq!(probe.sleep()[0], 0);
@@ -588,7 +590,9 @@ fn sleep_journal_changes_inside_a_packet_stop_the_remaining_requested_colours() 
             .iter()
             .filter(|f| f[1] == 0xd8
                 && f[8..8 + usize::from(f[4] ^ 0x80)]
-                    .chunks_exact(4)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .all(|v| v[1..].iter().all(|&c| c ^ 0x80 == 88)))
             .count(),
         1

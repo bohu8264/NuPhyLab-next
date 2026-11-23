@@ -146,7 +146,9 @@ pub fn capture(transport: &mut impl ReadTransport, model: &Model) -> Result<Ligh
         led_count: before.led_count,
         state,
         rendered_colors: rgb
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|color| format!("#{:02x}{:02x}{:02x}", color[0], color[1], color[2]))
             .collect(),
         read_only: true,

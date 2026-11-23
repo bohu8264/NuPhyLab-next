@@ -22,7 +22,22 @@ test('Windows process guard distinguishes an owned running test process absent p
   source=source.replace(/'\^nuphylab-[^']+'/g,JSON.stringify('^'+name+'$')).replace('$i-lt 100','$i-lt 1');
   const file=path.join(directory,'guard.ps1');await writeFile(file,source);
   const powershell=path.join(process.env.SystemRoot,'System32','WindowsPowerShell','v1.0','powershell.exe'),run=promisify(execFile);
-  const check=()=>run(powershell,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',file],{windowsHide:true,timeout:5000,maxBuffer:2048});
+  const bootstrap=Buffer.from("$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; Import-Module Microsoft.PowerShell.Management; [Console]::Out.WriteLine('NUPHYLAB_GUARD_READY'); & $env:NUPHYLAB_GUARD_FIXTURE; exit $LASTEXITCODE",'utf16le').toString('base64');
+  const check=async()=>{
+    let ready=false,timer,output='';
+    const pending=run(powershell,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',bootstrap],
+      {windowsHide:true,maxBuffer:2048,signal:t.signal,env:{...process.env,NUPHYLAB_GUARD_FIXTURE:file}});
+    pending.child.stdout.on('data',chunk=>{
+      output+=chunk.toString();
+      if(!ready&&output.includes('NUPHYLAB_GUARD_READY')){ready=true;timer=setTimeout(()=>pending.child.kill(),5000);}
+    });
+    try{return await pending;}
+    catch(error){
+      if(!ready)throw new Error('PowerShell fixture did not become ready: '+(error.stderr||error.message),{cause:error});
+      error.message+='; exit='+error.code+'; signal='+error.signal;
+      throw error;
+    }finally{clearTimeout(timer);}
+  };
   await assert.rejects(check(),e=>e.code===1);child.kill();await exited;await check();
   await writeFile(file,"function Get-Process { throw 'fixture query denied' };\n"+source);await assert.rejects(check(),e=>e.code===2);
 });

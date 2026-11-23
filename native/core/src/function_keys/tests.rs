@@ -255,8 +255,8 @@ fn a_lease_preserves_every_other_layer_extra_key_light_and_sleep_value() {
 #[test]
 fn existing_extended_mappings_are_unowned_and_create_no_journal_or_write() {
     let mut keyboard = Keyboard::new();
-    for k in 1..=12 {
-        keyboard.layers[4][k] = 103 + k as u16;
+    for (k, value) in keyboard.layers[4].iter_mut().enumerate().take(13).skip(1) {
+        *value = 103 + k as u16;
     }
     let original = keyboard.layers.clone();
     let (_tmp, store) = keyboard.store();

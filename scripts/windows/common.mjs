@@ -23,9 +23,10 @@ export async function cargoOutputDirectory({cwd=root,env=process.env,execute=pro
   return metadata.target_directory;
 }
 export function requireWindows(){if(process.platform!=='win32'||process.arch!=='x64')throw new Error('请在 Windows x64 电脑上运行此命令。');}
-export function run(command,args,{cwd=root,env=process.env}={}){
+export function run(command,args,{cwd=root,env=process.env,interactive=false}={}){
   return new Promise((resolve,reject)=>{
-    const child=spawn(command,args,{cwd,env,stdio:'inherit',windowsHide:true});
+    // Headless tools must not depend on the caller's Windows input handle.
+    const child=spawn(command,args,{cwd,env,stdio:[interactive?'inherit':'ignore','inherit','inherit'],windowsHide:true});
     child.once('error',reject);child.once('exit',(code,signal)=>code===0?resolve():reject(new Error(`${path.basename(command)} 执行失败：${code??signal}`)));
   });
 }

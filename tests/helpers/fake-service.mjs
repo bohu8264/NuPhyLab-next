@@ -445,8 +445,16 @@ export class FirmwareChecker extends RealChecker {
     });
   });
   const url = await ready;
+  const request = async (route, init) => {
+    try { return await fetch(new URL(route, url), init); }
+    catch (error) {
+      const reason=error.cause?.code??error.code??error.name;
+      const status=child.exitCode??child.signalCode??'running';
+      throw new Error(`Fixture HTTP ${route}: ${error.message}; reason=${reason}; service=${status}; stderr=${stderr||'<empty>'}`,{cause:error});
+    }
+  };
   const command = async (body) => {
-    const response = await fetch(new URL("/api/command", url), {
+    const response = await request("/api/command", {
       method: "POST",
       headers: { "X-Air-Token": token, "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -476,7 +484,7 @@ export class FirmwareChecker extends RealChecker {
     return command(packet);
   };
   const state = async () => {
-    const response = await fetch(new URL("/api/state", url), {
+    const response = await request("/api/state", {
       headers: { "X-Air-Token": token },
       signal: AbortSignal.timeout(5000),
     });

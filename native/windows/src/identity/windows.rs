@@ -42,7 +42,9 @@ fn text(bytes: &[u8]) -> Option<String> {
         return None;
     }
     let words: Vec<_> = bytes
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|p| u16::from_le_bytes([p[0], p[1]]))
         .collect();
     if words.last() != Some(&0) || words[..words.len() - 1].contains(&0) {
