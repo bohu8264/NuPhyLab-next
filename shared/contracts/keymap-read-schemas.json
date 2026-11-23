@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "wordBytes": 2,
+  "byteOrder": "bigEndian",
+  "layerCount": 8,
+  "macBaseLayer": 0,
+  "winBaseLayer": 4,
+  "additionalReadSchemas": [
+    {"modelId": "air75-v3", "firmwareVersion": "2.0.0.7"}
+  ],
+  "source": {
+    "url": "https://drive.nuphy.io/static/js/main.ba072d08.js",
+    "sha256": "df67fad34982ebdbcc9b74dec4912cc5079f4ce782a1166974ddb8d06f0fba32",
+    "scope": "Read-only B1/B2 S4 key layers, cross-checked against the existing Swift reader. No write, recovery or input suppression qualification."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "additionalReadSchemas": [
+    {"modelId": "air75-v3", "firmwareVersion": "2.0.0.7", "stateLength": 22}
+  ]
+}

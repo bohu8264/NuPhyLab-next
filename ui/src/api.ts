@@ -4,6 +4,7 @@ import {friendlyConnectionError} from './KeyRecoveryPanel';
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AppState, Key, Notify } from "./types";
 import {nativeCodexKeys} from './codexKeys';
+import {desktopRequest} from '../../shared/desktop-transport.mjs';
 import { setLayoutModel } from "../../shared/layout.mjs";
 declare global {
   interface Window {
@@ -13,6 +14,11 @@ declare global {
 }
 async function request(path: string, body?: Record<string, unknown>) {
   if (window.__AIR_EXITING__) throw new Error("软件正在恢复键盘并退出");
+  const native=await desktopRequest(path,body);
+  if(native!==null){
+    if(native.ok===false)throw new Error(friendlyConnectionError(native.error||'桌面请求失败'));
+    return native;
+  }
   const res = await fetch(path, {
     method: body ? "POST" : "GET",
     headers: {
@@ -129,8 +135,11 @@ export function useAirApi(notify: Notify) {
   return { state, layout, serviceError, command, refresh, readState:readAppState, exiting };
 }
 export function exportScenes(scenes: unknown, name: string) {
+  exportJSON({format:'air-studio',version:1,scenes},name);
+}
+export function exportJSON(value: unknown, name: string) {
   const blob = new Blob(
-    [JSON.stringify({ format: "air-studio", version: 1, scenes }, null, 2)],
+    [JSON.stringify(value, null, 2)],
     { type: "application/json" },
   );
   const url = URL.createObjectURL(blob);

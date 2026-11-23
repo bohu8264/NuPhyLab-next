@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {FIRMWARE_URL} from '../server/firmware.mjs';
+import firmwareLinks from '../shared/contracts/firmware-links.json' with {type:'json'};
 import {createVMEnvironment} from './helpers/source-ui-vm.mjs';
 
 const expected='https://drive.nuphy.io/#/setting';
@@ -10,6 +12,8 @@ async function fixture(reply){
  return {...(await ui.load(new URL('../ui/src/StartupGuide.tsx',import.meta.url))).exports,requests};
 }
 test('official website handoff and browser fallback retain the exact NuPhyIO settings hash route',async()=>{
+ assert.equal(FIRMWARE_URL,expected);
+ assert.equal(firmwareLinks.officialDriverUrl,expected);
  for(const available of [true,false]){
   const f=await fixture(available?{available:true,result:{opened:true,url:expected}}:{available:false});
   assert.equal(f.OFFICIAL_DRIVER_URL,expected);

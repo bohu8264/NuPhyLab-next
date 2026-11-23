@@ -46,14 +46,17 @@ test('unplug in Win then reconnect in Mac preserves Win recovery and allows a ne
   assert.equal((await s.command(scene)).ok,true);
 });
 test('unplug and automatic same-profile reconnect restores before the next animation frame',async t=>{
-  const s=await fakeService(t);await s.command({op:'connect'});
+  const s=await fakeService(t,{recordVisibleWrites:true});await s.command({op:'connect'});
   assert.equal((await s.command({op:'play',colors:Array(84).fill('#123456'),animation:{effect:'pulse',speed:3,loop:true}})).ok,true);
   await s.configure({disconnect:1,present:false});await until(s.state,x=>!x.device.connected,'unplug');
   await s.configure({present:true});await until(s.state,x=>x.device.connected&&x.device.armed,'automatic resume',8000);
-  const ops=await until(s.operations,ops=>ops.slice(ops.findLastIndex(x=>x.event==='simulatedDisconnect')+1).some(x=>x.op==='paint'),'first resumed frame');
+  // A request already in the pipe can arrive after removal and be rejected.
+  // Observe accepted device writes, rather than treating that request as a frame.
+  const committed=(entry,operation)=>entry.event==='simulatedVisibleWrite'&&entry.operation===operation;
+  const ops=await until(s.operations,ops=>ops.slice(ops.findLastIndex(x=>x.event==='simulatedDisconnect')+1).some(x=>committed(x,'paint')),'first committed resumed frame');
   const tail=ops.slice(ops.findLastIndex(x=>x.event==='simulatedDisconnect')+1);
-  assert(tail.findIndex(x=>x.op==='restore')<tail.findIndex(x=>x.op==='arm'));
-  assert(tail.findIndex(x=>x.op==='arm')<tail.findIndex(x=>x.op==='paint'));
+  const restoreAt=tail.findIndex(x=>committed(x,'restore')),armAt=tail.findIndex(x=>committed(x,'arm')),paintAt=tail.findIndex(x=>committed(x,'paint'));
+  assert(restoreAt>=0&&armAt>restoreAt&&paintAt>armAt,`expected committed restore → arm → paint, got ${JSON.stringify(tail)}`);
   assert.equal((await s.state()).playback.lastError,null);
 });
 

@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "modelId": "air75-v3",
+  "firmwareVersion": "2.0.0.7",
+  "source": {
+    "url": "https://air75-v3-ansi-beta-firmware-v2007.netlify.app/",
+    "imageSha256": "619685122bb1882ceaa032a902c32883774639eccc9b86402ea8f0e195c3f610",
+    "linkedFlashAddress": 77824,
+    "method": "Static decoding of pinned control flow; no firmware execution or HID"
+  },
+  "ramCopy": {
+    "sourceImageOffset": 4,
+    "destination": 536870912,
+    "length": 9520
+  },
+  "dispatch": {
+    "entryImageOffset": 106326,
+    "tableImageOffset": 354452,
+    "routes": {
+      "177": 109090,
+      "178": 109230,
+      "179": 109212,
+      "180": 108682
+    }
+  },
+  "write": {
+    "handlerImageOffset": 109212,
+    "storageImageOffset": 31880,
+    "compareSetImageOffset": 15684,
+    "nvmImageOffset": 94522,
+    "flashApiRamAddress": 536871246,
+    "flashApiImageOffset": 338,
+    "statusPollImageOffset": 282,
+    "statusPollLimit": 524288,
+    "statusPollMayReturnFailure": true,
+    "handlerChecksStorageReturn": false
+  },
+  "readbackLimits": {
+    "b2HandlerChecksStorageReturn": false,
+    "storageErrorLatchRequiresSpecialMode": true,
+    "specialModeEnableImageOffset": 94166,
+    "specialModeDisableImageOffset": 94184,
+    "ordinaryReadIsNotACompletionReceipt": true
+  },
+  "keyUpload": {
+    "command": 193,
+    "handlerImageOffset": 108296,
+    "ramFlagGpOffset": -1116,
+    "reportConstructionImageOffset": 105666,
+    "observedConstruction": {
+      "bufferLength": 64,
+      "markerByte": 193,
+      "argumentByteOffsets": [
+        1,
+        2,
+        3
+      ]
+    },
+    "callerImageOffset": 38876,
+    "nextProcessingCallImageOffset": 38886,
+    "nextProcessingTargetImageOffset": 52612,
+    "scope": "Pinned construction and one caller only; not a wire-format or keyboard-function suppression proof.",
+    "wireFormatQualified": false,
+    "suppressionQualified": false,
+    "originalModeReadbackQualified": false,
+    "freshnessQualified": false,
+    "productionEnableAllowed": false
+  },
+  "vendorReference": {
+    "repository": "https://github.com/openwch/ch592",
+    "revision": "a46e0086f1ffb5e5502703970bff94888e67f4cb",
+    "ispHeaderPath": "EVT/EXAM/SRC/StdPeriphDriver/inc/ISP592.h",
+    "ispHeaderSha256": "80e71e5b2a9dfc9f8eb34757343d4cd7499eff327b3690c30e9984184bf47262",
+    "datasheetPath": "Datasheet/CH592DS1_EN.PDF",
+    "datasheetSha256": "5a4b7ac166cbd8a1dfaf97f5c9d058bcbb1fc549f87b03e499e69f68f7e7973a",
+    "scope": "SDK command identities and documented success/error convention only; no host-visible completion guarantee inferred."
+  },
+  "qualification": {
+    "ackAloneQualifiesCommit": false,
+    "keymapWriteEnabled": false,
+    "reasonCode": "FUNCTION_KEYS_BARRIER_UNQUALIFIED",
+    "remaining": "An independent successful completion fence, including lost-ACK/timeout and reopened-owner paths, is still required."
+  }
+}

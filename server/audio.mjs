@@ -12,7 +12,7 @@ export class AudioSession {
   }
   start(config) {
     if(this.now()-this.nativeAt>12000)throw new Error('请在 NuPhyLab 桌面应用中使用声音律动');
-    if(config.source==='system'&&!this.native.systemSupported)throw new Error('系统声音需要 macOS 14.2 或更新版本，请改用麦克风');
+    if(config.source==='system'&&!this.native.systemSupported)throw new Error(process.platform==='win32'?'系统声音设备不可用，请检查默认输出设备或改用麦克风':'系统声音需要 macOS 14.2 或更新版本，请改用麦克风');
     if(config.source==='microphone'&&config.deviceId&&!this.native.devices.some(d=>d.id===config.deviceId))throw new Error('所选麦克风已断开，请重新选择');
     this.session=randomUUID();this.status='starting';this.error=null;this.startedAt=this.now();this.lastPacket=this.now();this.lastSample=-Infinity;this.paused=false;this.renderer.reset();
   }

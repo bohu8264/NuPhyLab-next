@@ -9,7 +9,7 @@ import { useStartupCopy, OFFICIAL_DRIVER_URL } from "./StartupGuide";
 import { useLanguage, t } from "./i18n";
 import type { AppState, Command } from "./types";
 import packageInfo from "../../package.json";
-import { readAppState } from "./api";
+import { readAppState,exportJSON } from "./api";
 import type { ConnectionDisplay } from "../../shared/connection-display.mjs";
 import { connectionCopy } from "./connection-copy-v7";
 import { UpdatePreferences } from "./UpdatePreferences";
@@ -133,6 +133,14 @@ function AboutPreferences({ state, command }: {state: AppState | null; command: 
   const [licenseText, setLicenseText] = useState<string|null>(null);
   const [licenseError,setLicenseError] = useState(false);
   const [licenseAttempt,setLicenseAttempt] = useState(0);
+  const [diagnosticBusy,setDiagnosticBusy]=useState(false),[diagnosticFailure,setDiagnosticFailure]=useState('');
+  const diagnosticPending=useRef(false);
+  const exportDiagnostics=async()=>{
+    if(diagnosticPending.current)return;diagnosticPending.current=true;setDiagnosticBusy(true);setDiagnosticFailure('');
+    try{const value=await command({op:'windowsDiagnostics'},{silent:true});exportJSON(value,'NuPhyLab-Windows-diagnostics.json');}
+    catch{setDiagnosticFailure(copy('暂时无法导出诊断，请稍后重试。','Could not export diagnostics. Try again later.'));}
+    finally{diagnosticPending.current=false;setDiagnosticBusy(false);}
+  };
   const version = state?.build?.version || packageInfo.version;
   useEffect(() => {
     if (open !== "licenses" || licenseText !== null) return;
@@ -147,7 +155,7 @@ function AboutPreferences({ state, command }: {state: AppState | null; command: 
   const connectionModes:Record<string,string>={ready:copy("已连接","Connected"),paused:copy("已暂停","Paused"),waiting:copy("等待连接","Waiting for connection"),reconnecting:copy("正在重新连接","Reconnecting"),attention:copy("连接暂时中断","Connection interrupted"),updateRequired:copy("请更新 NuPhy Lab","Update NuPhy Lab")};
   const diagnosticRows:[string,string][]=[
     [copy("应用版本","App version"),state ? version : "—"],
-    [copy("平台","Platform"),state ? state.build ? `${state.build.platform || "macOS"} · ${state.build.arch || "—"}` : copy("浏览器预览","Browser preview") : "—"],
+    [copy("平台","Platform"),state ? state.desktop?.host==='tauri'?`Windows · ${state.build?.arch||'x64'}`:state.build ? `${state.build.platform || "macOS"} · ${state.build.arch || "—"}` : copy("浏览器预览","Browser preview") : "—"],
     [copy("键盘","Keyboard"),!state ? "—" : state.device.connected || state.bluetooth?.connected ? state.device.model || state.device.modelId || "—" : copy("未连接","Disconnected")],
     [copy("键盘固件","Keyboard firmware"),state?.firmware?.current || state?.device.firmware || "—"],
     [copy("灯光状态","Lighting status"),state ? lightingModes[state.playback.mode] || state.playback.mode || "—" : "—"],
@@ -162,12 +170,13 @@ function AboutPreferences({ state, command }: {state: AppState | null; command: 
       <Button kind="primary" onClick={()=>setOpen(null)}>{copy("完成","Done")}</Button>
     </>}>
       {open === "help" && <div className="settings-v6-help">
-        <section><h3>{copy("灯光与作品","Lighting and artwork")}</h3><p>{copy("连接键盘后，在「灯光创作」绘制、编辑动画或跟随声音；作品保存在这台 Mac。","Connect your keyboard to paint, animate or follow audio in Lighting studio. Artwork is saved on this Mac.")}</p></section>
-        <section><h3>{copy("设备与设置","Device and settings")}</h3><p>{copy("在「设备」选择 Air 右上角的旋钮或 Del 键帽预览。在「设置」管理语言、灯光时间和 Mac 权限。","Choose the Air knob or Del keycap preview in Device. Manage language, lighting timers and Mac permissions in Settings.")}</p></section>
+        <section><h3>{copy("灯光与作品","Lighting and artwork")}</h3><p>{copy("连接键盘后，在「灯光创作」绘制、编辑动画或跟随声音；作品保存在本机。","Connect your keyboard to paint, animate or follow audio in Lighting studio. Artwork is saved locally.")}</p></section>
+        <section><h3>{copy("设备与设置","Device and settings")}</h3><p>{copy("在「设备」选择 Air 右上角的旋钮或 Del 键帽预览。在「设置」管理语言、灯光时间和权限。","Choose the Air knob or Del keycap preview in Device. Manage language, lighting timers and permissions in Settings.")}</p></section>
         <section><h3>{copy("连接键盘","Connect your keyboard")}</h3><p>{copy("灯光播放需要 USB 有线连接。请关闭其他键盘设置软件，避免同时控制键盘。","Lighting playback requires USB. Close other keyboard apps to avoid competing controls.")}</p></section>
       </div>}
       {open === "licenses" && (licenseError ? <div className="overlay-error" role="alert">{copy("暂时无法读取许可文件。可查看随应用提供的 THIRD_PARTY_NOTICES.md。","Could not load the license file. See THIRD_PARTY_NOTICES.md provided with the app.")}</div> : licenseText === null ? <div className="settings-v6-loading" role="status">{copy("正在读取…","Loading…")}</div> : <pre className="settings-v6-license">{licenseText}</pre>)}
       {open === "diagnostics" && <><dl className="settings-v6-diagnostics">{diagnosticRows.map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
+        {state?.desktop?.host==='tauri'&&<section><p>{copy('可导出运行状态，供排查使用。文件不含键盘编号、项目路径、任务内容、按键内容或原始声音。','Export runtime status for troubleshooting. It excludes serial numbers, project paths, task contents, key contents and raw audio.')}</p><Button busy={diagnosticBusy} disabled={diagnosticBusy} onClick={()=>run(exportDiagnostics())}>{copy('导出诊断文件','Export diagnostics')}</Button>{diagnosticFailure&&<p role="alert">{diagnosticFailure}</p>}</section>}
         {diagnosticError && <section className="settings-v6-diagnostic-error"><h3>{copy("最近错误","Latest error")}</h3><div className="overlay-error" role="status">{t(diagnosticError)}</div></section>}
         {!state && <div className="overlay-notice">{copy("当前没有可用的诊断数据，稍后重新打开此窗口。","No diagnostic data is available. Open this window again later.")}</div>}
       </>}
@@ -178,17 +187,21 @@ function AboutPreferences({ state, command }: {state: AppState | null; command: 
 export function Settings({ state, command, initialTab = "general", display, onNavigateStudio }: {state: AppState | null; command: Command; initialTab?: SettingsTab; display?: ConnectionDisplay; onNavigateStudio?: () => void}) {
   const copy = useStartupCopy();
   const language = useLanguage();
-  const normalizeTab = (value: SettingsTab): SettingsTab => value === "updates" ? "about" : value;
+  const normalizeTab = (value: SettingsTab): SettingsTab => value === "updates" ? "about" : state?.desktop?.host==='tauri'&&value==='ai'?'general':value;
   const [tab, setTab] = useState<SettingsTab>(normalizeTab(initialTab));
-  useEffect(() => { setTab(normalizeTab(initialTab)); }, [initialTab]);
+  useEffect(() => { setTab(normalizeTab(initialTab)); }, [initialTab,state?.desktop?.host]);
   const tabs: [SettingsTab,string][] = [["general",copy("通用", "General")],["ai",copy("模型与 API","Models & API")],["lighting",copy("灯光与休眠", "Lighting and sleep")],["permissions",copy("权限", "Permissions")],["about",copy("关于与更新", "About & updates")]];
   return <section className="lab-settings-page">
-    <div className="lab-settings-tabs" role="tablist" aria-label={copy("设置分类", "Settings categories")}>{tabs.map(([id,label]) => <button key={id} id={`settings-tab-${id}`} role="tab" aria-selected={tab === id} aria-controls={`settings-panel-${id}`} onClick={() => setTab(id)}>{label}{id==='about'&&availableFirmwareUpdate(state)&&<i className="settings-update-dot" aria-label={copy('键盘固件有可用更新','Keyboard firmware update available')}/>}</button>)}</div>
+    <div className="lab-settings-tabs" role="tablist" aria-label={copy("设置分类", "Settings categories")}>{tabs.filter(([id])=>state?.desktop?.host!=='tauri'||id!=='ai').map(([id,label]) => <button key={id} id={`settings-tab-${id}`} role="tab" aria-selected={tab === id} aria-controls={`settings-panel-${id}`} onClick={() => setTab(id)}>{label}{id==='about'&&availableFirmwareUpdate(state)&&<i className="settings-update-dot" aria-label={copy('键盘固件有可用更新','Keyboard firmware update available')}/>}</button>)}</div>
     <div className="lab-settings-content" id={`settings-panel-${tab}`} role="tabpanel" aria-labelledby={`settings-tab-${tab}`}>
       {tab === "ai" && <SelectionAPISettings/>}
       {tab === "general" && <div className="lab-setting-panel lab-general-panel"><div className="lab-setting-row"><h3>{copy("语言 / Language", "Language")}</h3><select aria-label={copy("Language / 语言", "Language")} disabled={!state} value={language} onChange={event => run(command({op: "settings", settings: {language:event.target.value}}))}><option value="zh-CN">简体中文</option><option value="en">English</option></select></div><div className="lab-setting-row"><Switch label={copy("插线后自动连接", "Connect automatically when plugged in")} disabled={!state} checked={Boolean(state?.settings.autoConnect)} onChange={autoConnect => run(command({op:"settings",settings:{autoConnect}}))}/></div></div>}
       {tab === "lighting" && <LightingPreferences state={state} command={command} display={display} onNavigateStudio={onNavigateStudio}/>}
-      {tab === "permissions" && <SelectionPermissionSettings/>}
+      {tab === "permissions" && (state?.desktop?.host==='tauri'
+        ? <div className="lab-settings-intro"><h2>{copy('Windows 预览版','Windows preview')}</h2><p>{state.desktop.capabilities?.audio||state.desktop.capabilities?.globalKeys
+          ?copy('启用对应功能时才观察所选键盘或分析声音。不会拦截正常打字，也不保存或上传录音。键盘恢复结果可在设备页查看。','Keyboard observation and audio analysis start only when you enable the corresponding feature. Normal typing is preserved. Recordings are neither saved nor uploaded. View recovery results on the device page.')
+          :copy('当前不采集系统按键或声音。键盘连接与恢复结果可在设备页查看。','System keys and audio are not captured. View keyboard connection and recovery results on the device page.')}</p></div>
+        : <SelectionPermissionSettings/>)}
       {tab === "about" && <AboutPreferences state={state} command={command}/>}
     </div>
   </section>;

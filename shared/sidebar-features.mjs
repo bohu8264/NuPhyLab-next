@@ -1,3 +1,5 @@
+import windowsPolicy from './contracts/windows-preview.json' with {type:'json'};
+export const WINDOWS_FEATURE_IDS = Object.freeze([...windowsPolicy.featureIds]);
 export const FEATURE_IDS = Object.freeze(['studio','library','codex','game','typing-sounds','music','selection-question','drag-convert','keyboard-pocket','voice-input','dock-scenes','color-picker','screen-replay']);
 export const DEFAULT_SIDEBAR_FEATURES = Object.freeze(['studio','library','codex']);
 export function validateSidebarFeatures(value) {

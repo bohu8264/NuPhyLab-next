@@ -112,7 +112,21 @@ export type GameState = {
   ball?: unknown;
   serveRemainingMs?: number;
 };
+export type WindowsRecoveryState = {
+  status:'unchecked'|'checking'|'pending'|'clear'|'recovering'|'failed'|'complete';
+  canRestore?:boolean;
+  pending?:{lightingProfiles:number[];boardSleep:boolean;keymapProfiles:number[]};
+  error?:{code:string;message:string};
+  result?:{
+    lightingProfile:number;complete:boolean;deferredProfiles:number[];
+    lighting:{status:'notNeeded'|'restored'|'failed';error?:{code:string;message:string}};
+    boardSleep:{status:'notNeeded'|'restored'|'failed';error?:{code:string;message:string}};
+    functionKeys:{status:'notNeeded'|'restored'|'failed';error?:{code:string;message:string};completion?:{restoredKeys:number;externalChangesPreserved:boolean}};
+    completedCleanup:{lightingProfiles:number[];boardSleep:boolean;keymapProfiles:number[]};
+  };
+};
 export type AppState = {
+  desktop?: {host:'tauri';platform:string;stage:'probe'|'lighting';capabilities:Record<string,boolean>};
   layout?: Key[];
   audio?: import("./AudioPanel").AudioState;
   bluetooth?: {connected:boolean;status:'connected'|'disconnected'|'ambiguous'|'unavailable';count:number;error:string|null};
@@ -152,6 +166,20 @@ export type AppState = {
     identified?: boolean;
     firmwareDetectionAvailable?: boolean;
     readOnly?: boolean;
+    identityQualification?: {status:'unverified'|'candidate'|'qualified';source:'none'|'embeddedUsbSerial';reasonCode:string|null}|null;
+    lightingProfile?: 0|1;
+    lightingInspection?: {available:boolean;qualifiedFirmware:string;reasonCode:string|null};
+    sleepInspection?: {available:boolean};
+    keymapInspection?: {available:boolean};
+    keymapSnapshot?: {modelId:string;firmwareVersion:string;lightingProfile:0|1;status:'standard'|'needsAdaptation'|'custom'|'shared'|'unknown'|'noFunctionRow';
+      functions:{key:string;status:'standard'|'extended'|'factoryFunction'|'custom'|'unknown';shared:boolean}[];standardCount:number;
+      preparation?:{readOnly:true;canPrepare:false;candidateKeys:string[];preservedExtendedKeys:string[];
+        checks:{id:'device'|'identity'|'profile'|'recovery'|'mapping'|'completion'|'input';status:'confirmed'|'blocked'|'unchecked';reason:string}[]};
+      capturedAt:number;connectionSessionId:string;readOnly:true;noMutation:true;restorationReady:false}|null;
+    sleepSnapshot?: {modelId:string;firmwareVersion:string;lightingProfile:0|1;enabled:boolean;state:number[];capturedAt:number;readOnly:true;noMutation:true;restorationReady:false}|null;
+    windowsRecovery?:WindowsRecoveryState;
+    windowsLighting?:{phase:string;available?:boolean;purpose?:'perKey'|'native'|null;[key:string]:unknown};
+    lightingSnapshot?: {modelId:string;firmwareVersion:string;lightingProfile:0|1;ledCount:number;state:number[];renderedColors:string[];capturedAt:number;readOnly:true;noMutation:true;restorationReady:false}|null;
     connectionSessionId?: string;
     connection?: {status:"ready"|"paused"|"waiting"|"reconnecting"|"attention"|"updateRequired";attempts:number};
     armed: boolean;

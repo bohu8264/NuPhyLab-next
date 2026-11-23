@@ -1,0 +1,8 @@
+SQLite 3.54.1
+
+SQLite's deliverable code is dedicated to the public domain by its authors.
+NuPhy Lab distributes the official sqlite3 command-line executable for bounded,
+read-only local queries. No SQLite build scripts are included.
+
+Copyright and public-domain dedication: https://www.sqlite.org/copyright.html
+Official downloads: https://www.sqlite.org/download.html

@@ -303,7 +303,7 @@ input.on('line',line=>{
     fakeCodex,
     `import {readFileSync} from 'node:fs';
     import {SHORTCUTS,describeAction} from ${JSON.stringify(codexURL+"?real")};
-    export {describeAction};
+    export {describeAction,SHORTCUTS};
     export class CodexAdapter {
     observeAggregate(enabled){this.aggregateEnabled=enabled;}
     async start(){} async stop(){} async refresh(){return this.snapshot();}
@@ -368,12 +368,14 @@ export class FirmwareChecker extends RealChecker {
   const token = options.token ?? "isolated-main-recovery-test";
   const child = spawn(
     process.execPath,
-    ["--import", preload, fileURLToPath(mainURL)],
+    ["--import", pathToFileURL(preload).href, fileURLToPath(mainURL)],
     {
       cwd: dir,
       env: {
         ...(options.environment ?? process.env),
-        AIR_STUDIO_HID: helper,
+        AIR_STUDIO_HID: process.platform==='win32'?process.execPath:helper,
+        AIR_STUDIO_HID_ARGS: process.platform==='win32'?JSON.stringify([helper]):undefined,
+        AIR_STUDIO_HID_MODELS: undefined,
         AIR_STUDIO_DATA: dataDir,
         AIR_STUDIO_TOKEN: token,
         ...(options.uiDir ? {AIR_STUDIO_UI:options.uiDir} : {}),
@@ -387,7 +389,7 @@ export class FirmwareChecker extends RealChecker {
         CLAUDE_DESKTOP_SUPPORT: path.join(dir,'claude-support'),
         ...(initialControl.preferredPort ? {AIR_STUDIO_PREFERRED_PORT:String(initialControl.preferredPort),AIR_STUDIO_PORT:""} : {AIR_STUDIO_PORT:"0"}),
       },
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: [options.hostControl?"pipe":"ignore", "pipe", "pipe"],
     },
   );
   let stderr = "";

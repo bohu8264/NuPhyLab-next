@@ -51,9 +51,13 @@ export class ClaudeCodeAdapter {
     now = Date.now,
     installer = null,
     runner = new ClaudeActionRunner(),
+    processStarts = readProcessStarts,
+    detectApp = claudeAppInstalled,
+    describeAction = describeClaudeAction,
   } = {}) {
     this.installer = installer ?? new ClaudeHookInstaller({ dataDir, claudeDir });
     Object.assign(this, { dataDir, claudeDir, supportDir, onChange, now, runner, endedRetentionMs, spoolRetentionMs, staleMs });
+    Object.assign(this,{processStarts,detectApp,describeAction});
     this.spoolDir = this.installer.spoolDir;
     this.pollIntervalMs = Math.max(200, pollIntervalMs);
     this.tailBytes = Math.min(Math.max(4096, tailBytes), 1_048_576);
@@ -96,7 +100,7 @@ export class ClaudeCodeAdapter {
     return {...structuredClone(this.state),aggregate:this.cohort.snapshot()};
   }
   action(id, { session = null } = {}) {
-    return describeClaudeAction(id, { session, appInstalled: this.appInstalled });
+    return this.describeAction(id, { session, appInstalled: this.appInstalled });
   }
   execute(action) {
     return this.runner.execute(action);
@@ -120,7 +124,7 @@ export class ClaudeCodeAdapter {
   async start() {
     if (this.running) return this.snapshot();
     this.running = true;
-    this.appInstalled = await claudeAppInstalled();
+    this.appInstalled = await this.detectApp();
     this.state.app.installed = this.appInstalled;
     await this.refresh();
     this.schedule();
@@ -164,19 +168,22 @@ export class ClaudeCodeAdapter {
   async readSpool() {
     this.spoolComplete=true;
     const allNames = (await readdir(this.spoolDir))
-      .filter((name) => name.endsWith(".jsonl") && /^[A-Za-z0-9_.:-]{1,80}\.jsonl$/.test(name))
+      .filter((name) => /^[A-Za-z0-9_.:-]{1,80}\.jsonl$/.test(name)||/^session~[A-Za-z0-9_-]{1,120}\.jsonl$/.test(name))
       ;
     this.spoolComplete=allNames.length<=MAX_FILES;
     const names=allNames.slice(0,MAX_FILES);
     const sessions = new Map();
+    const merge=(id,events)=>sessions.set(id,[...(sessions.get(id)??[]),...events]);
     for (const name of names) {
       const file = path.join(this.spoolDir, name);
-      const id = name.slice(0, -6);
+      const encoded=name.slice(0,-6);
+      const id = encoded.startsWith('session~')?Buffer.from(encoded.slice(8),'base64url').toString('utf8'):encoded;
+      if(!/^[A-Za-z0-9_.:-]{1,80}$/.test(id))continue;
       let info;
       try { info = await stat(file); } catch { this.spoolComplete=false; continue; }
-      const cached = this.cache.get(id);
+      const cached = this.cache.get(name);
       if (cached && cached.size === info.size && cached.mtimeMs === info.mtimeMs) {
-        sessions.set(id, cached.events);
+        merge(id, cached.events);
         continue;
       }
       let parsed = [];
@@ -196,13 +203,13 @@ export class ClaudeCodeAdapter {
           });
       } catch {
         this.spoolComplete=false;
-        if (cached) { sessions.set(id, cached.events); continue; }
+        if (cached) { merge(id, cached.events); continue; }
         continue;
       }
-      this.cache.set(id, { size: info.size, mtimeMs: info.mtimeMs, events: parsed, mtime: info.mtimeMs });
-      sessions.set(id, parsed);
+      this.cache.set(name, { size: info.size, mtimeMs: info.mtimeMs, events: parsed, mtime: info.mtimeMs });
+      merge(id, parsed);
     }
-    for (const id of [...this.cache.keys()]) if (!sessions.has(id)) this.cache.delete(id);
+    for (const name of [...this.cache.keys()]) if (!names.includes(name)) this.cache.delete(name);
     return sessions;
   }
   async prune() {
@@ -249,7 +256,7 @@ export class ClaudeCodeAdapter {
         const entry = registry?.get(id);
         if (entry?.pid) pids.add(entry.pid);
       }
-      const starts = pids.size ? await readProcessStarts([...pids]) : new Map();
+      const starts = pids.size ? await this.processStarts([...pids]) : new Map();
       const tasks = [];
       for (const id of ids) {
         const base = reduced.get(id);

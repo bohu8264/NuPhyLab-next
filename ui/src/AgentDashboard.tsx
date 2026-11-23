@@ -16,6 +16,7 @@ import {ClaudeLightMode} from './ClaudeLightMode';
 import {CodexSetup} from './CodexSetup';
 import {FunctionKeyRecoveryDialog} from './FunctionKeyRecoveryDialog';
 import {ClaudeSetup} from './ClaudeSetup';
+import {WindowsAgentDashboard} from './WindowsAgentDashboard';
 import {CodexKeyRecorder,useAgentKeyCapture} from './CodexKeyRecorder';
 import {readAppState} from './api';
 import './agent-overlays-v6.css';
@@ -169,6 +170,12 @@ export function AgentDashboard({source,state,command,focusColors,readState=readA
   const emptySlots=!slots.some(Boolean);
   const statusMessage=initialLoading?'正在读取任务状态…':serviceError?'本地服务暂未响应，正在重新连接。':claude&&hookState.status==='unknown'?'正在检查 Claude Code 接入…':claude&&hookState.installed===false?'需要完成 Claude Code 接入才能确认状态。':claude&&currentSource.spoolReadable===false?'会话事件暂不可读，稍后自动重试。':dataUnavailable?'任务状态暂不可读，保留原有绑定并自动重试。':tasks.length===0?(claude?'本机当前没有可显示的 Claude Code 会话。':'先在 Codex 中打开或创建一个聊天，再刷新状态。'):emptySlots?'此来源下暂无任务。':'';
   const matchingCommands=commands.filter(item=>`${t(item.label)} ${t(operationReason(item))}`.toLowerCase().includes(search.trim().toLowerCase()));
+  if(state?.desktop?.capabilities?.agentStatus===true&&state.desktop.capabilities.agentControl===false)return <WindowsAgentDashboard state={state} source={source} command={command}/>;
+  if(state?.desktop?.capabilities?.agentControl===false)return <section className="agent-v5" aria-label={t('AI 助手')}>
+    <h2>{t('AI 助手')}</h2>
+    <div className="agent-feedback-v6" role="status"><p>{String(settings.language==='en'?'AI task status and shortcuts are not available in the Windows preview yet.':integration?.reason??'Windows 预览版尚未接入 AI 工具。')}</p></div>
+    <p>{settings.language==='en'?'You can continue editing and saving artwork locally. AI integration will be added in a later stage.':'当前可以继续在本机绘图和保存作品。任务状态与快捷操作会在后续接入。'}</p>
+  </section>;
   const modeControl=<section className="agent-shortcut-toggle agent-mode-control" aria-label={t(claude?'Claude Code 模式':'Codex 模式')} aria-busy={modeBusy||undefined}>
       <div><h2>{t(claude?'Claude Code 模式':'Codex 模式')}</h2><p>{sideMode?copy('开启后，侧灯显示整体任务状态；关闭后恢复原有灯光。','Side LEDs show overall task status when enabled. Turning the mode off restores the original lighting.'):t('开启后，对话键显示状态并控制对应对话；关闭后恢复普通按键。')}</p>{!state?.device.connected&&state?.bluetooth?.connected&&<p>{t('实时灯光需要 USB 连接。')}</p>}{modeBusy&&<p role="status">{t('正在切换模式…')}</p>}</div>
       <Switch label={t(claude?'Claude Code 模式':'Codex 模式')} checked={enabled} disabled={!state||Boolean(serviceError)||modeBusy||(state.device.capabilities?.perKey===false&&!enabled)} onChange={value=>{void changeMode(value);}}/>

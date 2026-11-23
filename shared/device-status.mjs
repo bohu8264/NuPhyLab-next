@@ -3,6 +3,10 @@ export function nativeLightingOnly(state) {
   return device?.connected===true && device.modelId==='kick75' && device.readOnly!==true &&
     device.capabilities?.stockEffects===true && device.capabilities?.perKey===false;
 }
+export function isWindowsReadonlyPreview(state) {
+  return state?.desktop?.host==='tauri'&&state.desktop.capabilities?.lighting===false&&
+    state.device?.connected===true&&state.device.identified===true&&state.device.readOnly===true&&state.device.errorCode==='WINDOWS_PROBE_ONLY';
+}
 // A retained USB identity is recovery metadata, not a currently connected
 // keyboard. In particular, never infer the sidebar name from the last canvas.
 export function sidebarDeviceIdentity(state) {
@@ -16,6 +20,8 @@ export function sidebarDeviceIdentity(state) {
   return {modelName:null,transport:null};
 }
 export function lightingUnavailableMessage(state) {
+  if(state?.desktop?.host==='tauri'&&state.desktop.capabilities?.lighting===false)
+    return '当前键盘暂不能播放灯光。可以继续编辑、预览和保存作品，请查看设备页的检查与恢复提示。';
   if(state?.firmware?.upgradeRecommended===true || nativeLightingOnly(state))
     return '请前往 NuPhyIO 更新键盘固件。作品可继续编辑和保存。';
   if(state?.device?.connection?.status==='updateRequired')

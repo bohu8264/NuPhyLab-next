@@ -1,0 +1,10 @@
+{
+  "bundle": {
+    "externalBin":["binaries/nuphylab-node","binaries/nuphylab-hid","binaries/nuphylab-desktop-io","binaries/nuphylab-agent-probe","binaries/nuphylab-sqlite"],
+    "resources":{"../resources/":"runtime/"},
+    "windows": {
+      "nsis":{"installMode":"currentUser","languages":["SimpChinese","English"],"displayLanguageSelector":true,"installerHooks":"installer-hooks.nsh"},
+      "webviewInstallMode":{"type":"downloadBootstrapper","silent":true}
+    }
+  }
+}

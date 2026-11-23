@@ -1,0 +1,73 @@
+name: Windows preview checks
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - 'native/core/**'
+      - 'native/windows/**'
+      - 'server/**'
+      - 'shared/**'
+      - 'ui/**'
+      - 'scripts/windows/**'
+      - 'tests/windows-*'
+      - 'tests/update-notices.test.mjs'
+      - 'tests/contracts/**'
+      - 'tests/fixtures/windows-lighting-*'
+      - 'tests/helpers/**'
+      - 'Cargo.*'
+      - 'package*.json'
+      - '.cargo/**'
+      - '.github/workflows/windows-preview.yml'
+permissions:
+  contents: read
+jobs:
+  preview:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            ui/package-lock.json
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm ci --prefix ui
+          rustup update stable
+      - name: Build shared interface
+        run: npm run build:ui
+      - name: Prepare preview sidecars
+        run: npm run windows:prepare
+      - name: Test preview contracts
+        run: npm run windows:test
+      - name: Check native warnings
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: Test shared behavior
+        run: npm test
+      - name: Build internal preview installer
+        run: npm run windows:build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: NuPhyLab-Windows-x64-internal-preview
+          path: target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+          if-no-files-found: error
+  shared-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: Install and check shared behavior
+        run: |
+          npm ci
+          npm ci --prefix ui
+          cargo build --locked -p nuphylab-hid
+          cargo build --locked -p nuphylab-core --example lighting-simulator
+          npm test
+          npm run build:ui
+          cargo clippy --locked --workspace --all-targets -- -D warnings

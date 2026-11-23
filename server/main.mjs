@@ -5,12 +5,22 @@ import {getKeyboardProfile,getCanvasCount} from '../shared/keyboard-models.mjs';
 import {CodexAccessibilityBridge} from './codex-accessibility-bridge.mjs';
 import {createNativeKeyVerifier} from './native-key-auth.mjs';
 import {takeNativeHoldEnvironment} from './native-hold-env.mjs';
+import {createPlatformServices} from './platform/services.mjs';
+import {validatePreviewCommand} from './platform/preview-policy.mjs';
+import {LightingInspection,SleepInspection,KeymapInspection} from './lighting-inspection.mjs';
+import {watchHostControl} from './host-control.mjs';
+import {WINDOWS_HOST,shutdownReceipt,writeShutdownReceipt} from './host-shutdown.mjs';
+import {WindowsHardware} from './windows-hardware.mjs';
+import {WindowsDesktopIO} from './windows-desktop-io.mjs';
+import {windowsResumeCommand} from './platform/windows-agents.mjs';
+import {windowsDiagnostics} from './platform/windows-diagnostics.mjs';
+import os from 'node:os';
+import {existsSync} from 'node:fs';
 import http from "node:http";
 import {AudioSession} from "./audio.mjs";
 import {startFrameLoop} from "./frame-loop.mjs";
 import {watchNativeParent} from './parent-lifetime.mjs';
 import path from "node:path";
-import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { readFile, stat, mkdir, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
@@ -23,11 +33,10 @@ import {KeyAdaptation} from './key-adaptation.mjs';
 import {KeyCapture} from './key-capture.mjs';
 import {BluetoothInput} from './bluetooth-input.mjs';
 import { FirmwareChecker, FIRMWARE_URL } from "./firmware.mjs";
-import { CodexAdapter, describeAction } from "./codex.mjs";
+import { describeAction } from "./codex.mjs";
 import {CodexKeyGestures,PhysicalPressGate,resolveCodexShortcut} from './codex-shortcuts.mjs';
 import { CodexLights, StableTaskSlots, resolveWholeTask } from "../shared/codex-lighting.mjs";
 import {codexBindings, rebindCodexKey} from '../shared/codex-keys.mjs';
-import { ClaudeCodeAdapter } from "./claude-code.mjs";
 import { ClaudeLights, resolveClaudeSlots, resolveClaudeWholeTask, CLAUDE_ATTENTION_RANK } from "../shared/claude-lighting.mjs";
 import { claudeBindings, rebindClaudeKey } from "../shared/claude-keys.mjs";
 import { LightingPower } from "../shared/lighting-power.mjs";
@@ -43,10 +52,13 @@ import {
 } from "./engine.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const dataDir =
-  process.env.AIR_STUDIO_DATA ??
-  path.join(os.homedir(), "Library/Application Support/Air Studio");
-const musicRoutes=new MusicRoutes(dataDir,path.resolve(dataDir)===path.join(os.homedir(),'Library/Application Support/Air Studio')?{}:{source:null});
+const platformServices=createPlatformServices(root);
+const runtime=platformServices.paths;
+const dataDir = runtime.dataDir;
+const tauriHost=process.env.AIR_STUDIO_DESKTOP_HOST==='tauri';
+const desktop=tauriHost?{host:'tauri',platform:process.platform,stage:'probe',
+  capabilities:{lighting:false,globalKeys:false,audio:false,agentControl:false,updates:process.env.AIR_STUDIO_UPDATES_CONFIGURED==='1'}}:undefined;
+const musicRoutes=new MusicRoutes(dataDir,!platformServices.preview&&path.resolve(dataDir)===path.join(os.homedir(),'Library/Application Support/Air Studio')?{}:{source:null});
 const port = Number(process.env.AIR_STUDIO_PORT || process.env.AIR_STUDIO_PREFERRED_PORT || 0),
   token = process.env.AIR_STUDIO_TOKEN ?? randomBytes(32).toString("hex");
 const store = await new Store(dataDir).load();
@@ -60,13 +72,15 @@ const nativeHoldEnvironment=takeNativeHoldEnvironment();
 const build = await readFile(path.join(root, "signing.json"), "utf8")
   .then(text => { const value = JSON.parse(text); return { version: String(value.version ?? ""), platform: process.platform, arch: process.arch, adhoc: value.adhoc === true, identity: String(value.identity ?? ""), packagedAt: String(value.packagedAt ?? "") }; })
   .catch(() => ({ adhoc: false, identity: "", packagedAt: "" }));
-const hardware = new Hardware(
-  process.env.AIR_STUDIO_HID ?? path.join(root, "bin/HIDBridge"),
+const HardwareDriver=platformServices.preview?WindowsHardware:Hardware;
+const hardware = new HardwareDriver(
+  runtime.hardware,
   path.join(dataDir, "original-lighting.json"),
   {nativeHoldEnvironment},
 );
 hardware.setOutputColorProfile(store.data.settings.outputColorProfile);
-const codex = new CodexAdapter();
+const lightingInspection=new LightingInspection(hardware),sleepInspection=new SleepInspection(hardware),keymapInspection=new KeymapInspection(hardware);
+const {codex,claude}=platformServices.agents;
 const keyAdaptation = new KeyAdaptation(hardware);
 const connectionRecovery = new ConnectionRecovery();
 const connectionWake = new AirConnectionWake();
@@ -85,7 +99,7 @@ const bluetoothInput = new BluetoothInput(hardware);
 const codexPresses=new PhysicalPressGate();
 const codexCommandBridge=new CodexAccessibilityBridge({
   prepare:()=>hardware.request('codexPrepare'),
-  enabled:()=>!stopping&&store.data.settings.agentSource!=='claude'&&store.data.settings.claudeEnabled!==true
+  enabled:()=>platformServices.agentControl&&!stopping&&store.data.settings.agentSource!=='claude'&&store.data.settings.claudeEnabled!==true
 });
 async function resolveAvailableCodexShortcut(action) {
   if(['toggleFastMode','dictation','approve','decline','sendPrompt'].includes(action.id)) {
@@ -107,12 +121,13 @@ const codexGestures=new CodexKeyGestures({
   }),
   resolve:resolveAvailableCodexShortcut
 });
-void codexGestures.inspectDictation(describeAction('dictation'));
-setInterval(()=>{void codexGestures.inspectDictation(describeAction('dictation'));void codexCommandBridge.inspect();},2000).unref();
-setImmediate(()=>void codexCommandBridge.inspect());
+if(platformServices.agentControl){
+  void codexGestures.inspectDictation(describeAction('dictation'));
+  setInterval(()=>{void codexGestures.inspectDictation(describeAction('dictation'));void codexCommandBridge.inspect();},2000).unref();
+  setImmediate(()=>void codexCommandBridge.inspect());
+}
 
 const codexLights = new CodexLights();
-const claude = new ClaudeCodeAdapter({ dataDir });
 const claudeLights = new ClaudeLights();
 const lightPower = new LightingPower();
 let lightSleepStarted = null, lastIdlePoll = -Infinity, systemIdleAvailable = null;
@@ -122,6 +137,38 @@ let firmware = new FirmwareChecker();
 const game = new GameSession(store.data.gameBestScores);
 const trigger = new TriggerEffect();
 const audio = new AudioSession();
+const desktopIO=platformServices.preview&&existsSync(runtime.desktopIO.command)?new WindowsDesktopIO(runtime.desktopIO):null;
+let desktopIOPolling=false,lastAudioInventory=-Infinity,triggerDeviceSession=null,desktopIORestartAt=-Infinity,desktopIORetries=0;
+desktopIO?.on('audio',value=>{try{audio.ingest(value);}catch{audio.stop('captureStopped');}});
+const stopDesktopCapture=()=>{
+  const active=audio.session||triggerMonitor==='global';audio.stop('captureStopped');triggerDeviceSession=null;triggerGeneration++;
+  if(active)void serialized(()=>stop()).catch(e=>{playback.lastError=e.message;});
+};
+desktopIO?.on('failure',()=>{stopDesktopCapture();triggerWarning='Windows 按键和声音服务已停止，正在尝试重新连接。';});
+desktopIO?.on('suspend',()=>{stopDesktopCapture();triggerWarning='电脑已休眠或唤醒，请手动重新启用声音或按键灯效。';});
+desktopIO?.on('key',event=>{
+  if(event.phase!=='down'||triggerMonitor!=='global'||!trigger.armed||triggerDeviceSession!==hardware.state.connectionSessionId||event.modelId!==hardware.state.modelId)return;
+  const generation=triggerGeneration;
+  serialized(()=>generation===triggerGeneration?fireTrigger(event.code):undefined).catch(e=>{playback.lastError=e.message;});
+});
+desktopIO?.on('keysReset',reason=>{
+  if(triggerMonitor!=='global')return;triggerDeviceSession=null;triggerGeneration++;
+  const message=reason?.reasonCode==='INPUT_EVENT_OVERFLOW'?'按键事件未能完整接收，已停止灯效，请重新启用触发。':'按键来源已变化，已停止灯效，请重新检查键盘并启用触发。';
+  void serialized(async()=>{await stop();triggerWarning=message;}).catch(e=>{playback.lastError=e.message;});
+});
+const desktopIOTimer=desktopIO?setInterval(()=>{
+  if(stopping||desktopIOPolling)return;desktopIOPolling=true;
+  (async()=>{
+    if(desktopIO.phase==='failed'){
+      if(!desktopIO.ended||desktopIORetries>=3||Date.now()-desktopIORestartAt<3000)return;
+      desktopIORestartAt=Date.now();desktopIORetries++;await desktopIO.restart();lastAudioInventory=-Infinity;
+    }
+    if(Date.now()-lastAudioInventory>3000){lastAudioInventory=Date.now();audio.inventory(await desktopIO.request('inventory'));}
+    await desktopIO.syncAudio(audio.snapshot(store.data.settings.audio).capture);
+    if(triggerMonitor==='global'&&triggerDeviceSession!==hardware.state.connectionSessionId){await desktopIO.monitorKeys(hardware.state.modelId,[]);triggerDeviceSession=null;triggerMonitor='off';}
+  })().catch(()=>{if(audio.session)audio.stop('captureStopped');}).finally(()=>{desktopIOPolling=false;});
+},100):null;
+desktopIOTimer?.unref();
 let triggerMonitor = "off", triggerWarning = null, triggerGeneration = 0;
 let colors = blank(),
   previewColors = blank(),
@@ -268,9 +315,9 @@ function wakeCodexInteraction() {
 // One integration owns the task and command keys at a time; both keep their own
 // bindings, slots, colours and lighting settings while the other is inactive.
 const agentSource = () => (store.data.settings.agentSource === "claude" ? "claude" : "codex");
-const agentEnabled = () => store.data.settings.sidebarFeatures.includes("codex") &&
+const agentEnabled = () => platformServices.agentStatus && store.data.settings.sidebarFeatures.includes("codex") &&
   (agentSource() === "claude" ? store.data.settings.claudeEnabled === true : store.data.settings.codexEnabled === true);
-const sideSelected = (source=agentSource()) => agentLightZone(store.data.settings,source,hardware.state.modelId)==='side';
+const sideSelected = (source=agentSource()) => platformServices.agentControl && agentLightZone(store.data.settings,source,hardware.state.modelId)==='side';
 const activeAgentBindings = () => enabledAgentBindings(store.data.settings,agentSource(),agentBindings(),hardware.state.modelId);
 let aggregateConnection = null, aggregateStartedAt = Infinity;
 function startupRecoveryBlocked() {
@@ -336,6 +383,7 @@ async function releaseAgentSide() {
   agentSideReceipt=null;
 }
 async function syncAgentSide() {
+  if(!platformServices.agentControl)return;
   // A new task may already be visible when the last startup frame finishes.
   // Do not write its color until main restoration and side handoff both verify.
   if(connectionWake.active || wakeReleasePending || wakeHandoffInProgress)return;
@@ -442,7 +490,7 @@ function codexKeysState() {
   const bindings=activeAgentBindings();
   const bindingScope=sideSelected()?(store.data.settings[`${agentSource()}CommandKeysEnabled`]!==false?'commands':'none')
     :(store.data.settings[`${agentSource()}CommandKeysEnabled`]!==false?'all':'tasks');
-  const config={source:agentSource(),bindings,bindingScope,capturing:keyCapture.active,enabled:bindings.length>0&&agentEnabled() && !driverHandoff && !keyCapture.active && !codexPlaying()
+  const config={source:agentSource(),bindings,bindingScope,capturing:keyCapture.active,enabled:platformServices.agentControl && bindings.length>0&&agentEnabled() && !driverHandoff && !keyCapture.active && !codexPlaying()
     && (!store.data.settings.codexKeyAdaptation || (hardware.state.connected && !explicitDisconnect) || bluetoothOnly())};
   const signature=JSON.stringify(config);
   if(signature!==codexKeySignature){codexKeySignature=signature;codexKeyRevision++;}
@@ -452,7 +500,7 @@ function codexKeysState() {
 }
 function syncKeyAdaptation(force=false) {
   if(keyRecoveryInProgress) return Promise.resolve(keyAdaptation.snapshot());
-  return keyAdaptation.sync({enabled:!driverHandoff && (bluetoothOnly() || hardware.state.capabilities?.functionKeyAdaptation !== false) && (keyCapture.active || store.data.settings.codexKeyAdaptation || store.data.settings.codexKeycapFallback),
+  return keyAdaptation.sync({enabled:platformServices.agentControl && !driverHandoff && (bluetoothOnly() || hardware.state.capabilities?.functionKeyAdaptation !== false) && (keyCapture.active || store.data.settings.codexKeyAdaptation || store.data.settings.codexKeycapFallback),
     keycapFallback:store.data.settings.codexKeycapFallback,
     active:keyCapture.active || (codexKeysState().enabled && codexKeysState().host?.suspended!==true),
     connected:hardware.state.connected && !explicitDisconnect,
@@ -504,8 +552,17 @@ function state() {
   const claudeWhole=resolveClaudeWholeTask(claudeState.tasks ?? [],store.data.settings,claudeLights.selectedId);
   return {
     layout,
+    ...(desktop?{desktop:{...desktop,stage:hardware.lightingAvailable()?'lighting':'probe',
+      capabilities:{...desktop.capabilities,lighting:hardware.lightingAvailable(),
+        agentStatus:platformServices.agentStatus,
+        agentResume:process.platform==='win32'&&process.env.AIR_STUDIO_AGENT_RESUME==='1'&&!!platformServices.windowsResumePlanner,
+        agentTerminalFocus:process.platform==='win32'&&process.env.AIR_STUDIO_AGENT_TERMINAL_FOCUS==='1',
+        codexTaskFocus:process.platform==='win32'&&process.env.AIR_STUDIO_CODEX_TASK_FOCUS==='1'&&!!platformServices.windowsFocusPlanner,
+        ...(desktopIO?{audio:desktopIO.status().available&&desktopIO.capabilities.audio,globalKeys:desktopIO.status().available&&desktopIO.capabilities.globalKeys}:{})}}}:{}),
     device: {
       ...hardware.state,
+      ...(runtime.hardware.protocol?{nativeBridge:hardware.bridgeStatus()}:{}),
+      ...(runtime.hardware.protocol?{lightingSnapshot:lightingInspection.snapshot(),sleepSnapshot:sleepInspection.snapshot(),keymapSnapshot:keymapInspection.snapshot()}:{}),
       outputColorProfile: hardware.outputColorProfileStatus(),
       layoutModelId: getLayoutModel(),
       sideColor: sideSnapshot(agentSource()).color ?? (agentEnabled()&&sideSelected()?null:lastQuotaColor),
@@ -900,7 +957,10 @@ async function disableTrigger() {
   triggerMonitor = "off";
   triggerWarning = null;
   // Disable local dispatch first, including already queued native events.
-  if (wasGlobal && hardware.child) {
+  if(wasGlobal&&desktopIO){
+    try{await desktopIO.monitorKeys(hardware.state.modelId,[]);}catch(error){triggerWarning='按键监听停止未确认：'+error.message;}
+    triggerDeviceSession=null;
+  }else if (wasGlobal && hardware.child) {
     try { await hardware.request("triggerMonitor", { enabled: false }); }
     catch (error) { triggerWarning = "按键监听停止未确认：" + error.message; }
   }
@@ -993,7 +1053,7 @@ async function setAgentMode(source, enabled, {repairEmptyCustom = false} = {}) {
   if (!['codex', 'claude'].includes(source) || typeof enabled !== 'boolean') throw new Error('AI 模式设置无效');
   codexSetupRevision++;
   if (enabled) await refreshBluetooth(true);
-  const settings={agentSource:source,codexEnabled:enabled && source === 'codex',claudeEnabled:enabled && source === 'claude',codexKeyAdaptation:enabled,
+  const settings={agentSource:source,codexEnabled:enabled && source === 'codex',claudeEnabled:enabled && source === 'claude',codexKeyAdaptation:enabled&&platformServices.agentControl,
     ...(repairEmptyCustom && enabled && source === 'codex' && store.data.settings.codexTaskSource === 'custom' && !store.data.settings.slotIds?.some(Boolean)
       ? {codexTaskSource:'recent'} : {})};
   const changed=Object.entries(settings).some(([key,value])=>store.data.settings[key]!==value);
@@ -1261,7 +1321,7 @@ async function tick() {
   }
 }
 const timer = startFrameLoop(tick);
-async function serialized(fn) {
+async function serialized(fn,{readOnlyInspection=false}={}) {
   const run = async () => {
     if (stopping) throw new Error("软件正在退出");
     while (busy) await new Promise((r) => setTimeout(r, 10));
@@ -1270,6 +1330,9 @@ async function serialized(fn) {
     try {
       return await fn();
     } catch (error) {
+      // Observation failures have no output to roll back. In particular, a
+      // busy refusal must not retire an unrelated active lighting owner.
+      if(readOnlyInspection)throw error;
       const failedWakeScope = connectionWake.current?.recoveryScope ?? wakeReleasePending?.recoveryScope;
       cancelConnectionWake('outputFailed');
       await reconcileHardwareError();
@@ -1301,7 +1364,13 @@ async function serialized(fn) {
   commandTail = result.catch(() => {});
   return result;
 }
+function validatePlatformRequest(req) {
+  if(platformServices.preview)validatePreviewCommand(req,{lightingAvailable:hardware.lightingAvailable(),
+    audioAvailable:desktopIO?.status().available&&desktopIO.capabilities.audio,
+    globalKeysAvailable:desktopIO?.status().available&&desktopIO.capabilities.globalKeys,agentStatus:platformServices.agentStatus});
+}
 async function command(req) {
+  validatePlatformRequest(req);
   const editorId=typeof req.editorId==='string' && req.editorId.length<=80 ? req.editorId || undefined : undefined;
   if(editorId && req.connectionSessionId!==undefined && req.connectionSessionId!==hardware.state.connectionSessionId)
     throw new Error('键盘连接已更改，请重新打开作品。');
@@ -1309,6 +1378,43 @@ async function command(req) {
     : ['gameStart','gameRestart','gameSelect'].includes(req.op) ? 'game' : null;
   if (feature && !store.data.settings.sidebarFeatures.includes(feature))
     throw new Error('请先在功能中心添加此功能。 / Add this tool in Feature Center first.');
+  if(['checkWindowsRecovery','recoverWindowsLighting'].includes(req.op)){
+    if(!platformServices.preview)throw new Error('此恢复入口用于 Windows');
+    return req.op==='checkWindowsRecovery'?hardware.checkRecovery():hardware.recoverExisting();
+  }
+  if(req.op==='inspectLighting'){
+    if(!platformServices.preview)throw new Error('此只读检查用于 Windows 预览版');
+    return lightingInspection.read();
+  }
+  if(req.op==='inspectSleep'){
+    if(!platformServices.preview)throw new Error('此只读检查用于 Windows 预览版');
+    return sleepInspection.read();
+  }
+  if(req.op==='inspectFunctionKeys'){
+    if(!platformServices.preview)throw new Error('此功能键检查用于 Windows');
+    return keymapInspection.read();
+  }
+  if(req.op==='windowsAgentAction'){
+    if(!platformServices.windowsAgentActions||!['codex','claude'].includes(req.source)||!['copyResume','revealProject'].includes(req.action))throw new Error('不支持的 Windows AI 操作');
+    const task=platformServices.agents[req.source].snapshot().tasks.find(task=>task.id===req.id);
+    if(!task)throw new Error('任务已不在当前列表中，请刷新后重试');
+    const cwd=req.source==='codex'&&req.action==='revealProject'&&!task.cwd
+      ?await platformServices.windowsResumePlanner.codexDirectory(task.id):task.cwd;
+    const action=req.action==='copyResume'?{available:true,type:'copyResume',text:windowsResumeCommand(req.source,task.id,cwd)}
+      :{available:!!cwd,type:'revealProject',path:cwd};
+    return platformServices.windowsAgentActions.execute(action);
+  }
+  if(req.op==='windowsPrepareResume'){
+    if(stopping||applicationUpdating)throw new Error('软件正在退出或更新，请稍后恢复会话');
+    if(!platformServices.windowsResumePlanner)throw new Error('Windows 会话恢复服务尚未就绪');
+    return platformServices.windowsResumePlanner.prepare(req);
+  }
+  if(req.op==='windowsPrepareTaskFocus'){
+    if(stopping||applicationUpdating)throw new Error('软件正在退出或更新，请稍后切换任务');
+    if(!platformServices.windowsFocusPlanner)throw new Error('Windows 任务窗口服务尚未就绪');
+    return platformServices.windowsFocusPlanner.prepare(req);
+  }
+  if(req.op==='windowsDiagnostics')return windowsDiagnostics({state:state(),io:desktopIO,osRelease:os.release()});
   if(applicationUpdating && req.op !== 'prepareAppUpdate') throw new Error('正在安装更新，请稍候。');
   if (['disconnect','stop','restore','pause','play','preview','nativeLighting','gameStart','gameRestart','gameSelect','gamePause','gameStop',
     'triggerArm','triggerStop','audioStart','audioStop','agentMode','confirmFunctionKeyRecovery','codexAdaptDriver','prepareFirmwareUpdate','prepareAppUpdate'].includes(req.op))
@@ -1336,6 +1442,10 @@ async function command(req) {
     }
     case "audioInventory": audio.inventory(req); return {};
     case "audioPacket": return {accepted:audio.ingest(req)};
+    case "audioRefresh": {
+      if(!desktopIO)throw new Error('Windows 声音服务尚未就绪');
+      audio.inventory(await desktopIO.request('inventory'));return audio.snapshot(store.data.settings.audio);
+    }
     case "audioStart": {
       if(!hardware.state.connected) throw new Error("声音律动需要 USB 有线连接");
       audio.start(store.data.settings.audio);
@@ -1762,7 +1872,11 @@ async function command(req) {
         playback = { ...playback, mode: "trigger", playing: false, editorId };
         await output(blank());
         try {
-          await hardware.request("triggerMonitor", {
+          if(desktopIO){
+            await desktopIO.monitorKeys(hardware.state.modelId,config.effect==='cross'
+              ?TYPING_KEYS.filter(key=>key.code!=='Fn'&&layout.some(p=>p.code===key.code)).map(k=>k.code):[config.code]);
+            triggerDeviceSession=hardware.state.connectionSessionId;
+          }else await hardware.request("triggerMonitor", {
             enabled: true,
             ...(config.effect==='cross'
               ? {mode:'typing',keyCodes:TYPING_KEYS.filter(key=>layout.some(position=>position.code===key.code)).map(key=>key.keyCode)}
@@ -2238,9 +2352,13 @@ const server = http.createServer(async (req, res) => {
           throw new Error("数据不是有效的 JSON");
         }
         if(value?.op==='settings'&&value.settings&&Object.hasOwn(value.settings,'sidebarFeatures')&&Object.keys(value.settings).length!==1)throw new Error("请单独保存侧栏设置");
+        // Reject inadmissible preview requests before entering output-error
+        // recovery. Recheck in command after serialization to prevent races.
+        validatePlatformRequest(value);
         if(value?.op==='codexKey'&&verifyNativeKey(value))value[verifiedNativeGesture]=true;
         const captured = captureTaskRequest(value);
-        const result = await serialized(() => command(captured));
+        const readOnlyInspection=platformServices.preview&&['inspectLighting','inspectSleep','inspectFunctionKeys'].includes(value.op);
+        const result = await serialized(() => command(captured),{readOnlyInspection});
         return json(res, 200, { ok: true, result });
       }
       return json(res, 404, { ok: false, error: "接口不存在" });
@@ -2317,10 +2435,15 @@ server.once("listening", async () => {
 });
 server.listen(port, "127.0.0.1");
 hardware.on("diagnostic", detail => process.stderr.write(`[HIDBridge] ${detail}`));
-async function shutdown() {
+async function shutdown({shutdownId=null}={}) {
   const commandBridgeClosed=codexCommandBridge.close();
   if (stopping) return;
   stopping = true;
+  clearInterval(desktopIOTimer);
+  const desktopIOClosed=desktopIO?.close();desktopIOClosed?.catch(()=>{});
+  // Start the priority quit before awaiting an in-flight command or frame.
+  // The independent native owner keeps its restoration budget and journal.
+  const lightingClosed=hardware.beginShutdown?.();
   cancelConnectionWake('shutdown');
   audio.stop();
   playback.playing = false;
@@ -2331,11 +2454,12 @@ async function shutdown() {
   try {
     while (busy) await new Promise((r) => setTimeout(r, 20));
     await commandTail;
-    await musicRoutes.drain();
-    await commandBridgeClosed;
     // A failure in one cleanup step must not skip keyboard restoration or
     // leave another child process running after the application has exited.
     for (const [stage, cleanup] of [
+      ["Music storage",()=>musicRoutes.drain()],
+      ["Windows capture",()=>desktopIOClosed],
+      ["command bridge",()=>commandBridgeClosed],
       ["trigger", () => disableTrigger()],
       ["held shortcuts", () => codexGestures.release()],
       ["keyboard", () => hardware.close()],
@@ -2350,9 +2474,23 @@ async function shutdown() {
     exitCode = 1;
   } finally {
     server.close();
+    if(tauriHost){
+      try {
+        if(lightingClosed)await lightingClosed;
+      } catch {
+        const evidence=hardware.shutdownEvidence();
+        if(!evidence.verified||evidence.recoveryPending)exitCode=1;
+      }
+      const receipt=shutdownReceipt(shutdownId,exitCode,hardware.shutdownEvidence());
+      if(!receipt.success)exitCode=1;
+      try {await writeShutdownReceipt(process.stdout,receipt);}catch{exitCode=1;}
+    }
     process.exit(exitCode);
   }
 }
-process.on("SIGTERM", shutdown);
-process.on("SIGINT", shutdown);
+process.on("SIGTERM", ()=>void shutdown());
+process.on("SIGINT", ()=>void shutdown());
+if(tauriHost)watchHostControl({input:process.stdin,secret:process.env.AIR_STUDIO_HOST_SECRET,
+  onShutdown:value=>void shutdown({shutdownId:value.shutdownId??null}),onLost:()=>void shutdown(),
+  onHello:()=>console.log(JSON.stringify({event:'hostHello',protocolVersion:WINDOWS_HOST.protocolVersion}))});
 watchNativeParent({parentPid:process.env.AIR_STUDIO_PARENT_PID, onLost:() => { void shutdown(); }});

@@ -1,6 +1,6 @@
 import {getKeyboardProfile,isKeyboardModel} from './keyboard-models.mjs';
 // Pure presentation derived from v7 spec/connection-display.json. No commands or effects.
-import {nativeLightingOnly, sidebarDeviceIdentity} from './device-status.mjs';
+import {nativeLightingOnly, sidebarDeviceIdentity,isWindowsReadonlyPreview} from './device-status.mjs';
 
 const freeze = value => {
   if (value && typeof value === 'object') {
@@ -11,6 +11,13 @@ const freeze = value => {
 };
 
 const STATE_COPY = freeze({
+  "usbPreview": {
+    header:{zh:"{device} · 已识别",en:"{device} · Identified"},
+    sidebar:{zh:"只读预览",en:"Read-only preview"},
+    workTitle:{zh:"键盘已识别 · 灯光尚未开放",en:"Keyboard identified · Lighting not enabled yet"},
+    workBody:{zh:"当前不能播放到键盘，可继续编辑、预览和保存作品。检查与恢复结果可在设备页查看。",en:"Keyboard playback is unavailable. You can edit, preview and save artwork. Check device inspection and recovery results on this page."},
+    deviceTitle:{zh:"键盘已识别 · 只读预览",en:"Keyboard identified · Read-only preview"},primaryAction:null
+  },
   "serviceUnknown": {
     "header": {
       "zh": "本地服务未响应",
@@ -449,6 +456,7 @@ export function deriveConnectionDisplay({state=null,serviceError='',canvasModelI
   const explicitPause=serviceFresh&&!freshUsb&&device.connectionPaused===true;
   const phase=serviceFresh?device.connection?.status:null;
   const readOnly=freshUsb&&device.readOnly===true;
+  const windowsPreview=serviceFresh&&isWindowsReadonlyPreview(state);
   const knownPerKey=freshUsb&&!readOnly&&device.capabilities?.perKey===true&&state?.firmware?.compatible!==false;
   const stockOnly=serviceFresh&&nativeLightingOnly(state);
   const capabilityUnknown=freshUsb&&!readOnly&&!knownPerKey&&!stockOnly;
@@ -463,26 +471,26 @@ export function deriveConnectionDisplay({state=null,serviceError='',canvasModelI
     else if(phase==='updateRequired'||device.errorCode==='UNSUPPORTED_FIRMWARE')reasonId='appUpdateRequired';
     else if(keyRecoveryProblem)reasonId='keyRecoveryBlocked';
     else if(lightingRecoveryBlocked)reasonId='lightingRecoveryBlocked';
-    else if(readOnly)reasonId='readOnly';
-    else if(phase==='attention')reasonId='genericConnection';
+    else if(readOnly&&!windowsPreview)reasonId='readOnly';
+    else if(phase==='attention'&&!windowsPreview)reasonId='genericConnection';
   }
   const stateId=serviceError?'serviceUnknown':state===null?'loading':explicitPause?'paused':reasonId?'attention':
     !freshUsb&&phase==='reconnecting'?'reconnecting':!freshUsb&&!bluetoothOnly&&phase==='paused'?'paused':
-    freshUsb?'usbReady':bluetoothOnly?'bluetoothOnly':'disconnected';
+    windowsPreview?'usbPreview':freshUsb?'usbReady':bluetoothOnly?'bluetoothOnly':'disconnected';
   // Explicit pause outranks old reasons; no discarded reason escapes to consumers.
   if(stateId!=='attention')reasonId=null;
   const reason=reasonId?REASON_COPY[reasonId]:null;
   const identity=serviceFresh?sidebarDeviceIdentity(state):{modelName:null,transport:null};
   const capability={
     kind:readOnly?'readOnly':knownPerKey?'perKey':stockOnly?'stockOnly':capabilityUnknown?'unknown':'unavailable',
-    label:readOnly?REASON_COPY.readOnly.title:knownPerKey?pair('逐键灯光可用','Per-key lighting available'):
+    label:windowsPreview?pair('仅支持只读检查','Read-only inspection only'):readOnly?REASON_COPY.readOnly.title:knownPerKey?pair('逐键灯光可用','Per-key lighting available'):
       stockOnly?pair('内置灯效可用','Built-in lighting available'):capabilityUnknown?COMMON.capabilitiesLoading:null,
-    tone:readOnly?'attention':knownPerKey||stockOnly?'ready':'neutral',
+    tone:windowsPreview?'neutral':readOnly?'attention':knownPerKey||stockOnly?'ready':'neutral',
   };
   const tone=stateId==='attention'?'attention':stateId==='usbReady'&&(knownPerKey||stockOnly)?'ready':'neutral';
   const base=STATE_COPY[stateId];
   let header=base.header;
-  if(stateId==='usbReady') {
+  if(stateId==='usbReady'||stateId==='usbPreview') {
     // An unknown model must not leak a placeholder or derive identity from canvas.
     header=identity.modelName?format(header,{device:pair(identity.modelName,identity.modelName)}):base.deviceTitle;
   }

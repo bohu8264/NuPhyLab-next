@@ -1,6 +1,7 @@
 import {displayPresetName} from '../../shared/preset-names.mjs';
 import {getKeyboardProfile,isKeyboardModel} from '../../shared/keyboard-models.mjs';
 import {getLayoutModel} from '../../shared/layout.mjs';
+import {isTauriDesktop,isNativeDesktop} from '../../shared/desktop-transport.mjs';
 import {nativeLightingOnly} from '../../shared/device-status.mjs';
 import {deriveConnectionDisplay} from '../../shared/connection-display.mjs';
 import {friendlyConnectionError,keyRecoveryProblem} from './KeyRecoveryPanel';
@@ -33,7 +34,7 @@ import { Studio } from "./Studio";
 import { UnifiedLibrary, type LibraryFilter } from './UnifiedLibrary';
 import type { WorkSource } from './music/MusicWorks';
 import { FeatureCenter,features } from './FeatureCenter';
-import { sidebarFeatures,type FeatureId } from '../../shared/sidebar-features.mjs';
+import { sidebarFeatures,WINDOWS_FEATURE_IDS,type FeatureId } from '../../shared/sidebar-features.mjs';
 import type { MusicEntry } from './music/MusicLab';
 import {prepareMusicLibraryAction} from './music/persistence';
 import { Codex } from "./Codex";
@@ -46,7 +47,7 @@ import {TypingSounds} from "./TypingSounds";
 import { Settings } from "./Settings";
 import {availableFirmwareUpdate} from '../../shared/firmware-onboarding.mjs';
 import './update-notices.css';
-import { KeyboardModuleContext } from "./Keyboard";
+import { KeyboardModuleContext,KeyboardPlatformContext } from "./Keyboard";
 import { StartupGuide } from "./StartupGuide";
 import { useTriggerKeys } from "./TriggerPanel";
 import { Button, Modal, run } from "./primitives";
@@ -92,6 +93,7 @@ export default function App() {
     return()=>window.removeEventListener("nuphylab:navigate",navigate);
   },[]);
   const [studioMode, setStudioMode] = useState<StudioMode>("paint");
+  const [nativeView, setNativeView] = useState(false);
   const [focusCodexColors,setFocusCodexColors] = useState(false);
   const [libraryFilter,setLibraryFilter] = useState<LibraryFilter>('all');
   const [librarySource,setLibrarySource] = useState<WorkSource>('presets');
@@ -151,16 +153,17 @@ export default function App() {
     [],
   );
   const { state, layout, serviceError, command, readState, refresh, exiting } = useAirApi(notify);
-  const addedFeatures=sidebarFeatures(state?.settings.sidebarFeatures);
+  const availableFeatures=isTauriDesktop()?WINDOWS_FEATURE_IDS:undefined;
+  const addedFeatures=sidebarFeatures(state?.settings.sidebarFeatures).filter(id=>!availableFeatures||availableFeatures.includes(id));
   const persistFeatures=async(change:FeatureId[]|((current:FeatureId[])=>FeatureId[]),check?:()=>void)=>{
     if(featureLock.current||!state||exiting||serviceError)return false;
     featureLock.current=true;setFeatureBusy(true);
     try{
-      await nativeCodexRequest({kind:'prepareSidebarFeatures'});
+      if(!isTauriDesktop())await nativeCodexRequest({kind:'prepareSidebarFeatures'});
       const next=typeof change==='function'?change(sidebarFeatures((await readState()).settings.sidebarFeatures)):change;
       check?.();
-      await command({op:'settings',settings:{sidebarFeatures:next}},{silent:true});
-      await nativeCodexRequest({kind:'sidebarFeaturesChanged'});
+      await command({op:'settings',settings:{sidebarFeatures:next.filter(id=>!availableFeatures||availableFeatures.includes(id))}},{silent:true});
+      if(!isTauriDesktop())await nativeCodexRequest({kind:'sidebarFeaturesChanged'});
       return true;
     }
     catch(error){notify(language==='en'?'Could not save your sidebar. Please try again.':'侧栏设置未能保存，请重试。');return false;}
@@ -197,6 +200,8 @@ export default function App() {
   useEffect(()=>{if(state&&!initialNavigation.current){initialNavigation.current=true;if(state.playback.editorId)releaseEditorOutput(state.playback.editorId);if(navigationEpoch.current===0&&!sidebarFeatures(state.settings.sidebarFeatures).includes('studio'))setPage('features');}},[state]);
   const modelId = isKeyboardModel(state?.device.modelId) ? state.device.modelId : getLayoutModel();
   const nativeOnly = nativeLightingOnly(state);
+  const nativeAvailable=isTauriDesktop()&&state?.device.capabilities?.stockEffects===true&&state?.device.modelId==='kick75';
+  const nativePage=nativeOnly||nativeView&&nativeAvailable;
   const connectionDisplay=presentConnectionDisplay(deriveConnectionDisplay({state,serviceError,canvasModelId:layout.length ? modelId : null,keyRecoveryProblem:keyRecoveryProblem(state)}));
   const libraryPlayContext=`${modelId}:${state?.device.connectionSessionId ?? ''}:${Boolean(state?.device.connected)}`;
   const canLibraryPlay=layout.length>0 && !serviceError && !exiting && Boolean(state?.device.connected) && state?.device.readOnly !== true
@@ -294,7 +299,7 @@ export default function App() {
     const context=latestDraftContext.current,source=cloneScene(draft);
     const saved=await persistDraft(saveName,saveCopy);
     if(!saved||latestDraftContext.current!==context)return;
-    acceptSavedDraft(source,saved);setSaveOpen(false);notify('作品已保存到这台 Mac','success');
+    acceptSavedDraft(source,saved);setSaveOpen(false);notify(isTauriDesktop()?'作品已保存到本机':'作品已保存到这台 Mac','success');
   };
   const finishLibraryPlay = (id: string|null) => {
     if(!id||libraryPlayRequest.current?.id!==id)return;
@@ -366,7 +371,7 @@ export default function App() {
     const context=latestDraftContext.current,source=cloneScene(draft);
     const saved=await persistDraft(draft.name.trim()?draft.name:guardSaveName);
     if(!saved||context!==latestDraftContext.current)return;
-    acceptSavedDraft(source,saved);notify('作品已保存到这台 Mac','success');
+    acceptSavedDraft(source,saved);notify(isTauriDesktop()?'作品已保存到本机':'作品已保存到这台 Mac','success');
     request.saved=true;
     if(pendingLibraryPlay)setPendingLibraryPlay({...request});
     if(libraryPlayRequest.current?.id===request.id)await adoptLibraryPlay(request);
@@ -394,10 +399,10 @@ export default function App() {
   useEffect(()=>{window.scrollTo(0,0);},[page]);
   const pageTitle = page === 'screen-replay' ? (language==='en'?'Instant Replay':'刚刚怎么了') : page === 'color-picker' ? (language==='en'?'Color Picker':'取色器') : page === 'dock-scenes' ? (language==='en'?'Dock Scenes':'Dock 场景') : page === 'voice-input' ? (language==='en'?'Voice Input':'语音输入') : page === 'features' ? (language==='en'?'Feature Center':'功能中心') : page === 'keyboard-pocket' ? '键盘口袋' : page === 'drag-convert' ? (language === 'en' ? 'Drag Convert' : '拖拽转换') : page === "music" ? "演奏模式" : page === "typing-sounds" ? "模拟声浪" : page === "selection-question" ? "智能框选" : creative ? "灯光创作" : page === "library" ? "作品库" : page === "codex" ? "AI 助手" : page === "game" ? "灯光游戏" : page === "settings" ? "设置" : "设备";
   return (
-    <KeyboardModuleContext.Provider value={state?.settings.airTopRightModule === "keycap" ? "keycap" : "rotary"}>
-    <div className="app-shell lab-v5" data-page={page} data-native={Boolean((window as Window & {webkit?:unknown}).webkit)}>
+    <KeyboardPlatformContext.Provider value={state?.desktop?.host==='tauri'?'win32':'darwin'}><KeyboardModuleContext.Provider value={state?.settings.airTopRightModule === "keycap" ? "keycap" : "rotary"}>
+    <div className="app-shell lab-v5" data-page={page} data-native={isNativeDesktop()}>
       <aside className="sidebar">
-        <div className="window-lights" aria-hidden="true"><i/><i/><i/></div>
+        {!isTauriDesktop()&&<div className="window-lights" aria-hidden="true"><i/><i/><i/></div>}
         <div className="brand"><img className="brand-symbol" src="/nuphy-studio.png" alt="" width={32} height={32}/><span>NuPhy Lab</span></div>
         <nav className="feature-sidebar-nav" aria-label={tr("主导航")}>
           {addedFeatures.map(id=>{const feature=features.find(item=>item.id===id)!;const Icon=feature.icon;const active=id==='studio'?creative:page===id;const label=language==='en'?feature.en:feature.zh;return <button key={id} aria-label={label} title={label} className={active?'active':''} aria-current={active?'page':undefined} onClick={()=>{if(id==='music')setMusicEntry(null);if(id==='library')setLibraryFilter('all');setPage(id);}}><Icon size={18} strokeWidth={1.5}/><span>{label}</span></button>;})}
@@ -416,18 +421,28 @@ export default function App() {
         {exiting && <div className="wireless-notice" role="status">{tr("正在完成当前操作…")}</div>}
         {!state&&!serviceError&&<div className="service-error" role="status">{tr('正在读取键盘与本机数据…')}</div>}
         {serviceError&&<div className="service-error service-error-v6" role="alert"><CircleAlert size={16}/><span>{tr('本地服务未响应：')}{tr(friendlyConnectionError(serviceError))}</span><Button kind="ghost" busy={checkingService} onClick={()=>{if(checkingService)return;setCheckingService(true);void refresh().finally(()=>setCheckingService(false));}}>{tr('重新检查')}</Button></div>}
-        <StartupGuide state={state} command={command} disabled={exiting}/>
+        {isTauriDesktop()&&<div className="wireless-notice" role="status">{language==='en'
+          ?`Windows preview: edit and save artwork locally. Playback requires verified identity and restoration checks. Original settings are restored on stop or exit. ${state?.desktop?.capabilities.audio?'Audio and keyboard observation are available when enabled. Physical AI shortcuts are still in development.':'Audio and physical AI shortcuts are not enabled yet.'}`
+          :`Windows 预览版：可在本机编辑和保存作品。身份与原设置恢复检查都通过后才可播放灯光，停止或退出时恢复原设置。${state?.desktop?.capabilities.audio?'声音和按键观察按需启用，实体 AI 快捷操作仍在开发。':'声音和实体 AI 快捷操作尚未开放。'}`}</div>}
+        <StartupGuide state={state} command={command} disabled={exiting||isTauriDesktop()}/>
+        {isTauriDesktop()&&state?.connectionWake?.active&&<div className="wireless-notice" role="status">
+          <p>{language==='en'
+            ?`${state.connectionWake.status==='starting'?'Preparing the welcome lights…':'Playing the welcome lights…'} Your previous display will resume afterwards. You can choose another effect at any time.`
+            :`${state.connectionWake.status==='starting'?'正在准备迎宾灯效…':'正在播放迎宾灯效…'} 完成后恢复原来的显示，也可直接选择其他灯效。`}</p>
+          <Button kind="ghost" disabled={exiting} onClick={()=>run(command({op:'stop'}))}>{language==='en'?'End welcome lights':'结束迎宾灯效'}</Button>
+        </div>}
         <AudioPendingNotice onReturn={()=>setPage('audio')}/>
         {draftStorageIssue?.model===modelId&&<div className="service-error" role="alert"><CircleAlert size={16}/><span>{tr(draftStorageIssue.kind==='read'?'暂时无法读取本机草稿。原记录已保留，请重试读取。':'草稿自动保存失败。当前内容仍在本窗口，关闭前请重试或保存到作品库。')}</span><Button kind="ghost" onClick={()=>draftStorageIssue.kind==='read'?retryDraftRead():writeLocalDraft(modelId,draft)}>{tr(draftStorageIssue.kind==='read'?'重试读取':'重试自动保存')}</Button><Button kind="ghost" onClick={openSave}>{tr('保存作品')}</Button></div>}
         <div className="page-content" inert={exiting}>
           {creative && (!nativeOnly || page === "offline") && <nav className="lab-tabs creative-tabs" aria-label={tr("灯光创作")}>
-            {([["paint","绘制"],["animation","动画"],["trigger","按键触发"],["audio","声音律动"]] as const).map(([id,label])=><button key={id} data-voice-tab={id} aria-current={(id === "audio" ? page === "audio" : page !== "audio" && studioMode === id) ? "page" : undefined} className={(id === "audio" ? page === "audio" : page !== "audio" && studioMode === id) ? "active" : ""} onClick={()=>{if(id === "audio")setPage("audio");else{setStudioMode(id);setPage("studio");}}}>{tr(label)}</button>)}
+            {([["paint","绘制"],["animation","动画"],["trigger","按键触发"],["audio","声音律动"]] as const).map(([id,label])=><button key={id} data-voice-tab={id} aria-current={(id === "audio" ? page === "audio" : page !== "audio" && !nativeView && studioMode === id) ? "page" : undefined} className={(id === "audio" ? page === "audio" : page !== "audio" && !nativeView && studioMode === id) ? "active" : ""} onClick={()=>{setNativeView(false);if(id === "audio")setPage("audio");else{setStudioMode(id);setPage("studio");}}}>{tr(label)}</button>)}
+            {nativeAvailable&&page!=='offline'&&<button aria-current={page==='studio'&&nativeView?'page':undefined} className={page==='studio'&&nativeView?'active':''} onClick={()=>{setNativeView(true);setPage('studio');}}>{language==='en'?'Built-in effects':'内置灯效'}</button>}
           </nav>}
           {connectionDisplay.stateId === 'bluetoothOnly' && ['studio','library'].includes(page) && <div className="wireless-notice" role="status"><strong>{tr("蓝牙已连接 · 灯光需接线")}</strong><p>{tr("可以编辑、预览和保存作品；播放到键盘、按键灯效及灯光游戏需要 USB 有线连接。")}</p></div>}
-          {nativeOnly && state && ["studio", "audio"].includes(page) && <NativeLighting state={state} layout={layout} command={command}
-            onOffline={() => setPage("offline")} onDevice={() => setPage("device")}/>}
+          {nativePage && state && (page==='studio'||nativeOnly&&page==='audio') && <NativeLighting state={state} layout={layout} command={command}
+            onOffline={() => {setNativeView(false);setPage(nativeOnly?'offline':'studio');}} onDevice={() => setPage("device")}/>}
           {page === "offline" && nativeOnly && <div className="wireless-notice" role="status"><p>{tr("离线绘图仅编辑和保存作品，不向当前固件发送逐键颜色。")}</p><Button onClick={() => setPage("studio")}>{tr("返回原生灯效")}</Button></div>}
-          {tr((page === "studio" && !nativeOnly || page === "offline" || page === "game") && (
+          {tr((page === "studio" && !nativePage || page === "offline" || page === "game") && (
             <Studio
               key={draftSession}
               mode={page === "game" ? "game" : page === "offline" ? "paint" : studioMode}
@@ -448,7 +463,7 @@ export default function App() {
           ))}{tr(" ")}
           {page === "audio" && !nativeOnly && <AudioPanel state={state} layout={layout} command={command}/>}
           {tr(page === "library" && (
-            <UnifiedLibrary
+            <UnifiedLibrary musicAvailable={!isTauriDesktop()}
               filter={libraryFilter} onFilter={setLibraryFilter} source={librarySource} onSource={setLibrarySource}
               lightingAdded={addedFeatures.includes('studio')} musicAdded={addedFeatures.includes('music')}
               onMusicEdit={editMusic} onBrowse={()=>{navigationEpoch.current++;}}
@@ -482,7 +497,7 @@ export default function App() {
               onOffline={()=>setPage(nativeOnly ? "offline" : "studio")}
             />
           ))}
-          {page === "features" && <FeatureCenter added={addedFeatures} busy={featureBusy||!state||!!serviceError||exiting} onToggle={id=>void toggleFeature(id)} onOpen={id=>{if(id==='music')setMusicEntry(null);setPage(id);}}/>}
+          {page === "features" && <FeatureCenter available={availableFeatures} added={addedFeatures} busy={featureBusy||!state||!!serviceError||exiting} onToggle={id=>void toggleFeature(id)} onOpen={id=>{if(id==='music')setMusicEntry(null);setPage(id);}}/>}
           {page === "music" && <MusicLab entry={musicEntry} onLibrary={browseMusic}/>}
           {page === "typing-sounds" && <TypingSounds/>}
           {page === 'drag-convert' && <DragConvertLab/>}
@@ -514,6 +529,6 @@ export default function App() {
         {saveError&&saveName.trim()&&<div className="overlay-error" role="alert"><CircleAlert size={14}/><span>{tr(saveError)}</span></div>}
       </Modal>}
     </div>
-    </KeyboardModuleContext.Provider>
+    </KeyboardModuleContext.Provider></KeyboardPlatformContext.Provider>
   );
 }

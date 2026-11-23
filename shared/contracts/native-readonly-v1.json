@@ -1,0 +1,27 @@
+{
+  "profile": "windows-readonly-v1",
+  "protocolVersion": 1,
+  "implementation": "windows-readonly-probe",
+  "platform": "win32",
+  "maxLineBytes": 32768,
+  "maxPending": 32,
+  "handshakeTimeoutMs": 3000,
+  "requestTimeoutMs": 12000,
+  "operations": [
+    "connect", "status", "listDevices", "lightingSnapshot", "sleepSnapshot", "keymapSnapshot", "permissions", "bluetoothDevices",
+    "codexProcess", "systemIdle", "restore", "restoreKeys", "restoreFunctionKey",
+    "disconnect", "quit"
+  ],
+  "capabilities": {
+    "readOnlyProbe": true,
+    "lightingSnapshot": true,
+    "sleepSnapshot": true,
+    "keymapSnapshot": true,
+    "lightingWrite": false,
+    "keymapWrite": false,
+    "globalKeys": false,
+    "audioCapture": false,
+    "agentControl": false,
+    "recoveryJournal": false
+  }
+}

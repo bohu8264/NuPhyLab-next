@@ -23,6 +23,7 @@ async function fixture({source='codex',enabled=false,tab='tasks',handler=async()
     '../../shared/codex-lighting.mjs':codex,'../../shared/claude-lighting.mjs':claude,'../../shared/codex-keys.mjs':codexKeys,'../../shared/claude-keys.mjs':claudeKeys,
     '../../shared/agent-lighting-view.mjs':view,'../../shared/layout.mjs':layouts,'../../shared/device-status.mjs':{lightingUnavailableMessage:()=> 'Unsupported fixture'},
     './AgentSideLighting':{AgentLightingZone:stub('AgentLightingZone'),AgentSideLighting:stub('AgentSideLighting')},
+    './WindowsAgentDashboard':{WindowsAgentDashboard:stub('WindowsAgentDashboard')},
     './AgentTabs':{AgentTabs:nodes.AgentTabs},'./AgentQuota':{AgentQuota:nodes.AgentQuota},'./CodexLightMode':{CodexLightMode:nodes.CodexLightMode},'./ClaudeLightMode':{ClaudeLightMode:nodes.ClaudeLightMode},
     './CodexSetup':{CodexSetup:nodes.CodexSetup},'./ClaudeSetup':{ClaudeSetup:nodes.ClaudeSetup},'./CodexKeyRecorder':{CodexKeyRecorder:nodes.CodexKeyRecorder,useAgentKeyCapture:()=>({ready:true,error:'',release:async()=>{}})},
     './FunctionKeyRecoveryDialog':{FunctionKeyRecoveryDialog:nodes.FunctionKeyRecoveryDialog},

@@ -1,0 +1,5 @@
+.windows-agent-dashboard { display:grid; gap:20px; }
+.windows-agent-heading,.windows-agent-actions { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+.windows-agent-summary { display:grid; gap:12px; padding:18px; }
+.windows-agent-summary label { display:flex; align-items:center; gap:10px; }
+.windows-agent-summary select { max-width:100%; }

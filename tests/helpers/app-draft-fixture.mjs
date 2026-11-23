@@ -8,6 +8,7 @@ import {readFile} from 'node:fs/promises';
 import * as triggers from '../../shared/trigger.mjs';
 import * as layouts from '../../shared/layout.mjs';
 import * as keyboardModels from '../../shared/keyboard-models.mjs';
+import {isTauriDesktop,isNativeDesktop} from '../../shared/desktop-transport.mjs';
 import {applyArtworkAppearance} from '../../shared/render-animation.mjs';
 import * as firmwareOnboarding from '../../shared/firmware-onboarding.mjs';
 import * as presetNames from '../../shared/preset-names.mjs';
@@ -39,6 +40,7 @@ export async function appDraftFixture(options={}){
   const readState=async()=>{if(options.onReadState)return options.onReadState({state,commands});return clone(state);};
   const api={state,layout,serviceError:'',command,readState,refresh:async()=>{},exiting:false};
   const host={scrollTo(){},addEventListener(type,fn){if(!events.has(type))events.set(type,new Set());events.get(type).add(fn);},removeEventListener(type,fn){events.get(type)?.delete(fn);},dispatchEvent(e){events.get(e.type)?.forEach(fn=>fn(e));}};
+  if(options.tauri)host.__TAURI__={core:{invoke:async()=>{throw Error('Unexpected native invocation');}}};
   const jsx=(type,props,key)=>({type,props:props??{},key});
   const sandbox={console:{log(){},warn(){},error(...x){errors.push(x);}},Error,DOMException,Date,JSON,Array,Set,Map,Promise,Number,String,Boolean,Math,Object,crypto:{randomUUID:()=>`fixture-uuid-${++uuid}`},window:host,localStorage,performance:{now:()=>0},requestAnimationFrame:fn=>{fn();return 1;},cancelAnimationFrame(){},CustomEvent:class{constructor(type,options={}){this.type=type;Object.assign(this,options);}}};
   const compile=(text,requireFn)=>{const exports={};vm.runInNewContext(ts.transpileModule(text,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText,{...sandbox,exports,require:requireFn});return exports;};
@@ -48,6 +50,7 @@ export async function appDraftFixture(options={}){
   const requireApp=name=>{
     if(name==='../../shared/preset-names.mjs')return presetNames;
     if(sharedImport(name))return sharedImport(name);
+    if(name==='../../shared/desktop-transport.mjs')return{isTauriDesktop:()=>isTauriDesktop(host),isNativeDesktop:()=>isNativeDesktop(host)};
     if(name==='react')return react;
     if(name==='react/jsx-runtime')return{jsx,jsxs:jsx,Fragment:Symbol.for('fixture.Fragment')};
     if(name.endsWith('.css'))return{};
@@ -60,10 +63,10 @@ export async function appDraftFixture(options={}){
     if(name==='../../shared/firmware-onboarding.mjs')return firmwareOnboarding;
     if(name==='./i18n')return{t:value=>value,useLanguage:()=>api.state.settings.language,setLanguage(){}};
     if(name==='./presets')return{presets:()=>[scene('Fallback preset',{colors:Array(84).fill('#234567')})]};
-    if(name==='./codexKeys')return{useCodexKeys(){},nativeCodexRequest:async()=>({available:false,result:null})};
+    if(name==='./codexKeys')return{useCodexKeys(){},nativeCodexRequest:options.onNativeCodexRequest??(async()=>({available:false,result:null}))};
     if(name==='./TriggerPanel')return{useTriggerKeys(){}};
     if(name==='./AgentSourceSwitch')return{agentSource:s=>s?.settings.agentSource==='claude'?'claude':'codex'};
-    if(name==='./Keyboard')return{KeyboardModuleContext:{Provider:component('Provider')}};
+    if(name==='./Keyboard')return{KeyboardModuleContext:{Provider:component('Provider')},KeyboardPlatformContext:{Provider:component('PlatformProvider')}};
     if(name==='./KeyRecoveryPanel')return{keyRecoveryProblem:()=>null,friendlyConnectionError:value=>value};
     if(name==='../../shared/device-status.mjs')return{nativeLightingOnly:()=>false};
     if(name==='../../shared/connection-display.mjs')return{deriveConnectionDisplay:()=>({stateId:'connected'})};

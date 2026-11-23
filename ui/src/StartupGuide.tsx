@@ -8,7 +8,8 @@ import {keyboardPermissions} from './keyboardPermissions';
 import {coalescePermissionRefresh,refreshPermissionSession,watchPermissionRefresh} from '../../shared/permission-refresh.mjs';
 import './settings-overlays-v6.css';
 
-export const OFFICIAL_DRIVER_URL='https://drive.nuphy.io/#/setting';
+import firmwareLinks from '../../shared/contracts/firmware-links.json';
+export const OFFICIAL_DRIVER_URL=firmwareLinks.officialDriverUrl;
 type Permission='inputMonitoring'|'accessibility';
 export type OfficialDriverResult={opened:boolean;url:string;browser?:string;browserBundleId?:string;browserSupportsUSB?:boolean;needsSupportedBrowser?:boolean;message?:string;manual?:boolean;safeReleased?:boolean;prepareError?:string};
 import {firmwarePrompt,currentFirmwareReady,firmwareUpdateSatisfied,type FirmwarePrompt} from '../../shared/firmware-onboarding.mjs';

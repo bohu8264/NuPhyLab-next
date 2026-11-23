@@ -1,5 +1,6 @@
 import {keyboardGeometry} from './keyboard-geometry';
 import {blank,getLayoutModel} from '../../shared/layout.mjs';
+import {nativeDesktopRequest} from '../../shared/desktop-transport.mjs';
 import { rangeStyle } from "./rangeStyle";
 import {lightingUnavailableMessage} from '../../shared/device-status.mjs';
 import {useEffect,useRef,useState,useSyncExternalStore} from 'react';
@@ -24,6 +25,7 @@ export type AudioState={active:boolean;available:boolean;systemSupported:boolean
 const defaults:AudioConfig={source:'system',deviceId:'',effect:'pulse',colorMode:'single',color:'#6f9e85',sensitivity:1.5,noiseFloor:-55};
 const errorText:Record<string,string>={microphonePermission:'请允许 NuPhy Lab 使用麦克风，然后重新开始。',inputUnavailable:'麦克风不可用，请检查连接或选择其他设备。',systemCapture:'系统声音暂不可用，请检查录音权限后重试。',systemPermission:'请允许 NuPhy Lab 录制系统声音，然后重新开始。',systemFormat:'当前输出设备的音频格式暂不支持，请切换输出设备。',systemUnsupported:'系统声音需要 macOS 14.2 或更新版本，请改用麦克风',keyboardDisconnected:'键盘已断开，声音采集已停止。',lightingFailed:'灯效输出已停止，请检查键盘连接后重试。',captureStopped:'声音采集已中断，请重新开始。'};
 export function AudioPanel({state,layout,command}:{state:AppState|null;layout:Key[];command:Command}){
+  const windows=state?.desktop?.host==='tauri';
   const workspace=useWorkspaceLayout({aspectRatio:keyboardGeometry[getLayoutModel()].width/keyboardGeometry[getLayoutModel()].height});
   const saved=state?.settings.audio as AudioConfig|undefined;
   const audio=state?.audio as AudioState|undefined;
@@ -42,18 +44,18 @@ export function AudioPanel({state,layout,command}:{state:AppState|null;layout:Ke
   const permission=async()=>{
     if(permissionPending.current)return;
     permissionPending.current=true;setPermissionBusy(true);setActionError('');
-    const bridge=(window as Window & {webkit?:{messageHandlers?:{audioControl?:{postMessage:(value:unknown)=>Promise<unknown>}}}}).webkit?.messageHandlers?.audioControl;
-    try{if(bridge)await bridge.postMessage({permission:config.source==='microphone'?'microphone':'system'});else window.dispatchEvent(new CustomEvent('nuphylab:navigate',{detail:'permissions'}));}
+    try{const reply=await nativeDesktopRequest('audioControl',{permission:config.source==='microphone'?'microphone':'system'});if(!reply.available)window.dispatchEvent(new CustomEvent('nuphylab:navigate',{detail:'permissions'}));}
     catch(error){setActionError(error instanceof Error?error.message:'操作未完成，请重试。');}
     finally{permissionPending.current=false;setPermissionBusy(false);}
   };
   const preparing=audio?.active===true&&['requesting','starting'].includes(audio.status)&&!audio.error;
   const capturing=audio?.active===true&&audio.status==='listening'&&!audio.error;
   const missingInput=config.source==='microphone'&&!!config.deviceId&&!!audio?.available&&!audio.devices.some(device=>device.id===config.deviceId);
-  const unavailable=state?.device.capabilities?.perKey===false?lightingUnavailableMessage(state):!state?.device.connected?'声音律动需要 USB 有线连接':!audio?.available?'请在 NuPhy Lab 桌面应用中使用声音律动':config.source==='system'&&!audio.systemSupported?'系统声音需要 macOS 14.2 或更新版本，请改用麦克风':null;
+  const unavailable=state?.device.capabilities?.perKey===false?lightingUnavailableMessage(state):!state?.device.connected?'声音律动需要 USB 有线连接':!audio?.available?'请在 NuPhy Lab 桌面应用中使用声音律动':config.source==='system'&&!audio.systemSupported?windows?'系统声音设备不可用，请检查默认输出设备或改用麦克风':'系统声音需要 macOS 14.2 或更新版本，请改用麦克风':null;
   const navigate=(target:string)=>window.dispatchEvent(new CustomEvent('nuphylab:navigate',{detail:target}));
   const level=capturing ? Math.max(0,Math.min(1,audio.level||0)) : 0;
-  const currentError=actionError||(audio?.error?t(errorText[audio.error]??errorText.captureStopped):'');
+  const windowsCaptureError=config.source==='microphone'?'麦克风不可用，请检查 Windows 麦克风设置或更换设备。':'系统声音采集已停止，请检查默认输出设备后重新开始。';
+  const currentError=actionError||(audio?.error?t(windows&&audio.error==='systemCapture'?windowsCaptureError:windows&&audio.error==='systemUnsupported'?'系统声音设备不可用，请检查默认输出设备或改用麦克风':errorText[audio.error]??errorText.captureStopped):'');
   const permissionsError=['microphonePermission','systemPermission','systemCapture'].includes(audio?.error??'');
   const statusText=audio?.error?'声音律动已停止':audio?.status==='paused'?'随键盘休眠':audio?.status==='requesting'?'等待声音权限':audio?.status==='starting'?'正在连接声音':capturing?`${config.source==='system'?'系统声音':'麦克风'} · 正在采集`:'尚未采集声音';
   return <section className="audio-v5" data-workspace-layout={workspace.mode} style={workspace.style}>
@@ -77,7 +79,7 @@ export function AudioPanel({state,layout,command}:{state:AppState|null;layout:Ke
       <details className="audio-v5-adjust inline-v6-details"><summary><SlidersHorizontal size={15}/><span>{t('灵敏度与噪声门限')}</span></summary><label><span>{t('灵敏度')}<output>{config.sensitivity.toFixed(2)}×</output></span><input aria-label={t('灵敏度')} type="range" min="0.25" max="4" step="0.05" value={config.sensitivity} style={rangeStyle(config.sensitivity,.25,4)} onChange={e=>change({sensitivity:Number(e.target.value)})}/></label><label><span>{t('噪声门限')}<output>{config.noiseFloor} dB</output></span><input aria-label={t('噪声门限')} type="range" min="-80" max="-20" step="1" value={config.noiseFloor} style={rangeStyle(config.noiseFloor,-80,-20)} onChange={e=>change({noiseFloor:Number(e.target.value)})}/></label><p>{t('低于门限的声音不会触发灯光。')}</p></details>
       {pending.audioError&&<div className="inline-v6-notice inline-v6-error audio-v6-settings-error" role="alert"><p>{connectionCopy({zh:'声音设置的保存结果尚未确认，修改已保留。',en:'Saving audio settings is not confirmed. Your changes are kept.'})}</p><Button kind="ghost" busy={retrying} onClick={()=>run(retrySettings())}>{connectionCopy({zh:'重试保存',en:'Retry save'})}</Button></div>}
       <button className="audio-v5-link" onClick={()=>navigate('lighting')}><Moon size={16}/>{t('管理灯光休眠')}</button>
-      <details className="audio-v5-privacy inline-v6-details"><summary>{t('声音与隐私')}</summary><p>{t('声音仅在本机分析，不保存或上传。休眠时暂停采集。')}</p><p>{t('系统声音与麦克风是不同来源，使用前按需请求对应权限。')}</p><p>{t('切换来源或设备后重新开始采集；停止律动后停止采集。')}</p></details>
+      <details className="audio-v5-privacy inline-v6-details"><summary>{t('声音与隐私')}</summary><p>{t('声音仅在本机分析，不保存或上传。休眠时暂停采集。')}</p><p>{t(windows?'系统声音跟随 Windows 默认输出设备；麦克风需在系统隐私设置中允许使用。':'系统声音与麦克风是不同来源，使用前按需请求对应权限。')}</p><p>{t('切换来源或设备后重新开始采集；停止律动后停止采集。')}</p></details>
     </aside></div>
   </section>;
 }
