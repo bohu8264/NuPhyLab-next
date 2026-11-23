@@ -2,11 +2,23 @@
 
 [通俗网页版](WINDOWS_DEVELOPMENT.summary.html) · [概要 Markdown](WINDOWS_DEVELOPMENT.summary.md) · [架构计划](WINDOWS_ARCHITECTURE_PLAN.md)
 
-## 官方新版集成（2026 年 11 月 22 日）
+## 1.2.54 Windows 10 灯光实机结果（2026 年 11 月 22 日）
+
+**源码 `2b4a1b1` 已同步、完整构建并在实际桌面运行；播放、恢复原灯效和动画中正常退出恢复三项通过。** 设备为有线 Windows 档 Air75 V3 2.0.0.7。用户已确认实体呼吸变化；停止及退出后独立读取的灯效设置、全部 104 个颜色、休眠和完整键位均与基线一致，退出后原生检查无待恢复记录。
+
+完整 Windows release、前端类型构建、Tauri GUI 与常规 NSIS 通过；六个 EXE 均为 x64，GUI 产品版本 1.2.54、子系统为 2。1,794 个源码文件与 150 个运行源码文件校验一致。安装器约 29 MB，尚未实际安装。当前启动位置为 `D:\www\NuPhyLab-Validation-2b4a1b1\preview\nuphylab-desktop.exe`，旧版保留。
+
+本轮正常关窗而非强杀，退出码读取得到 null，未按 0 记录。临时草稿恢复原文，测试图案未保存，两份原作品内容一致；设置部分变化保留，原备份未覆盖当前值。调试参数、测试端口、SSH 转发和四个临时任务已清理，新版正常重开并保持可见、响应正常。
+
+保存重开、声音、真实输入、Windows 11、安装升级卸载、其他设备/固件与长期运行仍待验收。此前 Mac 对完整 Windows Tauri 的跨目标 Clippy 受 llvm-rc 缺失影响，未在本轮补跑；本轮 Windows 完整构建已通过。集成阶段已有的 24 项官方原版失败清单保持，没有修改实现代码或重跑无关回归。
+
+详细产物路径、SHA-256、设置变化字段和实机证据见[完整集成报告](WINDOWS_UPSTREAM_INTEGRATION_PLAN.md)；通俗入口见[实测概要](WINDOWS_UPSTREAM_INTEGRATION_PLAN.summary.html)。实现代码未改；验收记录与双平台差异说明单独保存为文档提交，未推送。Windows 尚未与 macOS 全量对齐，两端共享界面和业务，宿主、原生能力与验收分开维护；差异清单见完整集成报告。
+
+## 官方新版集成与审查记录（2026 年 11 月 22 日）
 
 现有 Windows 实现已集成到官方 1.2.54 的 `codex/windows-integration` 分支，代码集成和审查完成，按本轮授权本地提交。平台架构不变：Mac 使用官方 Swift 实现，Windows 使用 Tauri 与独立 Node/Rust 辅助程序。官方 Mac 的新功能与 2.0.0.7 默认固件保留，Windows 恢复资格单独维护，命令清单升至版本 15。
 
-Windows 专项 263 项通过、1 项按平台跳过；设置等相关检查 52 项通过；前端构建、Rust 测试、本机 Clippy 与 Windows 原生组件 Clippy 通过。共享回归剩余 24 个失败已在官方原版复现相同错误，未扩入本次修复。完整 Windows Tauri 静态检查缺少本机 llvm-rc，安装包与实机仍待下一轮。本轮没有生成、启动或同步新 Windows 包，没有打开真实键盘、作品或 AI 会话。审查中修复官方工具地址不一致导致的交接失败，前端、Node 与 Tauri 共用地址配置；相关 Node/界面 48 项、宿主 25 项通过，并完成前端构建和宿主 Clippy。详见[集成报告与检查清单](WINDOWS_UPSTREAM_INTEGRATION_PLAN.summary.html)。
+Windows 专项 263 项通过、1 项按平台跳过；设置等相关检查 52 项通过；前端构建、Rust 测试、本机 Clippy 与 Windows 原生组件 Clippy 通过。共享回归剩余 24 个失败已在官方原版复现相同错误，未扩入本次修复。此前 Mac 上对完整 Windows Tauri 的跨目标 Clippy 缺少 llvm-rc；随后 Windows 完整构建和本机灯光实测已完成，详见上节。该次集成与审查阶段没有运行真实 Windows GUI 或键盘；随后实机专项见上节，没有操作真实 AI 会话。审查中修复官方工具地址不一致导致的交接失败，前端、Node 与 Tauri 共用地址配置；相关 Node/界面 48 项、宿主 25 项通过，并完成前端构建和宿主 Clippy。详见[集成报告与检查清单](WINDOWS_UPSTREAM_INTEGRATION_PLAN.summary.html)。
 
 以下保留 1.2.40 阶段的源码与验收历史，旧提交、协议和实机成绩不能当作 1.2.54 已完成验收。真实改键及可信实体 AI 接管继续关闭。
 

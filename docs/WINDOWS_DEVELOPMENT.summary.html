@@ -1426,29 +1426,27 @@ body {
 </head>
 <body>
 <div class="shell">
-<nav class="toc" aria-label="文档目录"><div class="toc-head"><span class="toc-title">目录</span><span class="toc-actions"><button class="toc-btn" type="button" data-act="expand">全展开</button><button class="toc-btn" type="button" data-act="collapse">全收起</button><button class="toc-btn" type="button" data-act="hide">隐藏</button></span></div><div class="toc-scroll"><ul class="toc-list"><li class="toc-group" data-id="g0"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#现在进展到哪里">现在进展到哪里</a></div></li><li class="toc-group" data-id="g1"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#已有能力包括什么">已有能力包括什么</a></div></li><li class="toc-group" data-id="g2"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#自动检查有哪些结果">自动检查有哪些结果</a></div></li><li class="toc-group" data-id="g3"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#哪些功能还没有开放">哪些功能还没有开放</a></div></li><li class="toc-group" data-id="g4"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#下一步怎样验收">下一步怎样验收</a></div></li></ul></div></nav>
+<nav class="toc" aria-label="文档目录"><div class="toc-head"><span class="toc-title">目录</span><span class="toc-actions"><button class="toc-btn" type="button" data-act="expand">全展开</button><button class="toc-btn" type="button" data-act="collapse">全收起</button><button class="toc-btn" type="button" data-act="hide">隐藏</button></span></div><div class="toc-scroll"><ul class="toc-list"><li class="toc-group" data-id="g0"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#现在进展到哪里">现在进展到哪里</a></div></li><li class="toc-group" data-id="g1"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#哪些灯光体验已经验证">哪些灯光体验已经验证</a></div></li><li class="toc-group" data-id="g2"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#构建与自动检查怎样">构建与自动检查怎样</a></div></li><li class="toc-group" data-id="g3"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#哪些能力还没有开放">哪些能力还没有开放</a></div></li><li class="toc-group" data-id="g4"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#下一步验证什么">下一步验证什么</a></div></li></ul></div></nav>
 <main class="doc">
-<header class="masthead"><div class="kicker">NuPhy Lab · Windows 开发与验收</div><h1>Windows 开发进度</h1><p class="standfirst">Windows 代码已集成到官方 1.2.54，代码审查完成，尚未重新打包。自动检查与真实使用验收分开记录。</p><div class="meta-strip"><span><b>当前阶段</b> 官方新版代码集成完成，待实机验收</span><span><b>支持目标</b> Windows 10 22H2 和 Windows 11 x64</span><span><b>更新日期</b> 2026-11-22</span></div></header>
+<header class="masthead"><div class="kicker">NuPhy Lab · Windows 开发与验收</div><h1>Windows 开发进度</h1><p class="standfirst">新版 1.2.54 已在 Windows 10 构建并启动，三项真实灯光验证通过。安装和其他功能继续按场景验收。</p><div class="meta-strip"><span><b>当前阶段</b> Windows 10 灯光专项完成</span><span><b>支持目标</b> Windows 10 22H2 和 Windows 11 x64</span><span><b>更新日期</b> 2026-11-23</span></div></header>
 
 <h2 id="现在进展到哪里">现在进展到哪里</h2>
-<p><strong>Windows 实现已接到官方 1.2.54，保留官方新版 Mac 功能。</strong> 代码在独立集成分支，按本轮授权本地提交。已有窗口、作品保存、灯光恢复、输入、声音和任务状态的代码一起迁入。</p>
-<p>这是代码集成结果，本轮没有生成 Windows 安装包，也没有启动新版进行真实键盘测试。</p>
-<h2 id="已有能力包括什么">已有能力包括什么</h2>
-<p>可以在本机编辑、保存灯光作品。键盘唯一身份和固件符合要求后，才允许灯光播放；停止、退出或异常重开时，原有恢复机制继续负责原设置。</p>
-<p>已有任务恢复、切回和窗口定位的源码入口保留。它们只尝试经过核对的目标，不自动发送消息、按键或批准请求；真实工具和终端仍需验收。</p>
-<h2 id="自动检查有哪些结果">自动检查有哪些结果</h2>
-<p>Windows 相关检查通过 263 项，1 项按平台跳过。设置等相关检查通过 52 项，前端构建、Rust 测试、Mac 代码检查与 Windows 原生组件静态检查也通过。</p>
-<p>审查发现的“打开官方工具”误报问题已修复，相关检查 48 项、桌面宿主 25 项通过。</p>
-<p>共享回归剩余 24 个失败，已在官方原版复现相同错误，未并入本次修改。完整 Windows 桌面检查受本机缺少资源编译工具限制，不能当作已通过。</p>
-<h2 id="哪些功能还没有开放">哪些功能还没有开放</h2>
-<p>真实改键、可信实体 AI 按键、审批和听写继续关闭。Claude 外部窗口与终端标签页的关联仍未完成。Windows 对固件的限制独立维护，不因为 Mac 支持就自动开放写入，也不接管已有自定义按键。</p>
-<p>屏幕回放、Dock 场景等新 Mac 能力没有在本次顺带移植。</p>
-<h2 id="下一步怎样验收">下一步怎样验收</h2>
-<p>下一轮在真实 Windows 构建新版，集中验证保存重开、灯光播放、恢复原灯效和退出恢复，再覆盖输入、声音、安装升级及 Windows 11。</p>
-<p>正式签名和自动更新仍需真实证书、密钥与发布配置。此前旧版测试保留为历史记录，不代替 1.2.54 的验收。</p>
-<p><a href="WINDOWS_DEVELOPMENT.md">完整开发指南</a> · <a href="WINDOWS_UPSTREAM_INTEGRATION_PLAN.summary.html">集成结果</a> · <a href="WINDOWS_DEVELOPMENT.summary.md">概要 Markdown</a></p>
+<p><strong>Windows 实现已集成到官方 1.2.54，源码提交为 2b4a1b1。</strong> 本轮已同步到 Windows，构建完整程序和内部安装包，并在真实桌面启动。验收结束后，新版保持正常打开。</p>
+<h2 id="哪些灯光体验已经验证">哪些灯光体验已经验证</h2>
+<p>在 Windows 10、有线连接的 Air75 V3 2.0.0.7 上，已完成爱心静态播放、循环呼吸、点击恢复原灯效，以及动画播放中正常退出恢复。你已确认实体键盘能看到呼吸变化。</p>
+<p>停止和退出后均用独立程序重新读取，原灯效、104 个灯位颜色、休眠和完整键位一致，退出后没有待恢复记录。测试图案没有保存，原有两份作品内容一致；设置变化及原备份保留。</p>
+<h2 id="构建与自动检查怎样">构建与自动检查怎样</h2>
+<p>Windows 完整 release、前端类型构建、桌面程序和约 29 MB 的内部安装包均构建通过。源码与包内运行文件也核对一致。安装包尚未实际安装。</p>
+<p>此前 Windows 专项 263 项通过、1 项按平台跳过；审查修复后的相关检查 48 项、宿主 25 项通过。共享回归的 24 个官方原版失败仍保留，没有把灯光实测扩大成整体功能验收。</p>
+<h2 id="哪些能力还没有开放">哪些能力还没有开放</h2>
+<p>Windows 和 Mac 的功能尚未完全一样。两端共享界面和业务，底层分别使用 Tauri 与 Swift；音乐、智能框选、键盘口袋、语音和屏幕类工具等没有在 Windows 完整移植。</p>
+<p>真实改键、可信实体 AI 按键、审批和听写继续关闭。Claude 外部窗口与终端标签关联仍未完成。Windows 的固件资格独立维护，已有自定义按键不接管、不重置。</p>
+<h2 id="下一步验证什么">下一步验证什么</h2>
+<p>继续验证保存重开、声音和真实输入，再安排 Windows 11、安装升级卸载及长期运行。正式签名和自动更新仍需真实证书、密钥与发布配置。</p>
+<p>当前结果只覆盖这台电脑、这把键盘和当前固件；旧版验收记录继续作为历史保留。</p>
+<p><a href="WINDOWS_DEVELOPMENT.md">完整开发指南</a> · <a href="WINDOWS_UPSTREAM_INTEGRATION_PLAN.summary.html">集成与实测结果</a> · <a href="WINDOWS_DEVELOPMENT.summary.md">概要 Markdown</a></p>
 
-<footer class="doc-footer"><span>由概要 Markdown 通过 doc-page 生成 · 完整记录见详细指南</span><span>官方新版代码集成完成，待实机验收 · Windows 10 22H2 和 Windows 11 x64 · 2026-11-22</span></footer>
+<footer class="doc-footer"><span>由概要 Markdown 通过 doc-page 生成 · 完整记录见详细指南</span><span>Windows 10 灯光专项完成 · Windows 10 22H2 和 Windows 11 x64 · 2026-11-23</span></footer>
 </main>
 </div>
 <button class="toc-fab" type="button" aria-label="打开目录">目录</button>

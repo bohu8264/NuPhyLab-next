@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Windows 已接到官方新版</title>
+<title>Windows 新版灯光实测通过</title>
 <style>
 /* ==========================================================================
    TalkFlow 文档样式 —— 唯一样式源
@@ -1426,28 +1426,30 @@ body {
 </head>
 <body>
 <div class="shell">
-<nav class="toc" aria-label="文档目录"><div class="toc-head"><span class="toc-title">目录</span><span class="toc-actions"><button class="toc-btn" type="button" data-act="expand">全展开</button><button class="toc-btn" type="button" data-act="collapse">全收起</button><button class="toc-btn" type="button" data-act="hide">隐藏</button></span></div><div class="toc-scroll"><ul class="toc-list"><li class="toc-group" data-id="g0"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#这次完成了什么">这次完成了什么</a></div></li><li class="toc-group" data-id="g1"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#新旧功能怎样放在一起">新旧功能怎样放在一起</a></div></li><li class="toc-group" data-id="g2"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#检查结果怎样">检查结果怎样</a></div></li><li class="toc-group" data-id="g3"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#现在能发包测试吗">现在能发包测试吗</a></div></li><li class="toc-group" data-id="g4"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#还有哪些边界">还有哪些边界</a></div></li></ul></div></nav>
+<nav class="toc" aria-label="文档目录"><div class="toc-head"><span class="toc-title">目录</span><span class="toc-actions"><button class="toc-btn" type="button" data-act="expand">全展开</button><button class="toc-btn" type="button" data-act="collapse">全收起</button><button class="toc-btn" type="button" data-act="hide">隐藏</button></span></div><div class="toc-scroll"><ul class="toc-list"><li class="toc-group" data-id="g0"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#现在完成到哪里">现在完成到哪里</a></div></li><li class="toc-group" data-id="g1"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#三项测试有什么结果">三项测试有什么结果</a></div></li><li class="toc-group" data-id="g2"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#怎样继续使用">怎样继续使用</a></div></li><li class="toc-group" data-id="g3"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#windows-和-mac-一样了吗">Windows 和 Mac 一样了吗</a></div></li><li class="toc-group" data-id="g4"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#还有什么需要验证">还有什么需要验证</a></div></li></ul></div></nav>
 <main class="doc">
-<header class="masthead"><div class="kicker">NuPhy Lab · Windows 集成结果</div><h1>Windows 已接到官方新版</h1><p class="standfirst">现有 Windows 代码已集成到官方 1.2.54，保留 Mac 新功能。代码审查发现的交接问题已修复，Windows 实机验收另轮进行。</p><div class="meta-strip"><span><b>当前状态</b> 代码审查完成，待实机验收</span><span><b>官方基线</b> 1.2.54</span><span><b>更新日期</b> 2026-11-22</span></div></header>
+<header class="masthead"><div class="kicker">NuPhy Lab · Windows 集成与实测</div><h1>Windows 新版灯光实测通过</h1><p class="standfirst">官方 1.2.54 的 Windows 版本已同步、构建并启动。在这台 Windows 10 和 Air75 V3 上，播放、恢复和退出恢复三项通过。</p><div class="meta-strip"><span><b>当前状态</b> Windows 10 灯光专项通过</span><span><b>源码版本</b> 1.2.54 · 2b4a1b1</span><span><b>更新日期</b> 2026-11-23</span></div></header>
 
-<h2 id="这次完成了什么">这次完成了什么</h2>
-<p><strong>现有 Windows 版本已集成到官方 1.2.54 的独立分支。</strong> 保留了官方新增的 Mac 功能；Windows 的窗口、后台、灯光恢复、输入、声音和已有 AI 入口一起迁入，没有直接用旧目录覆盖新版。</p>
-<p>代码审查已完成，并修复了“打开官方工具”误报失败的问题。三个程序部分现在共用同一个官方地址；键盘未安全释放时仍会阻止交接。本地提交按本轮授权进行，没有推送或发布安装包。</p>
-<h2 id="新旧功能怎样放在一起">新旧功能怎样放在一起</h2>
-<p>Windows 使用新版界面，可以管理已支持的功能入口，继续编辑和保存灯光作品。屏幕回放、Dock 场景等 Mac 专属能力保留在 Mac，没有假装已支持 Windows。</p>
-<p>两端的固件资格也分开处理。Mac 默认固件升级，不会自动打开 Windows 改键、休眠写入或未知固件。已有自定义按键不接管、不重置。</p>
-<h2 id="检查结果怎样">检查结果怎样</h2>
-<p>Windows 相关检查通过 263 项，1 项按平台跳过；新版设置等相关检查通过 52 项；审查修复后，相关检查 48 项、桌面宿主 25 项通过。前端构建、Rust 自动测试、Mac 代码检查和 Windows 原生组件的静态检查通过。</p>
-<p>共享回归仍有 24 个失败，已在未改动的官方原版逐项复现，错误内容相同。本次没有顺带修改这些上游问题，完整报告保留清单。</p>
-<h2 id="现在能发包测试吗">现在能发包测试吗</h2>
-<p><strong>本轮完成的是代码集成与自动检查，没有生成或启动新的 Windows 安装包。</strong> 完整 Windows 桌面检查还缺本机资源编译工具，不能说已全部通过。</p>
-<p>下一轮需要在真实 Windows 构建，集中验证保存重开、灯光播放、恢复原灯效和退出恢复，再检查输入、声音、安装与升级。旧版实机结果不代替新版体验。</p>
-<h2 id="还有哪些边界">还有哪些边界</h2>
-<p>真实改键、实体 AI 按键、审批和听写等尚未完成的能力继续关闭。真实签名、自动更新和 Windows 11 验收也分别保留。</p>
-<p>统一 release 命令仍是另一份待审核方案，本次只迁入已有构建能力。下一步安排 Windows 构建和实机测试。</p>
-<p><a href="WINDOWS_UPSTREAM_INTEGRATION_PLAN.md">完整集成报告</a> · <a href="WINDOWS_UPSTREAM_INTEGRATION_PLAN.summary.md">概要 Markdown</a> · <a href="README.md">文档目录</a></p>
+<h2 id="现在完成到哪里">现在完成到哪里</h2>
+<p><strong>新版已在 Windows 电脑构建成功，并保持打开。</strong> 源码来自已提交的官方集成分支，保留新版 Mac 功能；Windows 继续使用 Tauri 桌面程序。已有约 29 MB 的内部安装包，本轮直接运行完整程序目录，没有执行安装器。</p>
+<h2 id="三项测试有什么结果">三项测试有什么结果</h2>
+<ul>
+<li><strong>播放通过。</strong> 爱心图案能提交到真实键盘，呼吸动画持续输出，你也确认看到了灯光连续变亮、变暗。</li>
+<li><strong>恢复原灯效通过。</strong> 点击恢复后，独立程序重新读取键盘，灯效、全部灯位颜色、休眠和键位与测试前一致。</li>
+<li><strong>退出恢复通过。</strong> 动画仍播放时正常关窗，程序退出后再次独立读取，原设置一致，也没有留下待恢复记录。</li>
+</ul>
+<p>测试使用 Windows 10、有线模式和 Air75 V3 的 2.0.0.7 固件。临时图案没有保存，原有两份作品内容一致。设置部分有变化，当前值和原备份都保留，没有用备份覆盖你的设置。</p>
+<h2 id="怎样继续使用">怎样继续使用</h2>
+<p>新版位于 Windows 的独立验收目录，完整启动路径见详细报告。旧版保留。新版主程序已确认使用图形窗口，验收结束后移除了调试参数与临时任务。</p>
+<p>实现代码仍为已验收版本；验收记录与功能差异说明单独保存到 Git，没有推送或对外发布。</p>
+<h2 id="windows-和-mac-一样了吗">Windows 和 Mac 一样了吗</h2>
+<p>还没有全部一样。两端共用新版界面、灯光业务和作品格式。Windows 已验证核心灯光，但音乐演奏、音乐库、智能框选、键盘口袋、语音和屏幕类工具等仍未移植或开放。真实改键、实体 AI 操作也未开放，声音和按键等能力还需实机验收。</p>
+<h2 id="还有什么需要验证">还有什么需要验证</h2>
+<p>Windows 11、安装升级、保存重开、声音、真实输入、其他设备与长期使用仍待验收。真实改键、实体 AI 按键、签名和自动更新的限制保持。</p>
+<p>此前共享自动检查仍有 24 个官方原版也能复现的失败，清单保留。统一 release 命令仍是另一个待审核方案。</p>
+<p><a href="WINDOWS_UPSTREAM_INTEGRATION_PLAN.md">完整集成与验收报告</a> · <a href="WINDOWS_UPSTREAM_INTEGRATION_PLAN.summary.md">概要 Markdown</a> · <a href="README.md">文档目录</a></p>
 
-<footer class="doc-footer"><span>由通俗概要通过 doc-page 生成 · 检查明细见完整报告</span><span>代码审查完成，待实机验收 · 1.2.54 · 2026-11-22</span></footer>
+<footer class="doc-footer"><span>由通俗概要通过 doc-page 生成 · 详细依据见完整报告</span><span>Windows 10 灯光专项通过 · 1.2.54 · 2b4a1b1 · 2026-11-23</span></footer>
 </main>
 </div>
 <button class="toc-fab" type="button" aria-label="打开目录">目录</button>
