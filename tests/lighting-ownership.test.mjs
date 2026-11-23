@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {fakeService,until} from './helpers/fake-service.mjs';
+import {enableGameFeature,fakeService,until} from './helpers/fake-service.mjs';
 import {heart} from '../shared/layout.mjs';
 
 const tasks=[{id:'first',title:'First',status:'running'},{id:'second',title:'Second',status:'completed'}];
@@ -14,6 +14,7 @@ const modes={
 };
 for(const [name,start] of Object.entries(modes)) test(`Codex preserves ordinary ${name} or safely takes special-mode ownership, then rejects stopped stale output`,async t=>{
   const s=await fakeService(t,{tasks});
+  if(name==='game')await enableGameFeature(s);
   await s.command({op:'settings',settings:{codexEnabled:true,brightness:100,codexBrightness:100,codexSelectedPulse:false,quotaSideEnabled:true}});
   assert.equal((await start(s)).ok,true);
   const previous=await s.state(),oldAudio=previous.audio.session;

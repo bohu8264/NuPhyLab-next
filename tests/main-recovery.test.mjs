@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fakeService, until } from "./helpers/fake-service.mjs";
+import { enableGameFeature, fakeService, until } from "./helpers/fake-service.mjs";
 
 function assertArmedAndMutedBeforePaint(operations, event) {
   const eventAt = operations.findLastIndex((entry) => entry.event === event);
@@ -73,6 +73,7 @@ test('a verified explicit reconnect clears a prior playback error',async t=>{
 
 test("successful explicit restore clears the playback recovery warning", { timeout: 15000 }, async (t) => {
   const service = await fakeService(t);
+  await enableGameFeature(service);
   assert.equal((await service.command({ op: "gameStart", speed: 10 })).ok, true);
   await service.configure({ failPaint: 1 });
   await until(service.state, state => Boolean(state.playback.lastError), "playback failure was not surfaced");
@@ -89,6 +90,7 @@ test(
   { timeout: 15000 },
   async (t) => {
     const service = await fakeService(t, { failPaint: 1 });
+    await enableGameFeature(service);
     const failed = await service.command({ op: "gameStart", speed: 1 });
     assert.equal(failed.ok, false);
     assert.match(failed.error, /simulated paint failure/);
@@ -109,6 +111,7 @@ test(
   { timeout: 15000 },
   async (t) => {
     const service = await fakeService(t);
+    await enableGameFeature(service);
     assert.equal(
       (await service.command({ op: "gameStart", speed: 10 })).ok,
       true,
@@ -138,6 +141,7 @@ test(
   { timeout: 15000 },
   async (t) => {
     const service = await fakeService(t);
+    await enableGameFeature(service);
     assert.equal(
       (await service.command({ op: "gameStart", speed: 1 })).ok,
       true,

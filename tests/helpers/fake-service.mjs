@@ -511,3 +511,11 @@ export class FirmwareChecker extends RealChecker {
     claudeHookDir: path.join(dataDir, "claude-hook"),
     claudeSupportDir: path.join(dir, "claude-support") };
 }
+
+export async function enableGameFeature(service) {
+  const settings=(await service.state()).settings;
+  const reply=await service.command({op:'settings',settings:{
+    sidebarFeatures:[...new Set([...settings.sidebarFeatures,'game'])],
+  }});
+  assert.equal(reply.ok,true,JSON.stringify(reply));
+}

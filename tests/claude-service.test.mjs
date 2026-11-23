@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {mkdir,readFile,writeFile} from 'node:fs/promises';
 import path from 'node:path';
-import {fakeService,until} from './helpers/fake-service.mjs';
+import {enableGameFeature,fakeService,until} from './helpers/fake-service.mjs';
 import {HOOK_MARKER} from '../server/claude-hooks.mjs';
 import {HOOK_EVENTS} from '../server/claude-events.mjs';
 import {CLAUDE_STATUS_COLORS} from '../shared/claude-lighting.mjs';
@@ -202,6 +202,7 @@ test('jumping to a terminal session is refused with a reason instead of guessing
 });
 test('games and key triggers take the lights back from Claude Code',async t=>{
  const service=await claudeService(t);
+  await enableGameFeature(service);
  await service.command({op:'settings',settings:{agentSource:'claude',claudeEnabled:true,claudeSelectedPulse:false,
    claudeBrightness:100,brightness:100,claudeTaskAction:'selectOnly'}});
  await hook(service,{hook_event_name:'UserPromptSubmit',session_id:'game-test',cwd:'/Users/x/g'});

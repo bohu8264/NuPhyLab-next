@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {KeyAdaptation,planKeyAdaptation} from '../server/key-adaptation.mjs';
-import {fakeService,until} from './helpers/fake-service.mjs';
+import {enableGameFeature,fakeService,until} from './helpers/fake-service.mjs';
 
 const keys=Array.from({length:12},(_,i)=>`F${i+1}`);
 function keymap(media=false) {
@@ -94,6 +94,7 @@ test('service setup persists intent, preserves custom bindings/scenes and restor
 });
 test('service waits for permission then resumes; replug and games restore and re-apply scoped mappings',async t=>{
   const service=await fakeService(t,{keymap:keymap(true)});
+  await enableGameFeature(service);
   await service.command({op:'connect'});await service.command({op:'codexAdapt'});
   assert.equal((await service.state()).codex.adaptation.status,'permissions');
   await service.configure({permissions:{inputMonitoring:true,accessibility:true,canPostEvents:true}});

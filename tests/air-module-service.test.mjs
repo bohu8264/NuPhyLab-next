@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { fakeService } from "./helpers/fake-service.mjs";
+import { enableGameFeature, fakeService } from "./helpers/fake-service.mjs";
 import { heart } from "../shared/layout.mjs";
 
 const lightingSnapshot = state => ({
@@ -68,6 +68,7 @@ test("Air module API rejects invalid values before changing the preference or ha
 
 test('Air module-only changes preserve static, paused, agent and paused-game output, artwork and calibration',async t=>{
   const service=await calibratedService(t);
+  await enableGameFeature(service);
   await ok(service,{op:'saveScene',scene:{name:'Keep source artwork',colors,animation:{effect:'frames',hueShift:22,brightness:41,speed:4,loop:true,frames:[{colors,duration:400}]}}});
   const setups=[
     ['static',async()=>{await ok(service,{op:'settings',settings:{codexEnabled:false}});await ok(service,{op:'preview',colors});}],

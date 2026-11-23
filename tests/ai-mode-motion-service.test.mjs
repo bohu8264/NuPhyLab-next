@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile,mkdir,writeFile} from 'node:fs/promises';
 import {spawn} from 'node:child_process';
 import path from 'node:path';
-import {fakeService,until} from './helpers/fake-service.mjs';
+import {enableGameFeature,fakeService,until} from './helpers/fake-service.mjs';
 import {HOOK_MARKER} from '../server/claude-hooks.mjs';
 import {resolveAgentLightingView} from '../shared/agent-lighting-view.mjs';
 
@@ -45,6 +45,7 @@ test('sole-task automatic whole mode works, and a missing explicit task never si
 
 test('restored, inactive static, game, zero-brightness and disconnected output retains truthful AI ownership',async t=>{
   const s=await fakeService(t,{tasks});
+  await enableGameFeature(s);
   await ok(s,{op:'settings',settings:{brightness:100,codexSelectedPulse:false,codexBrightness:100,lightIdleMs:0}});
   await ok(s,{op:'preview',colors:Array(84).fill('#112233')});
   await ok(s,{op:'settings',settings:{codexLightMode:'whole',codexAmbient:true}});let state=await s.state();assert.equal(state.playback.mode,'static');assert.ok(state.colors.every(color=>color==='#112233'));assert.equal(resolveAgentLightingView('codex',state).ownsOutput,false);

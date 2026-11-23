@@ -10,11 +10,8 @@ on:
       - 'shared/**'
       - 'ui/**'
       - 'scripts/windows/**'
-      - 'tests/windows-*'
-      - 'tests/update-notices.test.mjs'
-      - 'tests/contracts/**'
-      - 'tests/fixtures/windows-lighting-*'
-      - 'tests/helpers/**'
+      - 'scripts/fetch-sparkle.mjs'
+      - 'tests/**'
       - 'Cargo.*'
       - 'package*.json'
       - '.cargo/**'
@@ -46,8 +43,8 @@ jobs:
         run: npm run windows:test
       - name: Check native warnings
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
-      - name: Test shared behavior
-        run: npm test
+      # The complete Node suite includes macOS native/legacy service fixtures
+      # and runs in shared-macos; Windows uses its dedicated contracts above.
       - name: Build internal preview installer
         run: npm run windows:build
       - uses: actions/upload-artifact@v7
@@ -66,6 +63,7 @@ jobs:
         run: |
           npm ci
           npm ci --prefix ui
+          node --input-type=module -e "import {ensureSparkle} from './scripts/fetch-sparkle.mjs'; await ensureSparkle()"
           cargo build --locked -p nuphylab-hid
           cargo build --locked -p nuphylab-core --example lighting-simulator
           npm test

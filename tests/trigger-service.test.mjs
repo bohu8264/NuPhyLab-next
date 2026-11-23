@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fakeService, until } from "./helpers/fake-service.mjs";
+import { enableGameFeature, fakeService, until } from "./helpers/fake-service.mjs";
 import { heart, blank } from "../shared/layout.mjs";
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const arm = (service, trigger = {}) => service.command({ op: "triggerArm", colors: heart(), trigger });
@@ -82,6 +82,7 @@ test("trigger settings and each key's colors survive saving, and invalid setting
 
 test("painting, animation and games release the trigger and stale key events cannot relight it", async t => {
   const service = await fakeService(t);
+  await enableGameFeature(service);
   await service.command({ op: "settings", settings: { brightness: 100 } });
   await arm(service);
   await service.command({ op: "gameStart", gameType: "whack" });

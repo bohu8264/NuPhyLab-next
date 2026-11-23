@@ -2,7 +2,7 @@
 
 [通俗网页版](WINDOWS_UPSTREAM_INTEGRATION_PLAN.summary.html) · [概要 Markdown](WINDOWS_UPSTREAM_INTEGRATION_PLAN.summary.md) · [文档目录](README.md)
 
-状态：**集成源码已提交为 `2b4a1b1`，Windows 10 真实灯光三项验收通过。** 日期：2026 年 11 月 22 日。Windows 11、安装及其他功能仍待验收；本轮未改实现代码，未运行安装器或操作真实 AI 会话。
+状态：**官方 1.2.54 的 Windows 集成及三项真实灯光验收已完成；PR #3 的 CI 修复已在本地实施，本地完整共享回归已通过，等待 GitHub 复跑。** 日期：2026 年 11 月 23 日。本轮修改构建准备、CI 和测试夹具；修复尚未提交或推送，没有替换运行中程序或执行安装器。
 
 ## 来源与集成位置
 
@@ -10,11 +10,11 @@
 | --- | --- |
 | Windows 来源 | 本机 `/Users/unofficial/www/NuPhyLab-1.2.40` 的 `feat/windows-tauri`，已提交实现来源 `787bd5d` |
 | 官方目标 | `/Users/unofficial/www/talkflow/NuPhyLab-next` |
-| 目标分支 | `codex/windows-integration`，从最新 `origin/main` 创建 |
+| 分支与 PR | 起始分支 codex/windows-integration，现已合并至本地 wqj_dev；用户已推送并创建 [PR #3](https://github.com/bohu8264/NuPhyLab-next/pull/3) |
 | 官方基线 | `de435b53097fa3424aa04a69aeb0e6434a6931aa`，产品版本 1.2.54 |
 | 本次改动身份 | Windows 集成改动，提交身份以本分支 Git 记录为准；上列官方基线本身不包含本次改动 |
 | 共同迁移基线 | 来源初始 `8dfc896` 与官方 `82b263b` 的 353 个跟踪文件、模式和 Git 对象完全一致 |
-| 审核与交付 | 按批准计划完成代码集成、本地检查与审查修复；按用户授权本地提交，不推送、不创建 PR、不合并原分支、不上传安装包 |
+| 审核与交付 | 集成与实测说明已提交；本轮按批准范围修复两项 CI 失败，改完等待审查，不提交、不推送、不合并 PR |
 
 初次调研时官方本地副本为 1.2.53 / `72adc90`；实施前刷新远程发现两个新提交，按批准范围将实际起点更新为 1.2.54。相对共同 1.2.40 基线，原 Windows 分支有 239 个变化路径；三方迁移保留官方新增文件，对重叠文件逐项处理，没有删除官方跟踪文件。未复制旧安装器、编译缓存、作品、恢复记录或凭据作为源码。
 
@@ -83,10 +83,37 @@
 
 本次结论覆盖这台 Windows 10 和这把 Air75 V3 2.0.0.7 的 Windows 档。Windows 11、安装器实际安装/升级/卸载、保存重开、其他设备/固件、声音、真实输入、断电和长期运行仍待验收；真实改键、实体 AI 键、签名及自动更新的限制保持。
 
+## PR #3 的 CI 修复（2026 年 11 月 23 日）
+
+[失败运行 45141225097](https://github.com/bohu8264/NuPhyLab-next/actions/runs/45141225097) 的 Windows 任务停在 SQLite 准备；macOS 任务共 1525 项，1497 通过、27 失败、1 跳过。已按批准范围定位并修复：
+
+- **Windows 解压不兼容。** 完整日志证实 Expand-Archive 调用三参数 ExtractToDirectory 时找不到对应重载，步骤约 5 秒即失败，没有触发 30 秒超时。新实现使用 Windows PowerShell 5 支持的 ZipFile/ExtractToFile 接口，只提取 sqlite3.exe，不依赖继承的 Archive 模块；保留 30 秒上限、归档大小限制、SHA-256/SHA3-256 和可执行文件摘要。失败信息区分超时与非零退出，并保留原始异常。
+- **macOS 缺少 Sparkle SDK。** 干净 CI 未准备固定版本的更新框架，导致拖放宿主、音乐宿主和更新委托三项原生检查编译/链接失败。共享任务在测试前调用已有 ensureSparkle，仍按更新配置核对 SDK 摘要，没有修改官方 Swift 代码或更新源。
+- **24 项旧夹具失配。** 游戏现默认关闭，相关测试须先通过真实设置接口启用 game；没有改变产品默认值或绕过功能中心保护。另将恢复断言更新为当前 expectedProfile 参数，并为提取的实际输出函数补齐 agentSideReceipt 夹具变量。听写释放用例的本次失败也来自游戏未启动，修正前置条件后原断言通过。
+- **测试按实际平台分工。** 完整共享套件保留在 shared-macos。Windows 原样保留 windows:test、Rust 全工作区 Clippy 与安装包构建；windows:test 包含全部 Windows Node 专项、两个原生进程契约及三个 Rust crate 的测试。旧 macOS 模拟器在 Windows 缺少当前握手，独立复现为桥接回复格式错误，因此不再由 Windows 任务重复运行整套 Mac 夹具。所有测试改动及 Sparkle 准备脚本改动均触发该工作流，没有使用 continue-on-error。
+
+本轮实际验证：
+
+| 检查 | 结果与边界 |
+| --- | --- |
+| Windows 解压回归 | 同一隔离目录中旧实现 4 项失败；修复后 4 项全部通过，覆盖空格/中文路径、模拟不兼容的 Archive 命令、缺少可执行文件及错误分类 |
+| 游戏夹具反证 | 临时撤掉首个游戏启用调用，对应用例实际失败，随后恢复原字节 |
+| 受影响共享回归 | 126 项全部通过；灯光计时 9 项通过，增加显式游戏启动确认后对应单项通过 |
+| Sparkle 原生回归 | 原失败的拖放宿主、音乐宿主和更新委托共 3 项全部通过 |
+| 工作流 | YAML 解析、SDK 准备顺序、Windows 门禁和失败处理检查通过 |
+| 完整共享 Node 回归 | 1529 项：1525 通过、0 失败、4 项按平台跳过；Node 23.10.0，总耗时 343.8 秒 |
+| 固定 SQLite 真归档 | Mac 下载的官方归档双摘要一致；Windows 隔离目录清空缓存后，完整归档校验、解压、EXE 摘要及 3.54.1 版本检查通过，生产准备脚本摘要与本地一致 |
+
+Windows 本机直接外网下载检查超过外层 50 秒时限，未取得完成回执；已按命令和创建时间核对并停止本轮自建下载进程。固定真实归档测试只替换网络输入，校验、提取和落盘仍使用原函数，未将其记为干净网络下载通过。
+
+两份概要按 doc-page 校验并生成网页；桌面/窄屏、深浅主题共 8 个视图的目录、相对链接及溢出检查通过，页面错误为 0，已实际查看桌面深色和窄屏浅色截图。
+
+本轮仅使用隔离设备夹具和临时 Windows 目录，不访问真实键盘或用户作品。临时验证日志位于本机 /private/tmp/nuphy-sqlite-ci-20261123，临时目录不作为长期发行凭据。GitHub 干净运行器上的两项任务须在用户审查、提交并推送后重新执行，尚未记为通过；Windows 11、安装和既有功能限制不因本轮修复改变。
+
 ## 集成与审查阶段的自动检查
 
 
-以下为此前集成与审查阶段的实际结果，本轮源码未改，未重复这些已通过的检查。命令均从目标仓库执行，使用 Bash。为节省磁盘，当前本机复用了已安装且锁文件一致的 UI 依赖、Cargo 缓存及相同摘要配置的 Sparkle SDK；这些缓存没有纳入源码。Node 使用本机 `/opt/homebrew/bin/node` 23.10.0，满足项目 Node >=22 的声明。全量中涉及 Swift 的检查使用隔离夹具，没有启动正式应用。
+以下为此前集成与审查阶段的历史结果；24 项共享失败的本轮修复与复测见上节。命令均从目标仓库执行，使用 Bash。为节省磁盘，当前本机复用了已安装且锁文件一致的 UI 依赖、Cargo 缓存及相同摘要配置的 Sparkle SDK；这些缓存没有纳入源码。Node 使用本机 `/opt/homebrew/bin/node` 23.10.0，满足项目 Node >=22 的声明。全量中涉及 Swift 的检查使用隔离夹具，没有启动正式应用。
 
 | 检查 | 实际结果与边界 |
 | --- | --- |
@@ -115,9 +142,9 @@ cargo clippy --locked -p nuphylab-core -p nuphylab-hid --all-targets --target x8
 
 Node 测试中的原生进程契约需要先从当前源码编译 `nuphylab-hid` 和 `lighting-simulator`，或使用已正确配置的当前构建缓存；不能拿旧版本 EXE 代替。测试日志本轮保存在本机 `/private/tmp/nuphy-upstream-integration/`，临时目录不是长期归档或发行凭据。
 
-## 已确认的上游失败
+## 上游旧夹具失败历史（24 项已修复）
 
-以下 24 项在本次工作区和官方原版的名称与错误内容一致。多数涉及旧测试夹具没有启用新增功能中心入口，另有旧断言和听写释放场景。这里只报告已复现的失败，不把未进一步定位的原因写成已修复结论，也不称共享回归全绿。
+以下 24 项曾在集成工作区与未改动的官方 1.2.54 上复现相同错误。本轮已按根因修正游戏启用前置条件、恢复参数断言和输出函数夹具，受影响回归均通过；原名称保留作为可追溯清单，完整共享结果见本轮 CI 修复节。
 
 - `tests/ai-mode-motion-service.test.mjs`：restored, inactive static, game, zero-brightness and disconnected output retains truthful AI ownership
 - `tests/air-module-service.test.mjs`：Air module-only changes preserve static, paused, agent and paused-game output, artwork and calibration
@@ -152,4 +179,4 @@ Node 测试中的原生进程契约需要先从当前源码编译 `nuphylab-hid`
 - Mac 上的完整 Windows Tauri 跨目标 Clippy 仍受资源编译器缺失限制；本轮已在 Windows 真实环境完成完整 release 和 NSIS 构建，没有补跑该 Clippy 检查。
 - 集成阶段开始时本机磁盘约 1.2 GiB，执行中系统释放了空间；没有删除其他项目文件。后续真机打包前重新一次性检查空间、开发服务、实际监听端口和测试目录。
 
-当前维护入口为官方工作区的 `codex/windows-integration`。集成源码已在上轮审查后提交 `2b4a1b1`；实机验收记录与功能差异说明保存为独立文档提交，提交身份见 Git 记录。没有推送、发起 PR 或合并。
+当前维护入口为官方工作区的 wqj_dev，PR #3 等待审查。集成实现为 2b4a1b1，验收记录为 2c3d868；本轮 CI 修复仍在本地，未提交、推送或合并 PR。

@@ -2,6 +2,18 @@
 
 [通俗网页版](WINDOWS_DEVELOPMENT.summary.html) · [概要 Markdown](WINDOWS_DEVELOPMENT.summary.md) · [架构计划](WINDOWS_ARCHITECTURE_PLAN.md)
 
+## PR #3 的 CI 修复（2026 年 11 月 23 日）
+
+本轮按批准范围修复 Windows SQLite 解压、macOS 缺少 Sparkle SDK 和 24 项旧测试夹具失配。Windows 继续使用兼容的固定版本 SQLite，归档双摘要及可执行文件摘要不变；共享测试先准备已固定摘要的 Sparkle。游戏相关夹具明确启用功能，产品默认关闭和 Windows 未开放能力保持。
+
+完整共享套件由 macOS 任务执行；Windows 使用既有专用套件、原生进程契约、Rust 测试/Clippy 和完整构建。旧 Mac 模拟器在 Windows 的桥接格式失败已独立复现，没有放宽生产握手或删除用例。
+
+Windows 解压旧实现 4 项失败、修复后 4 项通过；受影响共享回归 126 项、灯光计时 9 项和 Sparkle 原生 3 项均通过。临时撤掉游戏夹具修复后，对应用例重新失败。完整共享回归 1529 项中 1525 通过、0 失败、4 项按平台跳过。Windows 固定真实归档的无缓存校验、解压和版本检查通过；直接网络下载仍待干净 CI 验证。详见[CI 修复记录](WINDOWS_UPSTREAM_INTEGRATION_PLAN.md)。
+
+两份概要按 doc-page 校验并生成网页；桌面/窄屏、深浅主题共 8 个视图的目录、相对链接及溢出检查通过，页面错误为 0，已实际查看桌面深色和窄屏浅色截图。
+
+改动尚未提交、推送或触发 GitHub 复跑；未替换当前 Windows 程序、执行安装器或访问真实键盘。以下灯光实测和旧阶段记录保留各自日期与范围。
+
 ## 1.2.54 Windows 10 灯光实机结果（2026 年 11 月 22 日）
 
 **源码 `2b4a1b1` 已同步、完整构建并在实际桌面运行；播放、恢复原灯效和动画中正常退出恢复三项通过。** 设备为有线 Windows 档 Air75 V3 2.0.0.7。用户已确认实体呼吸变化；停止及退出后独立读取的灯效设置、全部 104 个颜色、休眠和完整键位均与基线一致，退出后原生检查无待恢复记录。
@@ -10,7 +22,7 @@
 
 本轮正常关窗而非强杀，退出码读取得到 null，未按 0 记录。临时草稿恢复原文，测试图案未保存，两份原作品内容一致；设置部分变化保留，原备份未覆盖当前值。调试参数、测试端口、SSH 转发和四个临时任务已清理，新版正常重开并保持可见、响应正常。
 
-保存重开、声音、真实输入、Windows 11、安装升级卸载、其他设备/固件与长期运行仍待验收。此前 Mac 对完整 Windows Tauri 的跨目标 Clippy 受 llvm-rc 缺失影响，未在本轮补跑；本轮 Windows 完整构建已通过。集成阶段已有的 24 项官方原版失败清单保持，没有修改实现代码或重跑无关回归。
+保存重开、声音、真实输入、Windows 11、安装升级卸载、其他设备/固件与长期运行仍待验收。此前 Mac 对完整 Windows Tauri 的跨目标 Clippy 受 llvm-rc 缺失影响，未在本轮补跑；本轮 Windows 完整构建已通过。集成阶段的 24 项官方旧夹具失败已在本轮修复，结果见上节；本段保留此前实机验收范围。
 
 详细产物路径、SHA-256、设置变化字段和实机证据见[完整集成报告](WINDOWS_UPSTREAM_INTEGRATION_PLAN.md)；通俗入口见[实测概要](WINDOWS_UPSTREAM_INTEGRATION_PLAN.summary.html)。实现代码未改；验收记录与双平台差异说明单独保存为文档提交，未推送。Windows 尚未与 macOS 全量对齐，两端共享界面和业务，宿主、原生能力与验收分开维护；差异清单见完整集成报告。
 
@@ -18,7 +30,7 @@
 
 现有 Windows 实现已集成到官方 1.2.54 的 `codex/windows-integration` 分支，代码集成和审查完成，按本轮授权本地提交。平台架构不变：Mac 使用官方 Swift 实现，Windows 使用 Tauri 与独立 Node/Rust 辅助程序。官方 Mac 的新功能与 2.0.0.7 默认固件保留，Windows 恢复资格单独维护，命令清单升至版本 15。
 
-Windows 专项 263 项通过、1 项按平台跳过；设置等相关检查 52 项通过；前端构建、Rust 测试、本机 Clippy 与 Windows 原生组件 Clippy 通过。共享回归剩余 24 个失败已在官方原版复现相同错误，未扩入本次修复。此前 Mac 上对完整 Windows Tauri 的跨目标 Clippy 缺少 llvm-rc；随后 Windows 完整构建和本机灯光实测已完成，详见上节。该次集成与审查阶段没有运行真实 Windows GUI 或键盘；随后实机专项见上节，没有操作真实 AI 会话。审查中修复官方工具地址不一致导致的交接失败，前端、Node 与 Tauri 共用地址配置；相关 Node/界面 48 项、宿主 25 项通过，并完成前端构建和宿主 Clippy。详见[集成报告与检查清单](WINDOWS_UPSTREAM_INTEGRATION_PLAN.summary.html)。
+Windows 专项 263 项通过、1 项按平台跳过；设置等相关检查 52 项通过；前端构建、Rust 测试、本机 Clippy 与 Windows 原生组件 Clippy 通过。该阶段剩余 24 个失败曾在官方原版复现相同错误；本轮 CI 修复已处理这些旧夹具，最新结果见上节。此前 Mac 上对完整 Windows Tauri 的跨目标 Clippy 缺少 llvm-rc；随后 Windows 完整构建和本机灯光实测已完成，详见上节。该次集成与审查阶段没有运行真实 Windows GUI 或键盘；随后实机专项见上节，没有操作真实 AI 会话。审查中修复官方工具地址不一致导致的交接失败，前端、Node 与 Tauri 共用地址配置；相关 Node/界面 48 项、宿主 25 项通过，并完成前端构建和宿主 Clippy。详见[集成报告与检查清单](WINDOWS_UPSTREAM_INTEGRATION_PLAN.summary.html)。
 
 以下保留 1.2.40 阶段的源码与验收历史，旧提交、协议和实机成绩不能当作 1.2.54 已完成验收。真实改键及可信实体 AI 接管继续关闭。
 

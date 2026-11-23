@@ -8,7 +8,7 @@ import vm from 'node:vm';
 import {applyOutputColorProfile, deriveOutputColorProfileStatus, validateOutputColorProfile} from '../shared/output-color-profile.mjs';
 import {Hardware, outputColorBinding} from '../server/hardware.mjs';
 import {Store, defaultSettings, validateSettings} from '../server/storage.mjs';
-import {fakeService} from './helpers/fake-service.mjs';
+import {enableGameFeature,fakeService} from './helpers/fake-service.mjs';
 import {scaleColor} from '../shared/render-animation.mjs';
 
 const identity = {
@@ -97,7 +97,7 @@ test('Hardware paint maps exactly once while restore/native requests bypass corr
   assert.deepEqual(operations[1], {op: 'paint', args: {colors: ['#a11f1b', '#6f4242', '#a12b02']}});
   await hardware.restore();
   await hardware.request('nativeLighting', {color: '#D07D74'});
-  assert.deepEqual(operations.slice(2), [{op: 'restore', args: undefined}, {op: 'nativeLighting', args: {color: '#D07D74'}}]);
+  assert.deepEqual(operations.slice(2), [{op: 'restore', args: {expectedProfile: 0}}, {op: 'nativeLighting', args: {color: '#D07D74'}}]);
   hardware.state = {...identity, firmwareVersion: '4.0.19.6'};
   await hardware.paint(colors);
   assert.equal(operations.at(-1).args.colors, colors);
@@ -212,6 +212,7 @@ test('real service with a JSONL-only stub refreshes static, paused and agent out
 test('toggling output profile repaints a paused game without moving or replacing its frame', async t => {
   const service = await fakeService(t, {modelId: 'kick75', firmwareVersion: '4.0.18.6',
     outputIdentity: {productId: identity.productId, backupPath: identity.backupPath}});
+  await enableGameFeature(service);
   const command = async body => {const result = await service.command(body); assert.equal(result.ok, true, JSON.stringify(result)); return result.result;};
   await command({op: 'settings', settings: {brightness: 100}});
   await command({op: 'gameStart', gameType: 'snake', speed: 10});
@@ -297,6 +298,7 @@ test('real service keeps preview bytes while global0/27/100 uses corrected wire 
 test('global27 repaints a paused game at corrected intensity without advancing the game', async t => {
   const service = await fakeService(t, {modelId: 'kick75', firmwareVersion: '4.0.18.6',
     outputIdentity: {productId: identity.productId, backupPath: identity.backupPath}});
+  await enableGameFeature(service);
   const command = async body => {const result = await service.command(body); assert.equal(result.ok, true, JSON.stringify(result)); return result.result;};
   const selected = profile({binding: (await service.state()).device.outputColorProfile.binding});
   await command({op: 'settings', settings: {brightness: 100, outputColorProfile: selected, codexEnabled: false}});
@@ -347,7 +349,7 @@ async function outputSourceFixture() {
   hardware.request = async (op, args) => {if (op === 'paint') paints.push(args.colors); return {};};
   const context = vm.createContext({hardware, ambientLighting:new AmbientLighting(), ambientSettings:()=>DEFAULT_AMBIENT_LIGHTING, store: {data: {settings: {brightness: 27}}}, scaleColor, blank:()=>Array(84).fill('#000000'),
     agentEnabled: () => false, agentLightingSource: () => null, playback: {mode: 'static', framesSent: 0}, lightPower: {sleeping: false},
-    colors: [], previewColors:[], lastFrame: '', lastCommittedWire: null, agentOutputReceipt:null, frameTimes: [],
+    colors: [], previewColors:[], lastFrame: '', lastCommittedWire: null, agentOutputReceipt:null, agentSideReceipt:null, frameTimes: [],
     connectionWake:{frame:()=>null},wakeReleasePending:null,getLayoutModel: () => 'kick75',
     performance: {now: () => 100}, gameSideMuted: false, lastQuotaColor: null, quotaChanged: 0});
   new vm.Script(functions + '\nasync function verifyFixture(){' + verifyBody + '}').runInContext(context);

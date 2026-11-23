@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {fakeService,until} from './helpers/fake-service.mjs';
+import {enableGameFeature,fakeService,until} from './helpers/fake-service.mjs';
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 const art=Array(84).fill('#123456');
 test('idle activity restores artwork within the original duration without starting another full timer',async t=>{
@@ -108,13 +108,14 @@ test('global duration leaves persistent Codex status visible; explicit wake stil
 });
 test('animation and game clocks pause during whole-keyboard sleep',async t=>{
  const s=await fakeService(t);
+ await enableGameFeature(s);
  await s.command({op:'settings',settings:{brightness:100,lightDurationMs:1000}});
  const frames=[{colors:art,duration:1800},{colors:Array(84).fill('#aabbcc'),duration:1800}];
  await s.command({op:'play',colors:art,animation:{effect:'frames',frames,loop:false}});
  await until(s.state,v=>v.lightPower.sleeping,'animation did not sleep');await wait(1900);
  await s.command({op:'lightWake'});
  await until(s.state,v=>v.colors[0]==='#123456','animation advanced while asleep');
- await s.command({op:'gameStart',gameType:'whack',speed:3});
+ assert.equal((await s.command({op:'gameStart',gameType:'whack',speed:3})).ok,true);
  const asleep=await until(s.state,v=>v.lightPower.sleeping,'game did not sleep');await wait(500);
  await s.command({op:'gameInput',code:asleep.game.targetCode,pressed:true});
  const later=await s.state();assert.deepEqual(later.game,asleep.game);
