@@ -12,6 +12,26 @@
 bash ./nuphylab release --sign
 ```
 
+### 一条命令准备依赖
+
+本轮已接入环境检查与自动依赖准备；当前完成本地自动检查，Windows PowerShell、Windows 实际工具链准备及本轮构建按用户要求暂未执行。原签名入口的 Windows 编译/封包记录不代表本次新增准备流程已在 Windows 验收。
+
+PowerShell 用户可在仓库根目录显式调用 Git Bash，避免系统 `bash.exe` 转到 WSL：
+
+```powershell
+& 'C:\Program Files\Git\bin\bash.exe' ./nuphylab release --sign
+```
+
+1. 在任何下载与编译前，集中检查 Windows x64、Node/npm、rustup/Cargo、MSVC x64 C++ 工具、Windows SDK、沃通工具与指定证书。系统工具、驱动及证书缺失时列出具体项目和准备方法，不自动运行系统安装器。Node 沿用项目 `>=22` 要求，显示实际版本与 `.nvmrc` 的已验收版本，不更换系统 Node。
+2. 检查根目录和 `ui` 的两份依赖输入，提前显示缺失文件；使用已有 rustup 准备 `rust-toolchain.toml` 固定版本、组件与 Windows MSVC 目标，并验证 rustc 可运行。仅在本轮子进程指定该工具链，不修改全局默认值。
+3. 首次由此入口准备时，分别按两份锁文件执行 `npm ci --include=dev --include=optional`。依赖准备记录包含声明与锁文件摘要、Node 版本、平台和架构；再次运行时，记录匹配且对应平台依赖的版本、命令入口和原生模块完整才复用。缺少 TypeScript、版本不符、锁文件变化或准备记录损坏时自动重装对应目录，安装失败立即停止。不会使用 `npm install` 更新锁文件。
+4. 安装与修复单独允许最多 30 分钟，实时显示原始输出，每 15 秒显示仍在执行及已用时间。完成后才进行 30 秒的 Cargo 元数据查询；失败显示命令、退出码/超时、原始原因，隐藏已知凭据。后续编译也显示命令与等待进度，不再只给出笼统 Node 失败信息。
+5. 同一仓库的新签名入口通过准备锁互斥，另保留真实 Cargo 目标目录锁。`npm ci` 会重建对应的 `node_modules`，请勿同时手动安装依赖或运行旧构建入口。准备或构建失败不会进入签名；PIN 仍只在编译完成后的首次签名时安全输入。
+
+本次验证：新增依赖准备与 Cargo 错误用例在旧实现上共 6 项失败，恢复新增实现后通过；日志脱敏另覆盖布尔标志不会误遮蔽路径或耗时。Mac 相关 Node 检查 17 项通过、2 项按平台跳过。临时中文/空格目录使用项目真实锁文件完成根目录与 UI 的 npm 安装、复用及删除 `tsc` 后修复，依赖声明与锁文件摘要不变；该验证未执行 Rust 安装。独立安装步骤实际运行 31 秒，持续显示 10/20/30 秒等待并成功结束，证明不受 Cargo 查询 30 秒时限限制；这不是 Rust 下载实测。新增 PowerShell 前置缺失汇总和准备顺序用例等待 Windows 执行；真实 UKey 签名、安装升级也仍未验收。
+
+### 签名配置与封包
+
 此入口按用户指定参考 Talkflow Windows 打包，使用沃通/ePass2003 UKey 的交互式父进程方式；不将真实签名工具挂进 Tauri 的受控子进程。已采用 Talkflow 当前公开默认值，正常使用无需设置环境变量，也不依赖本机存在 Talkflow 仓库：
 
 | 配置 | 默认值 | 可选覆盖 |
@@ -26,7 +46,7 @@ bash ./nuphylab release --sign
 
 新入口复用 Lab 的资源准备、原生与前端编译。先只编译不封包，在本轮独立目录复制主程序、五个配套程序及 runtime；先固定唯一的 Tauri NSIS `UNK` 标记，再签六个程序。封包显式使用 `--no-sign --no-binary-patching`，随后签最终 setup。每个签名必须为 `Valid`、符合本次指定证书并含时间戳；封包前后核对载荷摘要，编译缓存主程序在 `finally` 恢复，意外漂移时保留现场、不覆盖未知改动。
 
-自动更新公共配置保持关闭。新包明确设置 `createUpdaterArtifacts: false`，不要求更新公钥、通道地址或更新私钥，不生成 `.sig`、`beta.json`，也不上传 Release。原 `npm run windows:release` 的完整更新发布校验保持原义。新入口的目标目录锁保护新入口之间的并发；同一 Cargo 目标目录不得与旧 npm 构建并行使用，完整共享锁属于后续统一方案。新入口当前只接受 `release --sign` 和帮助参数，Mac、无签名 release、doctor、补签和 offline 参数不在本轮范围。
+自动更新公共配置保持关闭。新包明确设置 `createUpdaterArtifacts: false`，不要求更新公钥、通道地址或更新私钥，不生成 `.sig`、`beta.json`，也不上传 Release。原 `npm run windows:release` 的完整更新发布校验保持原义。新入口同时持有本仓库准备锁和真实 Cargo 目标目录锁；同一 Cargo 目标目录不得与旧 npm 构建并行使用，完整共享锁属于后续统一方案。新入口当前只接受 `release --sign` 和帮助参数，Mac、无签名 release、doctor、补签和 offline 参数不在本轮范围。
 
 仅成功验签后输出 `.build/windows/code-sign/<构建ID>/artifacts/`，其中包含签名安装器、`checksums.txt` 和 `build-manifest.json`；失败保留本轮目录并以非零状态结束，不降级成未签名成功，不自动重试 UKey 操作。签名覆盖主程序、五个配套程序及 setup；没有新增 NSIS 内部卸载器/插件独立签名步骤，不宣称这些组件已签名。
 

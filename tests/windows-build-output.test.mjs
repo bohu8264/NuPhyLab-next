@@ -5,7 +5,7 @@ import {openSync,closeSync} from 'node:fs';
 import {spawn} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {cargoOutputDirectory,root} from '../scripts/windows/common.mjs';
+import {cargoOutputDirectory,root,redactToolText} from '../scripts/windows/common.mjs';
 
 test('Cargo metadata resolves an external output cache without creating or reading a default build',async t=>{
   const directory=await mkdtemp(path.join(tmpdir(),'NuPhy build 输出 0 '));t.after(()=>rm(directory,{recursive:true,force:true}));
@@ -42,4 +42,19 @@ test('noninteractive tooling ignores parent input and interactive tooling preser
       if(expectedCode!==0)assert.match(stderr,/42/,'tool failures must still reach the caller');
     }finally{closeSync(descriptor);}
   }
+});
+
+
+test('Cargo discovery preserves stderr and distinguishes missing commands and timeouts',async()=>{
+ for(const [failure,expected] of [[{code:101,stderr:'rustup fixture: toolchain partially installed'},/partially installed/],[{code:'ENOENT'},/ENOENT/],[{killed:true,signal:'SIGTERM'},/超时/]]){
+  await assert.rejects(cargoOutputDirectory({execute:async()=>{throw Object.assign(Error('fixture metadata failed'),failure);}}),error=>/未使用旧构建/.test(error.message)&&expected.test(error.message));
+ }
+});
+
+
+test('diagnostic redaction removes credentials without treating feature flags as secrets',()=>{
+ const output=redactToolText('build 20261123 waited 31000ms fixture-secret fixture-auth',{
+  NPM_TOKEN:'fixture-secret',NPM_CONFIG__AUTH:'fixture-auth',CODEX_TOKEN_REQUIRED:'0'
+ });
+ assert.match(output,/20261123 waited 31000ms/);assert(!output.includes('fixture-secret'));assert(!output.includes('fixture-auth'));
 });

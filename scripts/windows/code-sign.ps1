@@ -37,14 +37,67 @@ function Invoke-LabSignedPipeline([hashtable]$Operations) {
  & ($Operations.Sign) $installer;& ($Operations.Verify) $installer
  & ($Operations.Publish) $installer
 }
+function Get-LabNativePrerequisiteIssues {
+ $issues=New-Object 'System.Collections.Generic.List[string]'
+ $compiler=Get-Command cl.exe -CommandType Application -ErrorAction SilentlyContinue
+ $linker=$compiler -and (Test-Path -LiteralPath (Join-Path (Split-Path $compiler.Source -Parent) 'link.exe'))
+ if(!$compiler -or !$linker){
+  $vswhere=Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+  $installation=$null
+  if(Test-Path -LiteralPath $vswhere){$installation=@(& $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath)|Select-Object -First 1}
+  $tools=$null
+  if($installation){$tools=Get-ChildItem (Join-Path $installation 'VC/Tools/MSVC') -Directory -ErrorAction SilentlyContinue|Sort-Object Name -Descending|Select-Object -First 1}
+  if(!$tools -or !(Test-Path (Join-Path $tools.FullName 'bin/Hostx64/x64/cl.exe')) -or !(Test-Path (Join-Path $tools.FullName 'bin/Hostx64/x64/link.exe'))){$issues.Add('缺少 MSVC x64 C++ 工具；请通过 Visual Studio Installer 安装“使用 C++ 的桌面开发”')}
+ }
+ $kits=@($env:WindowsSdkDir,(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows Kits\Installed Roots' -Name KitsRoot10 -ErrorAction SilentlyContinue).KitsRoot10,(Join-Path ${env:ProgramFiles(x86)} 'Windows Kits/10'))|Where-Object {$_}|Select-Object -Unique
+ $sdk=$false
+ foreach($kit in $kits){foreach($include in @(Get-ChildItem (Join-Path $kit 'Include') -Directory -ErrorAction SilentlyContinue)){
+  if((Test-Path (Join-Path $include.FullName 'um/windows.h')) -and (Test-Path (Join-Path $kit ('Lib/'+$include.Name+'/um/x64/kernel32.lib'))) -and ((Test-Path (Join-Path $kit ('bin/'+$include.Name+'/x64/rc.exe'))) -or (Test-Path (Join-Path $kit 'bin/x64/rc.exe')))){$sdk=$true;break}
+ }}
+ if(!$sdk){$issues.Add('缺少完整 Windows 10/11 SDK（x64 头文件、库或 rc.exe）；请在 Visual Studio Installer 中补齐 Windows SDK')}
+ return $issues.ToArray()
+}
+function Get-LabBuildPrerequisites([hashtable]$Probe) {
+ if(!$Probe){$Probe=@{
+  Find={param($name)(Get-Command $name -CommandType Application -ErrorAction SilentlyContinue|Select-Object -First 1).Source}
+  Native={Get-LabNativePrerequisiteIssues}
+  NodeInfo={param($node)$value=& $node -p 'JSON.stringify({version:process.versions.node,arch:process.arch,platform:process.platform})';if($LASTEXITCODE -ne 0){throw 'node -p 执行失败'};$value|ConvertFrom-Json}
+ }}
+ $issues=New-Object 'System.Collections.Generic.List[string]';$tools=@{}
+ foreach($pair in @(@('Node','node'),@('Npm','npm.cmd'),@('Rustup','rustup'),@('Cargo','cargo'))){
+  $tools[$pair[0]]=& $Probe.Find $pair[1]
+  if(!$tools[$pair[0]]){$issues.Add('缺少 '+$pair[1]+'；请安装或修复对应 Node/npm、rustup，并确认当前终端 PATH')}
+ }
+ if($tools.Node){try{
+  $info=& $Probe.NodeInfo $tools.Node
+  if($info.platform -ne 'win32' -or $info.arch -ne 'x64' -or [int]($info.version.Split('.')[0]) -lt 22){$issues.Add('Node '+$info.version+' '+$info.platform+'/'+$info.arch+' 不支持；需要 Windows x64 Node >=22，验收版本见 .nvmrc')}
+ }catch{$issues.Add('无法检查 Node：'+$_.Exception.Message)}}
+ if($tools.Npm){
+  $tools.NpmCli=@((Join-Path (Split-Path $tools.Npm -Parent) 'node_modules/npm/bin/npm-cli.js'),$(if($tools.Node){Join-Path (Split-Path $tools.Node -Parent) 'node_modules/npm/bin/npm-cli.js'}))|Where-Object {$_ -and (Test-Path -LiteralPath $_ -PathType Leaf)}|Select-Object -First 1
+  if(!$tools.NpmCli){$issues.Add('缺少 npm-cli.js；请修复 Node/npm 安装')}
+ }
+ foreach($issue in @(& $Probe.Native)){$issues.Add($issue)}
+ $tools.Issues=$issues.ToArray();return $tools
+}
 function Assert-LabSigningEnvironment($Settings) {
  if([Environment]::OSVersion.Platform -ne 'Win32NT' -or ![Environment]::Is64BitProcess){throw '请使用 Windows x64 PowerShell'}
  if($env:SSH_CONNECTION -or ![Environment]::UserInteractive -or (Get-Process -Id $PID).SessionId -eq 0){throw 'UKey 签名须在交互式 Windows 桌面执行，不支持 SSH/服务会话'}
- Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Security/Microsoft.PowerShell.Security.psd1') -ErrorAction Stop
- $null=Get-Command Get-AuthenticodeSignature -CommandType Cmdlet -ErrorAction Stop
- foreach($tool in @($Settings.Tool,(Join-Path (Split-Path $Settings.Tool -Parent) 'wosigncode.exe'))){if(!(Test-Path -LiteralPath $tool -PathType Leaf)){throw "缺少签名工具：$tool"}}
- $cert=@(Get-ChildItem Cert:\CurrentUser\My|Where-Object {$_.Thumbprint -eq $Settings.Thumbprint -and $_.HasPrivateKey -and ($_.EnhancedKeyUsageList.ObjectId -contains '1.3.6.1.5.5.7.3.3') -and $_.NotAfter -gt (Get-Date)})
- if($cert.Count -ne 1){throw '当前用户证书库没有可用的指定代码签名证书，请检查 UKey 和驱动'}
+ Write-Host '[环境检查] Node/npm、Rust、MSVC/SDK、签名工具与证书'
+ $tools=Get-LabBuildPrerequisites;$issues=New-Object 'System.Collections.Generic.List[string]'
+ foreach($issue in $tools.Issues){$issues.Add($issue)}
+ try{Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Security/Microsoft.PowerShell.Security.psd1') -ErrorAction Stop;$null=Get-Command Get-AuthenticodeSignature -CommandType Cmdlet -ErrorAction Stop}catch{$issues.Add('Windows 签名检查模块不可用：'+$_.Exception.Message)}
+ foreach($tool in @($Settings.Tool,(Join-Path (Split-Path $Settings.Tool -Parent) 'wosigncode.exe'))){if(!(Test-Path -LiteralPath $tool -PathType Leaf)){$issues.Add('缺少签名工具：'+$tool)}}
+ try{
+  $cert=@(Get-ChildItem Cert:\CurrentUser\My -ErrorAction Stop|Where-Object {$_.Thumbprint -eq $Settings.Thumbprint -and $_.HasPrivateKey -and ($_.EnhancedKeyUsageList.ObjectId -contains '1.3.6.1.5.5.7.3.3') -and $_.NotAfter -gt (Get-Date)})
+  if($cert.Count -ne 1){$issues.Add('当前用户证书库没有可用的指定代码签名证书；请检查 UKey 和驱动：'+$Settings.Thumbprint)}
+ }catch{$issues.Add('无法检查指定签名证书：'+$_.Exception.Message)}
+ if($issues.Count){throw ('构建环境未就绪：'+"`n- "+($issues -join "`n- "))}
+ return $tools
+}
+function Invoke-LabPreparedSigning([hashtable]$Operations) {
+ & $Operations.Check
+ & $Operations.Prepare
+ & $Operations.Action
 }
 function Assert-LabCodeSignature([string]$File,$Settings) {
  $sig=$null
@@ -77,11 +130,20 @@ function Get-LabSnapshot([string]$Directory){$map=@{};foreach($file in Get-Child
 function Assert-LabSnapshot([string]$Directory,[hashtable]$Expected){$now=Get-LabSnapshot $Directory;if($now.Count -ne $Expected.Count){throw '封包期间载荷清单变化'};foreach($file in $Expected.Keys){if($now[$file] -ne $Expected[$file]){throw '封包期间已签载荷变化'}}}
 function Invoke-LabCodeSigning {
  $root=(Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
- $script:LabNode=(Get-Command node -CommandType Application -ErrorAction Stop|Select-Object -First 1).Source;$script:LabHelper=Join-Path $PSScriptRoot 'code-sign.mjs'
- $settings=Get-LabSigningSettings;Assert-LabSigningEnvironment $settings
+ $script:LabHelper=Join-Path $PSScriptRoot 'code-sign.mjs'
+ $settings=Get-LabSigningSettings
  $release=Get-Content (Join-Path $root 'shared/contracts/windows-release.json') -Raw -Encoding UTF8|ConvertFrom-Json
  if($release.enabled){throw '本入口要求自动更新保持关闭；请使用原有完整发布流程'}
  Invoke-LabPrivateScope {
+  $setup=@{PreparationLock=$null;Tools=$null}
+  try{Invoke-LabPreparedSigning @{
+   Check={
+    $setup.Tools=Assert-LabSigningEnvironment $settings;$script:LabNode=$setup.Tools.Node
+    $base=Join-Path $root '.build/windows/code-sign';New-Item $base -ItemType Directory -Force|Out-Null
+    try{$setup.PreparationLock=[IO.File]::Open((Join-Path $base '.preparation.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)}catch{throw '另一签名入口正在准备依赖或构建；本次未修改依赖'}
+   }
+   Prepare={Invoke-LabNode @('dependencies',$setup.Tools.NpmCli)}
+   Action={
   $text=& $script:LabNode $script:LabHelper paths;if($LASTEXITCODE -ne 0){throw '无法解析实际 Cargo 构建目录'};$paths=$text|ConvertFrom-Json
   $directory=Join-Path $root ('.build/windows/code-sign/'+[Guid]::NewGuid().ToString('N'));$payload=Join-Path $directory 'payload';$candidate=Join-Path $directory 'candidate'
   New-Item $payload -ItemType Directory -Force|Out-Null;New-Item $candidate -ItemType Directory|Out-Null
@@ -106,7 +168,7 @@ function Invoke-LabCodeSigning {
      return $context.Files
     }
     Sign={param($file)
-     if(!$context.Pin){$context.Pin=Get-LabSigningPin}
+     if(!$context.Pin){Write-Host '[签名] 编译完成，请输入一次 UKey PIN';$context.Pin=Get-LabSigningPin}
      Invoke-LabToolSign $file $settings $context.Pin
     }
     Verify={param($file)Assert-LabCodeSignature $file $settings}
@@ -135,6 +197,8 @@ function Invoke-LabCodeSigning {
    Invoke-LabSignedPipeline $ops
   }catch{$state.stage='failed';Write-LabJson (Join-Path $directory 'build-manifest.json') $state;throw}
   finally{if($context -and $context.Pin){$context.Pin.Dispose()};if($lock){$lock.Dispose()}}
+   }
+  }}finally{if($setup.PreparationLock){$setup.PreparationLock.Dispose()}}
  }
 }
 if($MyInvocation.InvocationName -ne '.'){

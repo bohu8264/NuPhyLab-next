@@ -3,6 +3,7 @@ import {readFile,writeFile} from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
 import path from 'node:path';
 import {root,desktop,target,run,requireWindows,cargoOutputDirectory} from './common.mjs';
+import {prepareSigningDependencies,signingToolchain,assertSigningNode} from './signing-dependencies.mjs';
 const require=createRequire(import.meta.url);
 export function prepareNsisMain(bytes){
   const result=Buffer.from(bytes),unknown=Buffer.from('__TAURI_BUNDLE_TYPE_VAR_UNK'),fixed=Buffer.from('__TAURI_BUNDLE_TYPE_VAR_NSS');
@@ -17,8 +18,13 @@ export function bundleConfiguration(directory){
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(path.resolve(process.argv[1])).href){
   try{
-    requireWindows();const [command,directory]=process.argv.slice(2);
-    if(command==='paths')console.log(JSON.stringify({release:path.join(await cargoOutputDirectory(),target,'release'),binaries:path.join(desktop,'src-tauri/binaries'),resources:path.join(desktop,'resources'),version:JSON.parse(await readFile(path.join(root,'package.json'),'utf8')).version}));
+    requireWindows();assertSigningNode(process.versions.node,process.arch,process.platform);
+    process.env.RUSTUP_TOOLCHAIN=(await signingToolchain(root)).name;
+    const [command,directory]=process.argv.slice(2);
+    if(command==='dependencies'){
+      if(!directory)throw Error('缺少 npm CLI 路径');
+      await prepareSigningDependencies({root,npm:{command:process.execPath,args:[directory]}});
+    }else if(command==='paths')console.log(JSON.stringify({release:path.join(await cargoOutputDirectory(),target,'release'),binaries:path.join(desktop,'src-tauri/binaries'),resources:path.join(desktop,'resources'),version:JSON.parse(await readFile(path.join(root,'package.json'),'utf8')).version}));
     else if(command==='build')await run(process.execPath,[path.join(root,'scripts/windows/run.mjs'),'build','--no-bundle']);
     else if(command==='marker')await writeFile(directory,prepareNsisMain(await readFile(directory)));
     else if(command==='bundle'){

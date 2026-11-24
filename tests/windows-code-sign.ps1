@@ -4,6 +4,23 @@ $passed=0
 function Check([bool]$Value,[string]$Message){if(!$Value){throw $Message}}
 function Case([string]$Name,[scriptblock]$Action){& $Action;$script:passed++;Write-Output "[ok] $Name"}
 function Fails([scriptblock]$Action){$failed=$false;try{& $Action}catch{$failed=$true};Check $failed 'Expected failure'}
+Case 'preflight aggregates missing tools before downloads' {
+ $result=Get-LabBuildPrerequisites @{
+  Find={param($name)$null}
+  Native={@('fixture missing MSVC','fixture missing SDK')}
+  NodeInfo={throw 'must not execute missing Node'}
+ }
+ Check ($result.Issues.Count -eq 6) 'must report all four tools and both native prerequisites'
+ Check (($result.Issues -join ' ') -match 'node' -and ($result.Issues -join ' ') -match 'SDK') 'missing details'
+}
+Case 'preparation completes before build and failure stops the signing action' {
+ foreach($failure in @('none','check','prepare')){
+  $calls=New-Object 'System.Collections.Generic.List[string]'
+  $ops=@{Check={$calls.Add('check');if($failure -eq 'check'){throw 'fixture prerequisite missing'}};Prepare={$calls.Add('prepare');if($failure -eq 'prepare'){throw 'fixture npm download denied'}};Action={$calls.Add('build-sign')}}
+  if($failure -eq 'none'){Invoke-LabPreparedSigning $ops;Check (($calls -join ',') -eq 'check,prepare,build-sign') 'wrong preparation order'}
+  else{Fails {Invoke-LabPreparedSigning $ops};Check (!$calls.Contains('build-sign')) 'failed preparation reached signing';if($failure -eq 'check'){Check (!$calls.Contains('prepare')) 'missing prerequisite triggered installation'}}
+ }
+}
 Case 'Talkflow defaults work with no environment configuration' {
  $s=Get-LabSigningSettings @{}
  Check ($s.Thumbprint -eq '68B94B194F597BA6E2694113268FE3956A041FEF') 'default certificate differs from Talkflow'
