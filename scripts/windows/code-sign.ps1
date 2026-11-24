@@ -145,9 +145,9 @@ function Invoke-LabCodeSigning {
    Prepare={Invoke-LabNode @('dependencies',$setup.Tools.NpmCli)}
    Action={
   $text=& $script:LabNode $script:LabHelper paths;if($LASTEXITCODE -ne 0){throw '无法解析实际 Cargo 构建目录'};$paths=$text|ConvertFrom-Json
-  $directory=Join-Path $root ('.build/windows/code-sign/'+[Guid]::NewGuid().ToString('N'));$payload=Join-Path $directory 'payload';$candidate=Join-Path $directory 'candidate'
+  $buildId=[Guid]::NewGuid().ToString('N');$directory=Join-Path $root ('.build/windows/code-sign/'+$buildId);$payload=Join-Path $directory 'payload';$candidate=Join-Path $directory 'candidate'
   New-Item $payload -ItemType Directory -Force|Out-Null;New-Item $candidate -ItemType Directory|Out-Null
-  $state=[ordered]@{format='nuphylab-windows-code-sign';version=1;productVersion=$paths.version;stage='building';updaterArtifacts=$false;guiStarted=$false;certificateThumbprint=$settings.Thumbprint}
+  $state=[ordered]@{format='nuphylab-windows-code-sign';version=2;buildId=$buildId;productVersion=$paths.version;stage='building';updaterArtifacts=$false;guiStarted=$false;certificateThumbprint=$settings.Thumbprint}
   $lock=$null;$pin=$null
   try{
    New-Item $paths.release -ItemType Directory -Force|Out-Null
@@ -156,6 +156,7 @@ function Invoke-LabCodeSigning {
    $context=@{Files=@();OriginalHash=$null;Frozen=$null;Pin=$null}
    $ops=@{
     Build={
+     Invoke-LabNode @('source-begin',$directory)
      Invoke-LabNode @('build')
      $main=Join-Path $paths.release 'nuphylab-desktop.exe';$context.OriginalHash=Get-LabHash $main
      Copy-Item $main (Join-Path $directory 'compiled-original.exe');Copy-Item $main (Join-Path $payload 'nuphylab-desktop.exe')
@@ -187,10 +188,13 @@ function Invoke-LabCodeSigning {
     Publish={param($setup)
      Assert-LabSnapshot $payload $context.Frozen
      foreach($file in $context.Files){Assert-LabCodeSignature $file $settings}
+     Invoke-LabNode @('source-finish',$directory)
+     $state.source=Get-Content (Join-Path $directory 'source-summary.json') -Raw -Encoding UTF8|ConvertFrom-Json;$state.completedAt=(Get-Date).ToUniversalTime().ToString('o')
      $state.stage='complete';$state.installer=[ordered]@{file=[IO.Path]::GetFileName($setup);sha256=(Get-LabHash $setup);bytes=(Get-Item $setup).Length};$state.payload=@($context.Files|ForEach-Object {[ordered]@{file=[IO.Path]::GetFileName($_);sha256=(Get-LabHash $_)}})
      Write-LabJson (Join-Path $candidate 'build-manifest.json') $state
      [IO.File]::WriteAllText((Join-Path $candidate 'checksums.txt'),($state.installer.sha256+'  '+$state.installer.file+"`n"),(New-Object Text.UTF8Encoding($false)))
      Move-Item $candidate (Join-Path $directory 'artifacts');Write-LabJson (Join-Path $directory 'build-manifest.json') $state
+     Invoke-LabNode @('remember',$directory)
      Write-Host ('签名安装包目录：'+(Join-Path $directory 'artifacts'))
     }
    }

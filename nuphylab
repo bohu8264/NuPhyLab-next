@@ -1,9 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
-usage() { printf '%s\n' 'NuPhy Lab Windows 独立代码签名' '用法：bash ./nuphylab release --sign' '会先检查环境并自动准备 Rust 与项目依赖；PIN 在编译完成后输入。' '只生成本地签名安装包；不启用自动更新、不上传或启动应用。'; }
-if [[ ${1:-} == --help || ${1:-} == -h ]]; then usage; exit 0; fi
-if [[ $# != 2 || ${1:-} != release || ${2:-} != --sign ]]; then usage >&2; exit 2; fi
+usage() { printf '%s\n' 'NuPhy Lab Windows 构建与发布' '用法：bash ./nuphylab release --sign' '      bash ./nuphylab upload [--publish]' 'release 只生成本地签名包；upload 默认上传草稿，--publish 公开为预发布，均不设为 Latest。' '自动更新保持关闭；构建时安全输入 PIN，上传无需 PIN，不启动应用。'; }
+if [[ $# == 1 && ( ${1:-} == --help || ${1:-} == -h ) ]]; then usage; exit 0; fi
+action=''
+if [[ $# == 2 && ${1:-} == release && ${2:-} == --sign ]]; then action=sign
+elif [[ $# == 1 && ${1:-} == upload ]]; then action=upload
+elif [[ $# == 2 && ${1:-} == upload && ${2:-} == --publish ]]; then action=publish
+else usage >&2; exit 2
+fi
 case "$(uname -s)" in MINGW*|MSYS*) ;; *) printf '%s\n' '当前入口仅支持 Windows Git Bash。' >&2; exit 2;; esac
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD PSModulePath
-exec powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$ROOT/scripts/windows/code-sign.ps1")"
+if [[ $action == sign ]]; then
+  exec powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$ROOT/scripts/windows/code-sign.ps1")"
+elif [[ $action == publish ]]; then
+  exec powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$ROOT/scripts/windows/upload.ps1")" -Publish
+else
+  exec powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$ROOT/scripts/windows/upload.ps1")"
+fi

@@ -4,6 +4,7 @@ import {pathToFileURL} from 'node:url';
 import path from 'node:path';
 import {root,desktop,target,run,requireWindows,cargoOutputDirectory} from './common.mjs';
 import {prepareSigningDependencies,signingToolchain,assertSigningNode} from './signing-dependencies.mjs';
+import {captureBuildSource,finishBuildSource,writeAtomicJson,rememberSuccessfulBuild} from './build-source.mjs';
 const require=createRequire(import.meta.url);
 export function prepareNsisMain(bytes){
   const result=Buffer.from(bytes),unknown=Buffer.from('__TAURI_BUNDLE_TYPE_VAR_UNK'),fixed=Buffer.from('__TAURI_BUNDLE_TYPE_VAR_NSS');
@@ -24,6 +25,15 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(path.resolve(process.argv[1]
     if(command==='dependencies'){
       if(!directory)throw Error('缺少 npm CLI 路径');
       await prepareSigningDependencies({root,npm:{command:process.execPath,args:[directory]}});
+    }else if(command==='source-begin'){
+      const source=await captureBuildSource(root);await writeAtomicJson(path.join(directory,'source-start.json'),source);
+      if(!source.uploadable)console.log('[来源] '+source.reason);
+    }else if(command==='source-finish'){
+      const before=JSON.parse(await readFile(path.join(directory,'source-start.json'),'utf8'));
+      const source=await finishBuildSource(root,before);await writeAtomicJson(path.join(directory,'source-summary.json'),source);
+      if(!source.uploadable)console.log('[来源] '+source.reason);
+    }else if(command==='remember'){
+      await rememberSuccessfulBuild(root,directory);
     }else if(command==='paths')console.log(JSON.stringify({release:path.join(await cargoOutputDirectory(),target,'release'),binaries:path.join(desktop,'src-tauri/binaries'),resources:path.join(desktop,'resources'),version:JSON.parse(await readFile(path.join(root,'package.json'),'utf8')).version}));
     else if(command==='build')await run(process.execPath,[path.join(root,'scripts/windows/run.mjs'),'build','--no-bundle']);
     else if(command==='marker')await writeFile(directory,prepareNsisMain(await readFile(directory)));

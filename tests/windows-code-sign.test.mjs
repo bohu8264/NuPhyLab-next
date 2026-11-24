@@ -29,10 +29,10 @@ test('NSIS marker preparation changes only one marker and rejects ambiguous or m
   assert.throws(()=>prepareNsisMain(Buffer.from('__TAURI_BUNDLE_TYPE_VAR_UNK __TAURI_BUNDLE_TYPE_VAR_UNK')),/标记/);
   assert.deepEqual(prepareNsisMain(output),output);
 });
-test('Bash entry exposes only the approved Windows signing command',async()=>{
+test('Bash entry exposes only the approved Windows build and upload commands',async()=>{
   const script=path.join(root,'nuphylab');
   const help=await execute('bash',[script,'--help']);assert.match(help.stdout,/release --sign/);
-  for(const args of [['release'],['release','--signed'],['release','--sign','--sign'],['dev']]){
+  for(const args of [['release'],['release','--signed'],['release','--sign','--sign'],['dev'],['upload','--sign'],['upload','--publish','--publish'],['--help','upload']]){
     await assert.rejects(execute('bash',[script,...args]),error=>error.code!==0);
   }
 });
@@ -44,9 +44,13 @@ test('Bash hands a spaced repository path to PowerShell without passing OTA keys
   await writeFile(path.join(dir,'tools','uname'),'#!/bin/sh\nprintf "MINGW64_NT\\n"\n',{mode:0o755});
   await writeFile(path.join(dir,'tools','cygpath'),'#!/bin/sh\nprintf "%s\\n" "$2"\n',{mode:0o755});
   await writeFile(path.join(dir,'tools','powershell.exe'),`#!${process.execPath}\nconsole.log(JSON.stringify({args:process.argv.slice(2),key:!!process.env.TAURI_SIGNING_PRIVATE_KEY,password:!!process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD}));\n`,{mode:0o755});
-  const {stdout}=await execute('bash',[path.join(dir,'nuphylab'),'release','--sign'],{env:{...process.env,PATH:path.join(dir,'tools')+path.delimiter+process.env.PATH,TAURI_SIGNING_PRIVATE_KEY:'fixture-update-key',TAURI_SIGNING_PRIVATE_KEY_PASSWORD:'fixture-update-password'}});
-  const got=JSON.parse(stdout);assert.equal(got.key,false);assert.equal(got.password,false);
-  assert.equal(got.args.at(-1),path.join(dir,'scripts/windows/code-sign.ps1'));
+  for(const args of [['release','--sign'],['upload'],['upload','--publish']]){
+    const {stdout}=await execute('bash',[path.join(dir,'nuphylab'),...args],{env:{...process.env,PATH:path.join(dir,'tools')+path.delimiter+process.env.PATH,TAURI_SIGNING_PRIVATE_KEY:'fixture-update-key',TAURI_SIGNING_PRIVATE_KEY_PASSWORD:'fixture-update-password'}});
+    const got=JSON.parse(stdout);assert.equal(got.key,false);assert.equal(got.password,false);
+    const file=args[0]==='release'?'code-sign.ps1':'upload.ps1';
+    assert.equal(got.args[got.args.indexOf('-File')+1],path.join(dir,'scripts/windows',file));
+    assert.equal(got.args.includes('-Publish'),args.includes('--publish'));
+  }
 });
 
 test('Windows PowerShell signing contracts run without a certificate or UKey',async t=>{
