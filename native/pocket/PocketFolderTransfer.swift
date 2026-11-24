@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+import CryptoKit
 
 struct PocketPreparedFileTransfer {
     let urls: [URL]
@@ -21,7 +22,7 @@ enum PocketFolderTransferError: Error, LocalizedError {
         switch self {
         case .limit: return PocketL10n.english ? "Folder exceeds 10,000 entries or 1 GB. Choose fewer files." : "文件夹超过 10,000 项或 1 GB，请缩小范围。"
         case .timeout: return PocketL10n.english ? "Folder preparation timed out. Originals were kept." : "文件夹打包超时，原内容已保留。"
-        case .cacheFull: return PocketL10n.english ? "Temporary transfer storage is full. Try again later." : "临时文件空间已满，请稍后重试。"
+        case .cacheFull: return PocketL10n.english ? "Folder transfer cache is full. Check storage in Keyboard Pocket." : "文件夹传输缓存已满，可在键盘口袋查看占用空间。"
         case .unsafeCache: return PocketL10n.english ? "Temporary transfer folder is unavailable. Originals were kept." : "临时文件夹不可用，原内容已保留。"
         case .changed: return PocketL10n.english ? "The folder changed while preparing. Try again." : "文件夹在打包时发生变化，请重试。"
         }
@@ -42,10 +43,13 @@ enum PocketFolderTransfer {
     private struct Marker: Codable {
         let version: Int
         let token: String
-        let createdAt: Date
+        var createdAt: Date
         let archive: String
+        var sourceKey: String?
+        var archiveSignature: Signature?
+        var shared: Bool?
     }
-    private struct Signature: Equatable {
+    private struct Signature: Equatable, Codable {
         let device: Int32, inode: UInt64, mode: UInt16, size: Int64
         let mtime: Int, mtimeNanos: Int, ctime: Int, ctimeNanos: Int
         init(_ info: stat) {
@@ -67,7 +71,7 @@ enum PocketFolderTransfer {
 
     static func prepare(_ urls: [URL], targetBundleIdentifier: String?, pocketRoot: URL,
                         control: DragJobControl, limits: PocketFolderTransferLimits = PocketFolderTransferLimits(),
-                        now: Date = Date()) throws -> PocketPreparedFileTransfer {
+                        now: Date = Date(), clipboardFiles: () -> [URL]? = { [] }) throws -> PocketPreparedFileTransfer {
         try control.check()
         guard try needsArchive(urls, targetBundleIdentifier: targetBundleIdentifier) else {
             return PocketPreparedFileTransfer(urls: urls, archived: false, temporaryDirectory: nil, token: nil)
@@ -103,12 +107,33 @@ enum PocketFolderTransfer {
             let before = try snapshot(urls, limits: limits, check: check)
             try ensureDirectory(pocketRoot, create: false)
             try ensureDirectory(cache, create: true)
-            let used = try expireAndCount(cache, now: now, check: check)
+            let key = sourceKey(urls, entries: before.entries)
+            let scan = try inspect(cache, now: now, key: key, clipboardFiles: clipboardFiles, check: check)
+            guard scan.bytes <= limits.maximumCacheBytes else { throw PocketFolderTransferError.cacheFull }
+            if let (job, candidate) = scan.reusable {
+                var marker = candidate
+                // Directory enumeration may expand /var to /private/var. Publish the
+                // same file URL spelling as a newly prepared transfer.
+                let archive = cache.appendingPathComponent(job.lastPathComponent, isDirectory: true)
+                    .appendingPathComponent(marker.archive, isDirectory: false)
+                guard try snapshot(urls, limits: limits, check: check).entries == before.entries,
+                      try Signature(metadata(archive)) == marker.archiveSignature else { throw PocketFolderTransferError.changed }
+                try check()
+                marker.createdAt = now
+                marker.shared = true
+                let markerURL = job.appendingPathComponent(markerName)
+                let data = try JSONEncoder().encode(marker)
+                let growth = Int64(data.count) - (try metadata(markerURL).st_size)
+                guard growth <= limits.maximumCacheBytes - scan.bytes else { throw PocketFolderTransferError.cacheFull }
+                try data.write(to: markerURL, options: .atomic)
+                // Another caller may already have exposed these exact bytes to a receiver.
+                return PocketPreparedFileTransfer(urls: [archive], archived: true, temporaryDirectory: nil, token: nil)
+            }
+            let used = scan.bytes
             // Reserve the full expanded size plus ZIP metadata overhead; actual
             // compressed size is checked again before publishing the result.
             let reservation = before.bytes + Int64(before.entries.count) * 2048 + 65536
-            guard used <= limits.maximumCacheBytes,
-                  reservation <= limits.maximumCacheBytes - used else { throw PocketFolderTransferError.cacheFull }
+            guard reservation <= limits.maximumCacheBytes - used else { throw PocketFolderTransferError.cacheFull }
             let token = UUID().uuidString
             let job = cache.appendingPathComponent("pocket-" + token, isDirectory: true)
             guard mkdir(job.path, 0o700) == 0 else { throw PocketFolderTransferError.unsafeCache }
@@ -123,8 +148,11 @@ enum PocketFolderTransfer {
             let size = try metadata(archive).st_size
             guard size >= 0, size <= limits.maximumCacheBytes - used else { throw PocketFolderTransferError.cacheFull }
             guard chmod(archive.path, 0o600) == 0 else { throw PocketFolderTransferError.unsafeCache }
-            let marker = Marker(version: 1, token: token, createdAt: now, archive: archive.lastPathComponent)
-            try JSONEncoder().encode(marker).write(to: job.appendingPathComponent(markerName), options: .atomic)
+            let marker = Marker(version: 1, token: token, createdAt: now, archive: archive.lastPathComponent,
+                                sourceKey: key, archiveSignature: try Signature(metadata(archive)))
+            let markerData = try JSONEncoder().encode(marker)
+            guard Int64(markerData.count) <= limits.maximumCacheBytes - used - size else { throw PocketFolderTransferError.cacheFull }
+            try markerData.write(to: job.appendingPathComponent(markerName), options: .atomic)
             try check()
             keep = true
             return PocketPreparedFileTransfer(urls: [archive], archived: true, temporaryDirectory: job, token: token)
@@ -143,8 +171,30 @@ enum PocketFolderTransfer {
             defer { completion() }
             guard let job = result.temporaryDirectory, let token = result.token else { return }
             workLock.lock(); defer { workLock.unlock() }
-            guard let owned = try? ownedArchive(job), owned.marker.token == token else { return }
-            try? FileManager.default.removeItem(at: job)
+            guard let owned = try? ownedArchive(job), owned.marker.token == token, owned.marker.shared != true else { return }
+            try? removeArchive(job, marker: owned.marker)
+        }
+    }
+
+    /// Opening Lab or waking it can expire transfers even when the user never makes another ZIP.
+    static func maintain(pocketRoot: URL, now: Date = Date(), clipboardFiles: @escaping () -> [URL]?,
+                         completion: @escaping (Int64?) -> Void) {
+        cleanupQueue.async {
+            workLock.lock()
+            let bytes: Int64?
+            do {
+                try ensureDirectory(pocketRoot, create: false)
+                let cache = pocketRoot.appendingPathComponent("transfer", isDirectory: true)
+                var info = stat()
+                if lstat(cache.path, &info) != 0 && errno == ENOENT {
+                    bytes = 0
+                } else {
+                    try ensureDirectory(cache, create: false)
+                    bytes = try inspect(cache, now: now, key: nil, clipboardFiles: clipboardFiles, check: {}).bytes
+                }
+            } catch { bytes = nil }
+            workLock.unlock()
+            completion(bytes)
         }
     }
 
@@ -193,7 +243,8 @@ enum PocketFolderTransfer {
         guard info.st_mode & S_IFMT == S_IFDIR, info.st_uid == getuid() else { return nil }
         let markerURL = job.appendingPathComponent(markerName)
         let markerInfo = try metadata(markerURL)
-        guard markerInfo.st_mode & S_IFMT == S_IFREG, markerInfo.st_size <= 4096, markerInfo.st_nlink == 1 else { return nil }
+        guard markerInfo.st_mode & S_IFMT == S_IFREG, markerInfo.st_size <= 4096, markerInfo.st_nlink == 1,
+              markerInfo.st_uid == getuid() else { return nil }
         let marker = try JSONDecoder().decode(Marker.self, from: Data(contentsOf: markerURL))
         guard marker.version == 1, job.lastPathComponent == "pocket-" + marker.token,
               !marker.archive.isEmpty, marker.archive == URL(fileURLWithPath: marker.archive).lastPathComponent,
@@ -201,12 +252,38 @@ enum PocketFolderTransfer {
         let contents = try FileManager.default.contentsOfDirectory(atPath: job.path)
         guard Set(contents) == Set([markerName, marker.archive]) else { return nil }
         let archiveInfo = try metadata(job.appendingPathComponent(marker.archive))
-        guard archiveInfo.st_mode & S_IFMT == S_IFREG, archiveInfo.st_nlink == 1, archiveInfo.st_size >= 0 else { return nil }
+        guard archiveInfo.st_mode & S_IFMT == S_IFREG, archiveInfo.st_nlink == 1, archiveInfo.st_size >= 0,
+              archiveInfo.st_uid == getuid(), marker.createdAt.timeIntervalSinceReferenceDate.isFinite,
+              (archiveInfo.st_mtimespec.tv_sec, archiveInfo.st_mtimespec.tv_nsec) <= (markerInfo.st_mtimespec.tv_sec, markerInfo.st_mtimespec.tv_nsec),
+              marker.archiveSignature.map({ $0 == Signature(archiveInfo) }) ?? true else { return nil }
         guard markerInfo.st_size <= Int64.max - archiveInfo.st_size else { throw PocketFolderTransferError.cacheFull }
         return (marker, archiveInfo.st_size + markerInfo.st_size)
     }
-    private static func expireAndCount(_ cache: URL, now: Date, check: () throws -> Void) throws -> Int64 {
-        var bytes: Int64 = 0, visited = 0, failure: Error?
+    private static func sourceKey(_ urls: [URL], entries: [String: Signature]) -> String {
+        var hash = SHA256()
+        func append(_ value: String) { hash.update(data: value.utf8 + [0]) }
+        for url in urls { append(url.standardizedFileURL.path) }
+        append("")
+        for (path, s) in entries.sorted(by: { $0.key < $1.key }) {
+            append(path)
+            append("\(s.device),\(s.inode),\(s.mode),\(s.size),\(s.mtime),\(s.mtimeNanos),\(s.ctime),\(s.ctimeNanos)")
+        }
+        return hash.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func removeArchive(_ job: URL, marker: Marker) throws {
+        // Remove just the two owned files. A user addition racing this operation survives.
+        guard let current = try ownedArchive(job), current.marker.token == marker.token, current.marker.archive == marker.archive,
+              current.marker.createdAt == marker.createdAt, current.marker.shared == marker.shared else { return }
+        guard unlink(job.appendingPathComponent(marker.archive).path) == 0,
+              unlink(job.appendingPathComponent(markerName).path) == 0 else { throw PocketFolderTransferError.unsafeCache }
+        if rmdir(job.path) != 0 && errno != ENOTEMPTY { throw PocketFolderTransferError.unsafeCache }
+    }
+
+    private static func inspect(_ cache: URL, now: Date, key: String?, clipboardFiles: () -> [URL]?,
+                                check: () throws -> Void) throws -> (bytes: Int64, reusable: (URL, Marker)?) {
+        var bytes: Int64 = 0, visited = 0, failure: Error?, reusable: (URL, Marker)?
+        var readReferences = false, protected: Set<String>?
         guard let jobs = FileManager.default.enumerator(at: cache, includingPropertiesForKeys: nil, options: [.skipsSubdirectoryDescendants], errorHandler: { _,error in failure=error;return false }) else { throw PocketFolderTransferError.unsafeCache }
         for case let job as URL in jobs {
             try check()
@@ -218,19 +295,31 @@ enum PocketFolderTransfer {
             // trees stop preparation instead of following links or deleting.
             let size: Int64
             if let owned = try? ownedArchive(job) {
-                if now.timeIntervalSince(owned.marker.createdAt) > retention {
-                    try FileManager.default.removeItem(at: job)
-                    continue
+                let age = now.timeIntervalSince(owned.marker.createdAt)
+                if age > retention {
+                    if !readReferences {
+                        protected = try? PocketTransferReferences.protectedJobs(in: cache, clipboardFiles: clipboardFiles())
+                        readReferences = true
+                    }
+                    if let protected, !protected.contains(job.lastPathComponent.lowercased()) {
+                        try removeArchive(job, marker: owned.marker)
+                        if !FileManager.default.fileExists(atPath: job.path) { continue }
+                    }
+                }
+                if age >= 0, let key, owned.marker.sourceKey == key, owned.marker.archiveSignature != nil,
+                   reusable.map({ owned.marker.createdAt > $0.1.createdAt }) ?? true {
+                    reusable = (job, owned.marker)
                 }
                 size = owned.bytes
             } else {
-                size = try unownedCacheBytes(job, visited: &visited, check: check)
+                do { size = try unownedCacheBytes(job, visited: &visited, check: check) }
+                catch { failure = error; continue }
             }
             guard size <= Int64.max - bytes else { throw PocketFolderTransferError.cacheFull }
             bytes += size
         }
         if let failure { throw failure }
-        return bytes
+        return (bytes, reusable)
     }
     private static func unownedCacheBytes(_ root: URL, visited: inout Int, check: () throws -> Void) throws -> Int64 {
         var bytes: Int64 = 0

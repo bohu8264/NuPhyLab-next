@@ -16,6 +16,6 @@ try {
   helper=helper.replace(needle,hook);
  }
  const instrumented=path.join(dir,'PocketFolderTransfer.swift');await writeFile(instrumented,helper);
- execFileSync('swiftc',['-swift-version','5','-import-objc-header','native/AppBridge.h','native/pocket/PocketL10n.swift',instrumented,...archiveSources,'bin/libwebp.a','qa/pocket/FolderTransferTests.swift','-o',binary,'-larchive.2',...['AppKit','Carbon','ImageIO','PDFKit','UniformTypeIdentifiers'].flatMap(x=>['-framework',x])],{stdio:'inherit'});
+ execFileSync('swiftc',['-swift-version','5','-import-objc-header','native/AppBridge.h','native/pocket/PocketL10n.swift','native/pocket/PocketTransferReferences.swift',instrumented,...archiveSources,'bin/libwebp.a','qa/pocket/FolderTransferTests.swift','-o',binary,'-larchive.2',...['AppKit','Carbon','ImageIO','PDFKit','UniformTypeIdentifiers'].flatMap(x=>['-framework',x])],{stdio:'inherit'});
  execFileSync(binary,[],{stdio:'inherit'});
 }finally{await rm(dir,{recursive:true,force:true});}

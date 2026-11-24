@@ -150,6 +150,11 @@ import WebKit
         while controller.isBusy && Date()<preparedDeadline {RunLoop.main.run(until:Date().addingTimeInterval(0.02))}
         let archiveURL=(controller.clipboard.readObjects(forClasses:[NSURL.self],options:[.urlReadingFileURLsOnly:true]) as? [URL])?.first
         check(!controller.isBusy && archiveURL?.pathExtension=="zip","Copy button produces a native ZIP file for folders")
+        controller.copySlot(3)
+        let repeatDeadline = Date().addingTimeInterval(5)
+        while controller.isBusy && Date() < repeatDeadline { RunLoop.main.run(until:Date().addingTimeInterval(0.02)) }
+        let repeatURL = (controller.clipboard.readObjects(forClasses:[NSURL.self],options:[.urlReadingFileURLsOnly:true]) as? [URL])?.first
+        check(archiveURL != nil && repeatURL == archiveURL, "Repeated Copy ZIP shares the same file URL through the real folder-copy entry point")
         check(controller.store.slots[3]?.id==copiedID && FileManager.default.fileExists(atPath:folder.appendingPathComponent("child.txt").path),"Folder original and slot stay intact after ZIP copy")
         controller.clipboard.clearContents();controller.clipboard.setString("first",forType:.string)
         controller.copySlot(3)
@@ -160,6 +165,35 @@ import WebKit
         controller.copySlot(3);controller.suspend()
         check(!controller.isBusy,"Suspend cancels pending manual ZIP")
         controller.shutdown();controller.resume();check(!controller.hotkeyReady,"shutdown cannot resume")
+        // Relaunch with an R51-format, expired transfer and the feature turned off.
+        // The only clipboard used by this controller is the named test board.
+        let legacyRoot = base.appendingPathComponent("legacy-pocket")
+        let legacyID = UUID().uuidString
+        let job = legacyRoot.appendingPathComponent("transfer/pocket-" + legacyID)
+        try FileManager.default.createDirectory(at: job, withIntermediateDirectories: true)
+        let old = job.appendingPathComponent("attachment.zip")
+        try Data([0x50, 0x4b, 5, 6] + [UInt8](repeating: 0, count: 18)).write(to: old)
+        let marker: [String: Any] = ["version":1, "token":legacyID, "createdAt":Date().addingTimeInterval(-9 * 86400).timeIntervalSinceReferenceDate, "archive":old.lastPathComponent]
+        try JSONSerialization.data(withJSONObject: marker).write(to: job.appendingPathComponent(".pocket-transfer.json"))
+        let legacy = PocketController(directory: legacyRoot, allowSystemInteraction: false, featureAdded: false)
+        defer { legacy.shutdown(); legacy.clipboard.releaseGlobally() }
+        func awaitSize(_ test: (Int64) -> Bool) -> Bool {
+            let end = Date().addingTimeInterval(4)
+            while Date() < end {
+                if let size = legacy.snapshot()["transferCacheBytes"] as? Int64, test(size) { return true }
+                RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+            }
+            return false
+        }
+        legacy.clipboard.clearContents()
+        legacy.clipboard.writeObjects([old as NSURL])
+        legacy.resume()
+        check(awaitSize { $0 > 0 } && FileManager.default.fileExists(atPath: old.path), "Startup reports real cache bytes and preserves an unfamiliar file clipboard")
+        legacy.suspend()
+        legacy.clipboard.clearContents()
+        legacy.clipboard.setString("fixture", forType: .string)
+        legacy.resume()
+        check(awaitSize { $0 == 0 } && !FileManager.default.fileExists(atPath: old.path), "Wake cleans an expired R51 transfer with Pocket removed, without another transfer")
         let corrupt=base.appendingPathComponent("corrupt")
         try FileManager.default.createDirectory(at:corrupt,withIntermediateDirectories:true)
         try Data(#"{"enabled":true,"slotKeyCodes":[18]}"#.utf8).write(to:corrupt.appendingPathComponent("settings.json"))

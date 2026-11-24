@@ -24,7 +24,9 @@ Accessibility access is used for user-triggered copy and paste. Automatic retrie
 
 Retrieving a slot containing folders into Feishu prepares a local ZIP and pastes it into Feishu. The original folder and slot remain. Feishu controls whether a send confirmation appears and may send pasted attachments directly; Lab never clicks Send. Shortcut retrieval into other apps keeps the original references. For slots containing folders, the management page offers Copy ZIP for pasting into chats. File-only slots keep the original file references.
 
-Each transfer supports up to 128 root items, 10,000 entries and 1 GiB of source content. Timeouts or destination changes stop retrieval. Symbolic links and other special files are not packed. Generated compatibility copies are local and cleaned up after seven days during a later preparation; original files are never deleted.
+Each transfer supports up to 128 root items, 10,000 entries and 1 GiB of source content. Timeouts or destination changes stop retrieval. Symbolic links and other special files are not packed.
+
+**Folder transfer cache** in Keyboard Pocket settings shows the disk space used. Copying the same unchanged folder again can reuse its ZIP. Lab checks the cache at startup, on wake and hourly while running. After seven days from the last use, it removes eligible ZIPs. Slots, Undo and Smart Clipboard history keep their file references. Cleanup also waits when a file on the system clipboard may still be needed. The transfer cache has a 4 GiB limit.
 
 ### File access
 
@@ -52,7 +54,9 @@ Pocket preserves read-only access to the files you select. If an old slot has no
 
 在飞书输入位置用快捷键取用含文件夹的槽位时，会先在本机生成 ZIP，再粘贴到飞书。原文件夹与槽位保留。是否显示发送确认由飞书决定；飞书可能直接发送粘贴的附件，Lab 不会点击发送按钮。其他应用的快捷键取用继续使用原文件引用；管理页中，含文件夹的槽位显示“复制 ZIP”，方便手动粘贴到聊天。只含文件的槽位仍复制原文件。
 
-单次最多 128 个根项目、10,000 个条目、1 GiB 原始内容，超时或目标变化会停止取用。符号链接等特殊文件暂不打包。兼容副本保存在本机临时目录，超过七天后在下次准备时清理；原文件不会被删除。
+单次最多 128 个根项目、10,000 个条目、1 GiB 原始内容，超时或目标变化会停止取用。符号链接等特殊文件暂不打包。
+
+键盘口袋设置里的**文件夹传输缓存**会显示占用的硬盘空间。再次复制同一个未改动的文件夹可以复用已有的 ZIP。Lab 启动、从睡眠中唤醒以及运行期间每小时都会检查一次。距上次取用超过七天后，已用完的 ZIP 会自动清理。槽位、撤销记录、智能剪贴板历史仍引用的文件会保留；系统剪贴板上的文件可能仍需粘贴时也会延后清理。传输缓存上限为 4 GiB。
 
 ### 文件访问
 

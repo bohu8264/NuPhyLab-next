@@ -6,7 +6,7 @@ import './keyboard-pocket.css';
 type PocketSettings={enabled:boolean;previewEnabled:boolean;useModifiers:string[];captureModifiers:string[];useTriggerKeyCode:number|null;captureTriggerKeyCode:number|null;slotKeyCodes:number[];slotKeyNames:string[];slotOrder:number[];clearAfterUse:boolean;plainText:boolean;sequential:boolean;sequenceIndex:number;retainDays:number};
 type Slot={index:number;id?:string;empty?:boolean;kind?:string;title?:string;summary?:string;preview?:string;text?:string;thumbnail?:string;pinned?:boolean;missing?:boolean;containsFolders?:boolean;fileCount?:number;count?:number;shortcutKey?:string;shortcutCode?:number};
 type Recording={kind:'use'|'capture'|'slot';index?:number};
-type PocketStatus={slots:Slot[];canUndo:boolean;settings:PocketSettings;permissions:{accessibility:boolean};hotkeyReady:boolean;hotkeys:{slotStatus:string;functionObserved:boolean;slotReady:boolean};recording?:Recording|null;fileAccessRequiredIndex?:number|null;status:string;issue?:string;keyChoices:{code:number;name:string}[]};
+type PocketStatus={slots:Slot[];canUndo:boolean;settings:PocketSettings;permissions:{accessibility:boolean};hotkeyReady:boolean;hotkeys:{slotStatus:string;functionObserved:boolean;slotReady:boolean};recording?:Recording|null;fileAccessRequiredIndex?:number|null;transferCacheBytes?:number|null;status:string;issue?:string;keyChoices:{code:number;name:string}[]};
 const defaults:PocketSettings={enabled:false,previewEnabled:true,useModifiers:['fn'],captureModifiers:['fn','shift'],useTriggerKeyCode:null,captureTriggerKeyCode:null,slotKeyCodes:[18,19,20,21,23,22,26,28,25],slotKeyNames:['1','2','3','4','5','6','7','8','9'],slotOrder:[0,1,2,3,4,5,6,7,8],clearAfterUse:false,plainText:false,sequential:false,sequenceIndex:0,retainDays:0};
 let pageSequence=0;
 const modifierLabels:Record<string,string>={fn:'Fn',control:'⌃ Control',option:'⌥ Option',shift:'⇧ Shift',command:'⌘ Command'};
@@ -19,6 +19,12 @@ function orderedSlots(state:PocketStatus|null):Slot[]{
  const order=state?.settings.slotOrder;
  const valid=Array.isArray(order)&&order.length===9&&new Set(order).size===9&&order.every(x=>Number.isInteger(x)&&x>=0&&x<9);
  return (valid?order:defaults.slotOrder).map(index=>state?.slots.find(slot=>slot.index===index)??{index,empty:true});
+}
+function transferCacheSize(bytes:number,english:boolean):string{
+ const units=['B','KB','MB','GB','TB'];
+ let value=bytes,index=0;
+ while(value>=1000&&index<units.length-1){value/=1000;index++;}
+ return value.toLocaleString(english?'en':'zh-CN',{maximumFractionDigits:2})+' '+units[index];
 }
 export function KeyboardPocketLab(){
  const english=useLanguage()==='en',copy=(zh:string,en:string)=>english?en:zh;
@@ -97,6 +103,7 @@ export function KeyboardPocketLab(){
   {!visible.length&&<div className="kp-no-results">{copy('没有找到匹配的内容','No matching content')}</div>}
   <div className="kp-board-footer"><span>{copy('拖动槽位调整位置，内容和快捷键一起移动。','Drag slots to reorder. Content and keys move together.')}</span><span>{copy('内容保存在本机','Stored on this Mac')}</span></div>
   <section className="kp-card kp-settings" aria-label={copy('口袋设置','Pocket settings')}>
+   <div className="kp-setting-row"><div><h3>{copy('文件夹传输缓存','Folder transfer cache')}</h3><p>{copy('粘贴到飞书或点击「复制 ZIP」时生成。超过 7 天且已不再使用的 ZIP 会自动清理。','Pasting folders into Feishu or choosing Copy ZIP creates these files. Unused ZIPs are removed after 7 days.')}</p></div><span className="kp-cache-size">{typeof state?.transferCacheBytes==='number'?transferCacheSize(state.transferCacheBytes,english):copy('暂未统计','Not measured')}</span></div>
    <div className="kp-setting-row"><div><h3>{copy('浮窗预览','Floating preview')}</h3><p>{copy('按住收纳或取用快捷键，查看各槽内容。','Hold a store or retrieve shortcut to preview your slots.')}</p></div><button data-voice-control="pocket-preview" className={'kp-switch '+(settings.previewEnabled?'is-on':'')} role="switch" aria-checked={settings.previewEnabled} aria-label={copy('浮窗预览','Floating preview')} disabled={disabled} onClick={()=>update({previewEnabled:!settings.previewEnabled})}><span/></button></div>
    <div className="kp-slot-settings"><button className="kp-disclosure" disabled={Boolean(activeRecording)} aria-expanded={keysOpen} aria-controls="kp-slot-keys" onClick={()=>setKeysOpen(!keysOpen)}><span>{copy('槽位按键','Slot keys')}</span><span className="kp-disclosure-note">{copy('收纳和取用共用','Shared by store and retrieve')}</span><ChevronDown size={15}/></button><div id="kp-slot-keys" className="kp-keymap-grid" hidden={!keysOpen}>{slots.map(slot=>{const isRecording=activeRecording?.kind==='slot'&&activeRecording.index===slot.index;return <div className="kp-keymap-item" key={slot.index}><span>{copy(`槽位 ${slot.index+1}`,`Slot ${slot.index+1}`)}</span><button className={'kp-slot-record '+(isRecording?'is-recording':'')} disabled={disabled} aria-label={copy(`录制槽位 ${slot.index+1} 的按键`,`Record key for slot ${slot.index+1}`)} onClick={()=>void recordShortcut({kind:'slot',index:slot.index})}><Keyboard size={14}/>{isRecording?copy('请按键…','Press a key…'):keyName(slot.index)}</button></div>;})}</div></div>
    <div className="kp-options">{([{field:'plainText',zh:'以纯文本复制',en:'Copy as plain text'},{field:'clearAfterUse',zh:'取用后清空',en:'Clear after retrieval'}] as const).map(item=><label key={item.field}><input type="checkbox" checked={settings[item.field]} disabled={disabled} onChange={event=>update({[item.field]:event.target.checked})}/><span>{copy(item.zh,item.en)}</span></label>)}</div>

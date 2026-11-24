@@ -42,6 +42,11 @@ import Carbon
     private var lastActivity = false
     private var transferPending = false
     private var folderPreparation: DragJobControl?
+    private var transferCacheTimer: Timer?
+    private var transferCacheBytes: Int64?
+    private var inspectingCache = false
+    private var inspectCacheAgain = false
+    private var lastFolderCopy: (change: Int, urls: [URL])?
     private var manualCopyPreparation = false
     private var fileAccessRequiredIndex: Int?
     private var activeAlert: NSAlert?
@@ -117,11 +122,57 @@ import Carbon
     func suspend() {
         cancelShortcutRecording()
         guard !suspended else { return }; suspended = true
+        transferCacheTimer?.invalidate(); transferCacheTimer = nil
         cancelTransfers(); hotkeys.stop(); hotkeyReady=false; registration=""
         stopObserver()
     }
-    func resume() { guard !closed else{return}; suspended=false; refreshAuthorization() }
+    func resume() {
+        guard !closed else { return }
+        suspended = false
+        if transferCacheTimer == nil {
+            refreshTransferCache()
+            let timer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { [weak self] _ in
+                Task { @MainActor in self?.refreshTransferCache() }
+            }
+            timer.tolerance = 60
+            transferCacheTimer = timer
+        }
+        refreshAuthorization()
+    }
     func shutdown() { closed=true; suspend(); stopObserver() }
+
+    /// Invoked by the worker only when an expired ZIP exists. For an unfamiliar file
+    /// clipboard, wait for a later pass without inspecting any clipboard payload.
+    private func clipboardProtection() -> () -> [URL]? {
+        return { [weak self] in
+            DispatchQueue.main.sync {
+                guard let self, !self.suspended, !self.closed else { return nil }
+                let board = self.clipboard, change = board.changeCount
+                if let copy = self.lastFolderCopy, copy.change == change { return copy.urls }
+                if #available(macOS 15.4, *), board.accessBehavior == .alwaysDeny { return nil }
+                guard let types = board.types else { return nil }
+                let hasFile = types.contains(.fileURL) || types.contains(PocketFileTransfer.filenamesType)
+                return hasFile || board.changeCount != change ? nil : []
+            }
+        }
+    }
+
+    private func refreshTransferCache() {
+        guard !suspended, !closed, loadIssue.isEmpty else { return }
+        if inspectingCache { inspectCacheAgain = true; return }
+        inspectingCache = true
+        PocketFolderTransfer.maintain(pocketRoot: root, clipboardFiles: clipboardProtection()) { [weak self] bytes in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.transferCacheBytes = bytes
+                self.inspectingCache = false
+                if self.inspectCacheAgain {
+                    self.inspectCacheAgain = false
+                    self.refreshTransferCache()
+                }
+            }
+        }
+    }
     func refreshAuthorization() {
         guard !closed else{return}
         guard recording == nil else {hotkeys.stop();hotkeyReady=false;registration="";emit();return}
@@ -182,7 +233,7 @@ import Carbon
     func invalidatePage() {cancelShortcutRecording();pageToken=nil;slotRects=[:];internalDragging=false}
     private func page(_ body:[String:Any]) {
         guard let token=body["pageToken"] as? String,token.count <= 128 else{return}
-        if body["active"] as? Bool == true {if pageToken != token {cancelShortcutRecording()};pageToken=token;slotRects=[:];internalDragging=false}
+        if body["active"] as? Bool == true {if pageToken != token {cancelShortcutRecording();refreshTransferCache()};pageToken=token;slotRects=[:];internalDragging=false}
         else if pageToken==token {cancelShortcutRecording();pageToken=nil;slotRects=[:];internalDragging=false}
     }
     private func layout(_ body:[String:Any]) {
@@ -295,6 +346,7 @@ import Carbon
         var preferences=settings.dictionary
         preferences["slotKeyNames"]=settings.slotKeyNames.map(PocketL10n.text)
         return ["slots":slots,"canUndo":store?.canUndo ?? false,"settings":preferences,
+                "transferCacheBytes":transferCacheBytes.map { $0 as Any } ?? NSNull(),
                 "permissions":["accessibility":AXIsProcessTrusted()],"hotkeyReady":hotkeyReady && available,
                 "hotkeys":["slotStatus":PocketL10n.text(hotkeys.slotStatus),"functionObserved":hotkeys.functionObserved,"slotReady":hotkeys.slotReady && available],
                 "status":PocketL10n.text(status),"issue":PocketL10n.text(issue),
@@ -570,13 +622,14 @@ emit();if window?.isKeyWindow != true{showToast(status)};if !isQA {NSSound.beep(
         }
         let control=DragJobControl(),initialClipboard=clipboard.changeCount,pid=destination?.processIdentifier
         let focus=targetFocus,targetWindow=targetWindow,bundle=destination?.bundleIdentifier ?? "com.bytedance.macos.feishu",root=root
+        let protectedFiles = clipboardProtection()
         folderPreparation=control;transferPending=true;manualCopyPreparation=manual
         status=english ? "Preparing folder ZIP…" : "正在打包文件夹…";showToast(status);emit()
         DispatchQueue.global(qos:.userInitiated).async{[weak self] in
             let result:Result<PocketPreparedFileTransfer,Error>
             do {
                 defer {access.close()}
-                result = .success(try PocketFolderTransfer.prepare(access.urls,targetBundleIdentifier:bundle,pocketRoot:root,control:control))
+                result = .success(try PocketFolderTransfer.prepare(access.urls,targetBundleIdentifier:bundle,pocketRoot:root,control:control,clipboardFiles:protectedFiles))
             }catch {result = .failure(error)}
             DispatchQueue.main.async{[weak self] in
                 guard let self else {if case .success(let prepared)=result{PocketFolderTransfer.discard(prepared)};return}
@@ -597,6 +650,8 @@ emit();if window?.isKeyWindow != true{showToast(status)};if !isQA {NSSound.beep(
                         if self.clipboard.changeCount==beforeWrite {PocketFolderTransfer.discard(prepared)}
                         throw error
                     }
+                    self.lastFolderCopy = (self.clipboard.changeCount, prepared.urls)
+                    self.refreshTransferCache()
                     if manual {
                         self.status=self.english ? "ZIP copied. Paste it into your chat or Finder." : "ZIP 已复制，可粘贴到聊天或访达。"
                         self.showToast(self.status)

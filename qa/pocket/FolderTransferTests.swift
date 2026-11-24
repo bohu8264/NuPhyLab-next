@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+import SQLite3
 
 enum PocketFolderTransferTestHooks {
     private static let lock = NSLock()
@@ -191,6 +192,81 @@ enum PocketFolderTransferTestHooks {
             _ = try PocketFolderTransfer.prepare([source], targetBundleIdentifier: target, pocketRoot: expiryProfile, control: DragJobControl(), now: now)
         }
         try check(try fm.destinationOfSymbolicLink(atPath: cacheLink.path) == outside.path && fm.contentsOfDirectory(atPath: outside.path).isEmpty, "Unknown linked cache and external destination unchanged")
+
+        func maintain(_ profile: URL, at date: Date, board: @escaping () -> [URL]? = { [] }) throws -> Int64 {
+            let done = DispatchSemaphore(value: 0)
+            var result: Int64?
+            PocketFolderTransfer.maintain(pocketRoot: profile, now: date, clipboardFiles: board) { bytes in
+                result = bytes; done.signal()
+            }
+            guard done.wait(timeout: .now() + 5) == .success, let result else { throw PocketFolderTransferError.unsafeCache }
+            return result
+        }
+        let reuseRoot = try directory("reuse-profile")
+        try check(try maintain(reuseRoot, at: now) == 0 && !fm.fileExists(atPath: reuseRoot.appendingPathComponent("transfer").path), "A new installation creates no transfer cache during maintenance")
+        let reuseSource = try directory("copy-again")
+        let note = reuseSource.appendingPathComponent("note.txt")
+        try Data("one".utf8).write(to: note)
+        func take(_ source: URL, _ root: URL, _ stamp: Date) throws -> PocketPreparedFileTransfer {
+            try PocketFolderTransfer.prepare([source], targetBundleIdentifier: target, pocketRoot: root, control: DragJobControl(), now: stamp)
+        }
+        let first = try take(reuseSource, reuseRoot, now)
+        let originalBytes = try Data(contentsOf: first.urls[0])
+        let again = try take(reuseSource, reuseRoot, now.addingTimeInterval(86400))
+        try check(first.urls == again.urls && (try fm.contentsOfDirectory(atPath: reuseRoot.appendingPathComponent("transfer").path)).count == 1, "Unchanged folder reused on another day without repacking")
+        for result in [first, again] {
+            let done = DispatchSemaphore(value: 0)
+            PocketFolderTransfer.discard(result) { done.signal() }
+            try check(done.wait(timeout: .now() + 5) == .success && (try Data(contentsOf: first.urls[0])) == originalBytes, "Cancellation cannot delete an archive shared with another retrieval")
+        }
+        let sevenDaysLater = now.addingTimeInterval(PocketFolderTransfer.retention + 1)
+        try check(try maintain(reuseRoot, at: sevenDaysLater, board: { preconditionFailure("Fresh ZIPs need no clipboard inspection") }) > 0, "Seven-day retention restarts on reuse")
+        try Data("two".utf8).write(to: note)
+        let changed = try take(reuseSource, reuseRoot, now.addingTimeInterval(86401))
+        try check(first.urls != changed.urls && (try Data(contentsOf: first.urls[0])) == originalBytes, "Same-size source edit creates a new ZIP and preserves the receiver's old bytes")
+        try Data("edited by user".utf8).write(to: changed.urls[0])
+        _ = try maintain(reuseRoot, at: sevenDaysLater.addingTimeInterval(86500))
+        try check(!fm.fileExists(atPath: first.urls[0].path) && (try Data(contentsOf: changed.urls[0])) == Data("edited by user".utf8), "Independent maintenance expires only the unmodified ZIP")
+        let held = try take(reuseSource, reuseRoot, sevenDaysLater)
+        let heldAgain = try PocketFolderTransfer.prepare([reuseSource], targetBundleIdentifier: target, pocketRoot: reuseRoot, control: DragJobControl(), now: sevenDaysLater.addingTimeInterval(PocketFolderTransfer.retention + 1), clipboardFiles: { held.urls })
+        try check(heldAgain.urls == held.urls, "An unchanged ZIP retained by the current clipboard can be reused after seven days")
+
+        let protectedParent = try directory("saved-references")
+        let pocket = protectedParent.appendingPathComponent("keyboard-pocket")
+        try fm.createDirectory(at: pocket, withIntermediateDirectories: true)
+        var oldURLs: [URL] = []
+        for i in 0..<5 {
+            let input = try directory("reference-\(i)")
+            let file = try take(input, pocket, now).urls[0]
+            let marker = file.deletingLastPathComponent().appendingPathComponent(".pocket-transfer.json")
+            var oldMarker = try JSONSerialization.jsonObject(with: Data(contentsOf: marker)) as! [String: Any]
+            for field in ["sourceKey", "archiveSignature", "shared"] { oldMarker.removeValue(forKey: field) }
+            try JSONSerialization.data(withJSONObject: oldMarker).write(to: marker)
+            oldURLs.append(file)
+        }
+        let state = pocket.appendingPathComponent("pockets.json")
+        func savePocket(_ slots: [URL], _ history: [URL]) throws {
+            let value: [String: Any] = ["version": 1, "slots": [["files": slots.map(\.absoluteString)]], "history": [[["files": history.map(\.absoluteString)]]]]
+            try JSONSerialization.data(withJSONObject: value).write(to: state)
+        }
+        try savePocket([oldURLs[0]], [oldURLs[1]])
+        let smart = protectedParent.appendingPathComponent("smart-clipboard")
+        try fm.createDirectory(at: smart, withIntermediateDirectories: true)
+        var database: OpaquePointer?
+        try check(sqlite3_open(smart.appendingPathComponent("history.sqlite").path, &database) == SQLITE_OK, "Test history opened")
+        defer { sqlite3_close_v2(database) }
+        let hex = try JSONSerialization.data(withJSONObject: [["path": oldURLs[2].absoluteString]]).map { String(format: "%02x", $0) }.joined()
+        try check(sqlite3_exec(database, "CREATE TABLE clips(kind TEXT,payload BLOB); INSERT INTO clips VALUES('files',X'\(hex)')", nil, nil, nil) == SQLITE_OK, "File clipboard reference recorded")
+        _ = try maintain(pocket, at: sevenDaysLater, board: { nil })
+        try check(oldURLs.allSatisfy { fm.fileExists(atPath: $0.path) }, "An unfamiliar file clipboard defers deletion without reading its contents")
+        _ = try maintain(pocket, at: sevenDaysLater, board: { [oldURLs[3]] })
+        try check(oldURLs.prefix(4).allSatisfy { fm.fileExists(atPath: $0.path) } && !fm.fileExists(atPath: oldURLs[4].path), "Legacy R51 cleanup preserves slots, undo, history and current file clipboard; an unused ZIP expires without another transfer")
+        try Data("unknown format".utf8).write(to: state)
+        _ = try maintain(pocket, at: sevenDaysLater)
+        try check(fm.fileExists(atPath: oldURLs[3].path), "Unreadable saved data defers expiration")
+        try savePocket([], [])
+        try check(sqlite3_exec(database, "DELETE FROM clips", nil, nil, nil) == SQLITE_OK, "Release fixture history reference")
+        try check(try maintain(pocket, at: sevenDaysLater) == 0 && oldURLs.allSatisfy { !fm.fileExists(atPath: $0.path) }, "Space is reclaimed when the last references are gone")
 
         let cancelSource = try directory("cancellation-source")
         let large = cancelSource.appendingPathComponent("large.bin")
