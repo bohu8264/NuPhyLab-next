@@ -1,4 +1,4 @@
-.screen-replay{max-width:820px;display:grid;gap:14px}
+.screen-replay{min-width:0;display:grid;gap:14px}
 .replay-controls,.replay-last{border:1px solid #dedede;border-radius:12px;overflow:hidden}
 .replay-head{padding:18px 20px;background:#f7f7f7}
 .replay-head .switch-field{display:flex;justify-content:space-between;width:100%;font-weight:600}

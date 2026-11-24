@@ -78,6 +78,25 @@ try {
  await click('作品库',`document.querySelector('.ml-tabs')`);await page('library');await service.command({op:'settings',settings:{language:'en'}});await until(()=>evaluate(`document.documentElement.lang`),value=>value==='en','English');await click('All');await shot('unified-library-en');
  const libraryText=await evaluate(`(()=>{const copy=document.querySelector('.unified-library').cloneNode(true);copy.querySelectorAll('[translate=no]').forEach(n=>n.remove());return copy.textContent;})()`);assert.doesNotMatch(libraryText,/[\u3400-\u9fff]/);await click('Feature Center');await page('features');assert.doesNotMatch(await evaluate(`document.querySelector('.feature-center').innerText`),/[\u3400-\u9fff]/);await shot('feature-center-en');
  await send('Emulation.setDeviceMetricsOverride',{width:900,height:660,deviceScaleFactor:1,mobile:false});await shot('feature-center-small-en');assert.equal(await evaluate(`document.documentElement.scrollWidth>innerWidth`),false);checks.push('Chinese/English + 900px viewport without horizontal overflow');
+
+ const selectedFeatures=(await service.state()).settings.sidebarFeatures;
+ assert((await service.command({op:'settings',settings:{sidebarFeatures:[...new Set([...selectedFeatures,'selection-question'])]}})).ok);
+ await click('Smart Selection',"document.querySelector('.feature-sidebar-nav')");
+ await page('selection-question');
+ for (const [width,height] of [[720,520],[1080,708],[1440,900],[1920,1080]]) {
+   await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:false});
+   for (const tab of ['first-child','last-child']) {
+     await evaluate("document.querySelector('.mc-tabs button:"+tab+"').click()");
+     await until(()=>evaluate("Boolean(document.querySelector('.my-selection-commands'))"),shown=>shown===(tab==='last-child'),'Smart Selection tab');
+     const bounds=await evaluate(`(() => {
+       const header=document.querySelector('.lab-page-header').getBoundingClientRect();
+       const card=document.querySelector('.sl-settings-card').getBoundingClientRect();
+       return [Math.abs(header.left-card.left),Math.abs(header.right-card.right),document.documentElement.scrollWidth-innerWidth];
+     })()`);
+     assert(bounds.every(delta=>delta<=1),'Smart Selection does not fit the workspace at '+width+'px: '+bounds);
+   }
+ }
+ checks.push('Both Smart Selection tabs use the full workspace at four window sizes');
  assert.deepEqual(exceptions,[]);await writeFile(path.join(output,'RESULT.json'),JSON.stringify({ok:true,checks,scope:'headless Chrome, production dist and isolated real HTTP service with fake HID; no native or physical-input claim'},null,2));console.log(JSON.stringify({ok:true,checks,output}));
 } catch(error) {
  if(send){try{const result=await send('Page.captureScreenshot',{format:'png'});await writeFile(path.join(output,'failure.png'),Buffer.from(result.data,'base64'));}catch{}}

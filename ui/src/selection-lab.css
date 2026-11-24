@@ -1,8 +1,8 @@
 /* API and permission settings retain the R7 styling and behavior. */
-.selection-message{border-radius:8px;padding:11px 14px;background:#eef5f0;color:#4d7b60;font-size:12px;line-height:1.7}.selection-message.error{background:#fbf2f0;color:#a8655d}.selection-api-settings{max-width:710px;padding:4px 0 28px}.selection-api-title{display:flex;align-items:center;gap:13px;margin-bottom:20px}.selection-api-title h2{font-size:18px;margin:0 0 4px;font-weight:550}.selection-api-title p{font-size:12px;color:#888;margin:0}.selection-setup-note{display:flex;gap:12px;background:#f6f8f6;padding:14px 16px;border-radius:9px;margin-bottom:22px;color:#6f8175}.selection-setup-note svg{flex-shrink:0;margin-top:3px}.selection-setup-note p{font-size:11px;line-height:1.8;margin:0}.selection-api-settings fieldset{border:0;padding:0;margin:0;min-width:0}.selection-api-settings label{display:block;font-size:12px;font-weight:500;margin:0 0 17px}.selection-api-settings label small{float:right;font-size:10px;font-weight:400;color:#999}.selection-api-settings input,.selection-api-settings select{display:block;width:100%;height:37px;padding:8px 11px;border:1px solid #ddd;border-radius:7px;background:#fff;color:#333;font-size:12px;margin-top:8px;outline-offset:2px}.selection-api-settings input:focus,.selection-api-settings select:focus{outline:2px solid #bad2c3;border-color:#699d83}.selection-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.selection-hint{font-size:11px;color:#999;line-height:1.75;margin:-6px 0 19px}.selection-model-row{display:flex;align-items:flex-end;gap:12px}.selection-model-row label{flex:1;min-width:0}.selection-model-row .button{margin-bottom:17px;height:37px}.selection-vision{display:flex;align-items:center;gap:14px;background:#fafafa;border:1px solid #eee;padding:16px;border-radius:9px;margin:20px 0}.selection-vision strong{font-size:12px;font-weight:500}.selection-vision p{font-size:11px;color:#888;line-height:1.7;margin:5px 0 0}.selection-form-actions{display:flex;align-items:center;gap:10px;margin-top:22px;flex-wrap:wrap}.selection-form-actions>span{font-size:10px;color:#999}.selection-form-bottom{display:flex;align-items:center;justify-content:space-between;padding-top:18px}.selection-form-bottom a{font-size:11px;color:#777;display:inline-flex;gap:4px;align-items:center;text-decoration:none}.lab-v5 .brand .edition-label{display:block;font-size:9px;font-weight:400;line-height:14px;color:#699d83}.selection-edition-note{font-size:10px;color:#888;line-height:1.7;background:#f6f8f6;border-radius:7px;padding:9px 12px;margin-bottom:20px}
+.selection-message{border-radius:8px;padding:11px 14px;background:#eef5f0;color:#4d7b60;font-size:12px;line-height:1.7}.selection-message.error{background:#fbf2f0;color:#a8655d}.selection-api-settings{min-width:0;padding:4px 0 28px}.selection-api-title{display:flex;align-items:center;gap:13px;margin-bottom:20px}.selection-api-title h2{font-size:18px;margin:0 0 4px;font-weight:550}.selection-api-title p{font-size:12px;color:#888;margin:0}.selection-setup-note{display:flex;gap:12px;background:#f6f8f6;padding:14px 16px;border-radius:9px;margin-bottom:22px;color:#6f8175}.selection-setup-note svg{flex-shrink:0;margin-top:3px}.selection-setup-note p{font-size:11px;line-height:1.8;margin:0}.selection-api-settings fieldset{border:0;padding:0;margin:0;min-width:0}.selection-api-settings label{display:block;font-size:12px;font-weight:500;margin:0 0 17px}.selection-api-settings label small{float:right;font-size:10px;font-weight:400;color:#999}.selection-api-settings input,.selection-api-settings select{display:block;width:100%;height:37px;padding:8px 11px;border:1px solid #ddd;border-radius:7px;background:#fff;color:#333;font-size:12px;margin-top:8px;outline-offset:2px}.selection-api-settings input:focus,.selection-api-settings select:focus{outline:2px solid #bad2c3;border-color:#699d83}.selection-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.selection-hint{font-size:11px;color:#999;line-height:1.75;margin:-6px 0 19px}.selection-model-row{display:flex;align-items:flex-end;gap:12px}.selection-model-row label{flex:1;min-width:0}.selection-model-row .button{margin-bottom:17px;height:37px}.selection-vision{display:flex;align-items:center;gap:14px;background:#fafafa;border:1px solid #eee;padding:16px;border-radius:9px;margin:20px 0}.selection-vision strong{font-size:12px;font-weight:500}.selection-vision p{font-size:11px;color:#888;line-height:1.7;margin:5px 0 0}.selection-form-actions{display:flex;align-items:center;gap:10px;margin-top:22px;flex-wrap:wrap}.selection-form-actions>span{font-size:10px;color:#999}.selection-form-bottom{display:flex;align-items:center;justify-content:space-between;padding-top:18px}.selection-form-bottom a{font-size:11px;color:#777;display:inline-flex;gap:4px;align-items:center;text-decoration:none}.lab-v5 .brand .edition-label{display:block;font-size:9px;font-weight:400;line-height:14px;color:#699d83}.selection-edition-note{font-size:10px;color:#888;line-height:1.7;background:#f6f8f6;border-radius:7px;padding:9px 12px;margin-bottom:20px}
 
 /* Formal R2: one aligned settings card, grayscale scoped to selection UI. */
-.selection-lab.selection-formal{width:100%;max-width:640px;padding:0 0 20px;color:#202020}
+.selection-lab.selection-formal{width:100%;min-width:0;padding:0 0 20px;color:#202020}
 .selection-formal button{font-family:inherit;cursor:pointer;transition:background .15s,color .15s,border-color .15s}
 .selection-formal button:disabled{opacity:.4;cursor:default}
 .selection-formal button:focus-visible,.selection-formal summary:focus-visible{outline:2px solid #777;outline-offset:3px}
@@ -11,7 +11,7 @@
 .selection-formal .sl-row-copy{flex:1;min-width:0}
 .selection-formal .sl-row-copy h2,.selection-formal .sl-row-copy h3{margin:0;color:#202020;font-size:13px;font-weight:500;line-height:20px;letter-spacing:0}
 .selection-formal .sl-row-copy h2{font-size:14px}
-.selection-formal .sl-row-copy p{margin:3px 0 0;color:#777;font-size:11.5px;line-height:18px}
+.selection-formal .sl-row-copy p{margin:3px 0 0;max-width:75ch;color:#777;font-size:11.5px;line-height:18px}
 .selection-lab.selection-formal .switch-field{flex:none;margin:0;padding:0;min-width:32px;width:32px}
 .selection-lab.selection-formal .switch{position:relative;display:block;width:32px;height:19px;min-width:32px;padding:2px;border:0;border-radius:12px;background:#d4d4d4;box-shadow:none}
 .selection-lab.selection-formal .switch>span{position:static;display:block;width:15px;height:15px;background:#fff;border-radius:50%;box-shadow:none;transition:transform .15s}
@@ -86,7 +86,7 @@
 @media(prefers-reduced-motion:reduce){.selection-formal button,.selection-formal .switch>span,.lab-v5 .sidebar .lab-nav-chevron{transition:none}}
 
 /* R12 model settings. Scoped to this card; feature and permission UI stay intact. */
-.selection-api-settings.models-settings{width:100%;max-width:560px;padding:4px 0 28px;color:#252525}
+.selection-api-settings.models-settings{width:100%;container-type:inline-size;padding:4px 0 28px;color:#252525}
 .models-settings .models-heading{margin:0 0 22px}
 .models-settings .models-heading h2{margin:0;font-size:19px;font-weight:560;letter-spacing:-.3px;line-height:1.4}
 .models-settings .models-heading p{margin:8px 0 0;color:#777;font-size:12px;line-height:1.7}
@@ -198,3 +198,34 @@
 .selection-formal .sl-default-action-row .sl-row-copy{flex:1 1 160px}
 .selection-formal .sl-default-action-row .sl-actions{flex-wrap:wrap;max-width:100%}
 
+
+.mc-tabs { margin-bottom: 16px; }
+.mc-heading, .mc-command, .mc-tools { display: flex; align-items: center; gap: 8px; }
+.mc-heading { justify-content: space-between; margin: 23px 0 7px; }
+.mc-heading h3 { margin: 0; font-size: 14px; }
+.mc-command { padding: 12px 0; border-bottom: 1px solid #ededed; }
+.mc-command .sl-row-copy p { overflow-wrap: anywhere; }
+.mc-tools { flex-wrap: wrap; gap: 2px; }
+.mc-icon, .mc-link { border: 0; background: transparent; color: #555; }
+.mc-icon { display: inline-grid; place-items: center; width: 27px; height: 28px; border-radius: 5px; }
+.mc-icon:hover { background: #eee; }
+.mc-fields { display: grid; gap: 14px; }
+.mc-fields label { display: grid; gap: 6px; font-size: 13px; }
+.mc-fields input, .mc-fields textarea { font: inherit; color: inherit; padding: 8px; border: 1px solid #ccc; border-radius: 6px; }
+.mc-fields textarea { resize: vertical; min-height: 48px; }
+.mc-fields .button { justify-self: start; }
+.mc-issue { font-size: 12px; color: #883f35; }
+@media (max-width: 800px) { .mc-command { align-items: flex-start; flex-wrap: wrap; } }
+
+@container (min-width: 720px) {
+  .models-settings .models-card > fieldset {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 24px;
+    align-items: start;
+  }
+  .models-settings .models-key-field,
+  .models-settings .models-advanced {
+    grid-column: 1 / -1;
+  }
+}

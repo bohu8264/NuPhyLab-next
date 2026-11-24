@@ -1,0 +1,15 @@
+{
+  "version": "1.2.55",
+  "en": [
+    "My Commands in Smart Selection runs your saved instructions on selected text. Review the original and the instruction, ask a follow-up, and copy the answer.",
+    "Screen Awareness lets you ask by text or voice about the visible windows on the display under your pointer, a single window, or a region.",
+    "Smart Clipboard lets you search local history, filter favorites, and copy an entry while keeping the history open. You can also ask your configured model to edit a selected entry.",
+    "Settings and feature pages adapt to the window width. Screen Awareness and Smart Clipboard answers fit their content and provide a copy button at the upper right."
+  ],
+  "zh-CN": [
+    "在智能框选的「我的指令」中，用已保存的指令处理选中文字。可核对原文和处理要求、继续追问并复制答案。",
+    "AI 屏幕感知支持用文字或语音提问，覆盖鼠标所在显示器的可见窗口、单个窗口或框选区域。",
+    "智能剪贴板支持搜索本机历史、筛选收藏，复制记录后保持窗口可见，也可交给已配置的模型处理。",
+    "设置和功能页面随窗口宽度调整。AI 屏幕感知和智能剪贴板的回答区随内容收放，复制按钮位于右上角。"
+  ]
+}

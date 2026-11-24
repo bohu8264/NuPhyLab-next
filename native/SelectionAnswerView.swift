@@ -3,7 +3,6 @@ import SwiftUI
 
 private enum AnswerPalette {
  static let ink=Color.black
- static let raised=Color(white:0.09)
  static let text=Color(white:0.94)
  static let secondary=Color(white:0.57)
  static let accent=Color(white:0.86)
@@ -68,20 +67,18 @@ struct SelectionAnswerView:View {
      }.menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help(state.t("切换模式")).accessibilityLabel(state.t("当前模式")+": "+title)
     }
     Spacer(minLength:6)
-    if state.busy {icon("stop.fill",state.t("停止回答")){state.cancel?()}}
-    if hasSelection {
-     icon(copied ? "checkmark":"doc.on.doc",state.t("复制回答")){
-      NSPasteboard.general.clearContents();NSPasteboard.general.setString(LabAnswerMarkdown.plainText(state.answerBlocks),forType:.string);copied=true
-     }.disabled(state.answer.isEmpty)
-     icon("text.bubble",state.questionLabel){
+    if state.busy {SelectionPanelButton(symbol:"stop.fill",title:state.t("停止回答"),hovering:hovering){state.cancel?()}}
+    SelectionResultActions(hovering:hovering,expanded:state.expanded,copied:copied,
+     copyTitle:state.t("复制回答"),questionTitle:state.questionLabel,
+     sizeTitle:state.t(state.expanded ? "收小回答":"展开回答"),closeTitle:state.t("关闭"),
+     copy:state.answer.isEmpty ? nil:{
+      NSPasteboard.general.clearContents()
+      copied=NSPasteboard.general.setString(LabAnswerMarkdown.plainText(state.answerBlocks),forType:.string)
+     },ask:{
       state.showQuestion.toggle()
       if state.showQuestion{state.beginTyping?();DispatchQueue.main.async{questionFocused=true}}
-     }
-     icon(state.expanded ? "arrow.down.right.and.arrow.up.left":"arrow.up.left.and.arrow.down.right",state.expanded ? state.t("收小回答"):state.t("展开回答")){
-      state.expanded.toggle();state.expansion?()
-     }
-    }
-    icon("xmark",state.t("关闭")){state.close?()}
+     },changeSize:hasSelection ? {state.expanded.toggle();state.expansion?()}:nil,
+     close:{state.close?()})
    }.frame(height:24)
    if state.showsTranslationLanguage {
     Menu {
@@ -113,15 +110,10 @@ struct SelectionAnswerView:View {
       Text(state.t(state.issue)).font(.system(size:13)).lineSpacing(4).foregroundStyle(AnswerPalette.error).textSelection(.enabled)
      }
      if state.showQuestion {
-      HStack(alignment:.bottom,spacing:8){
-       TextField(state.questionPlaceholder,text:$state.question,axis:.vertical).lineLimit(1...4)
-        .textFieldStyle(.plain).font(.system(size:13)).focused($questionFocused)
-        .onSubmit{if !state.busy && !state.question.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty{questionFocused=false;state.showQuestion=false;state.submit?(state.questionAction)}}
-       Button{questionFocused=false;state.showQuestion=false;state.submit?(state.questionAction)}label:{
-        Image(systemName:"arrow.up").font(.system(size:11,weight:.semibold)).frame(width:24,height:24)
-         .background(AnswerPalette.accent,in:Circle()).foregroundStyle(AnswerPalette.ink)
-       }.buttonStyle(.plain).disabled(state.busy || state.question.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty).help(state.t("发送")).accessibilityLabel(state.submitLabel)
-      }.padding(10).background(AnswerPalette.raised,in:RoundedRectangle(cornerRadius:12)).id("question")
+      SelectionQuestionField(text:$state.question,focus:$questionFocused,placeholder:state.questionPlaceholder,
+       sendTitle:state.submitLabel,busy:state.busy){
+        questionFocused=false;state.showQuestion=false;state.submit?(state.questionAction)
+       }.id("question")
      }
     }.frame(maxWidth:.infinity,alignment:.leading)
      .background(GeometryReader{p in Color.clear.preference(key:AnswerHeight.self,value:LabAnswerMeasurement(width:state.readingWidth,height:p.size.height))})
@@ -130,10 +122,6 @@ struct SelectionAnswerView:View {
     .onChange(of:state.showQuestion){_,shown in if shown{reader.scrollTo("question",anchor:.bottom)}}
    }
   }.padding(.horizontal,16).padding(.top,6).padding(.bottom,12)
- }
- private func icon(_ symbol:String,_ label:String,action:@escaping()->Void)->some View {
-  Button(action:action){Image(systemName:symbol).font(.system(size:12)).frame(width:24,height:24).contentShape(Rectangle())}
-   .buttonStyle(.plain).foregroundStyle(hovering ? Color(white:0.8):AnswerPalette.secondary).help(label).accessibilityLabel(label)
  }
  static func permissionTitle(_ id:String,language:AppLanguage = .zh)->String {
   switch id{case "accessibility":return LabText.text("开启辅助功能",language:language);case "screenRecording":return LabText.text("开启屏幕录制",language:language);case "inputMonitoring":return LabText.text("开启输入监控",language:language);case "microphone":return LabText.text("开启麦克风",language:language);default:return LabText.text("开启语音识别",language:language)}

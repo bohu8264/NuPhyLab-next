@@ -1,5 +1,5 @@
 /* Approved v7 01 reason page and 04 passive identity; existing controls stay v5/v6. */
-.lab-device-page.lab-device-connection-v7{max-width:640px;padding-top:40px}
+.lab-device-page.lab-device-connection-v7{min-width:0;padding-top:40px}
 .lab-device-connection-v7 .lab-device-connection-intro h2{font-size:20px;font-weight:500;line-height:28px;margin:0}
 .lab-device-connection-v7 .lab-device-connection-intro p{font-size:13px;line-height:22px;margin:8px 0 0;overflow-wrap:anywhere}
 .lab-device-connection-v7 .lab-device-connection-scope{font-size:12px;line-height:20px;color:#333;margin:24px 0 0}

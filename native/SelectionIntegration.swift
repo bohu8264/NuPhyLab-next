@@ -91,6 +91,7 @@ enum SelectionPermissionProbe {
     var fileDragActive: (() -> Bool)? { get set }
     var shortcutSaveIssue: ((InputBinding) -> String?)? { get set }
     var commandModel: AIConfiguration? { get }
+    var assistTranslationLanguage: String { get }
     var isBusy: Bool { get }
     var dragReservedTrigger: String? { get }
     var selectionReservedBinding: InputBinding? { get }
@@ -105,7 +106,7 @@ enum SelectionPermissionProbe {
     func refreshAuthorization()
     func shutdown()
 }
-extension SelectionFeature { var commandModel:AIConfiguration? { nil }; func setFeatureAdded(_ added:Bool) {} ; func setExternalShortcutRecording(_ active:Bool) {} ; var selectionReservedBinding:InputBinding? {nil}; var dragReservedTrigger:String? {nil}; func cancel() { cancel(animatePanel: false) } }
+extension SelectionFeature { var assistTranslationLanguage:String { "Simplified Chinese" }; var commandModel:AIConfiguration? { nil }; func setFeatureAdded(_ added:Bool) {} ; func setExternalShortcutRecording(_ active:Bool) {} ; var selectionReservedBinding:InputBinding? {nil}; var dragReservedTrigger:String? {nil}; func cancel() { cancel(animatePanel: false) } }
 
 @MainActor enum SelectionFeatureFactory {
     static func make(directory: URL, featureAdded:Bool=true) -> any SelectionFeature {
@@ -124,6 +125,7 @@ extension SelectionFeature { var commandModel:AIConfiguration? { nil }; func set
         preferences=(try? JSONDecoder().decode(LabPreferences.self,from:Data(contentsOf:file))) ?? LabPreferences()
     }
     var commandModel:AIConfiguration? { preferences.configuration }
+    var assistTranslationLanguage:String { preferences.translationLanguage.englishName }
     func updateLanguage(_ language:AppLanguage){self.language=language}
     var showSettings: (() -> Void)?
     var fileDragActive: (() -> Bool)?

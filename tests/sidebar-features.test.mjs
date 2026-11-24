@@ -19,7 +19,7 @@ test('legacy migration keeps active tools and saved music without rewriting thei
  const files={'dock-scenes-shortcuts.json':true,'voice-input/settings.json':{shortcutKeyCode:61},'library.json':{version:1,scenes:[],settings:{language:'en',codexEnabled:true},gameBestScores:{snake:10}},'selection-preferences.json':{enabled:true,actions:['reply']},'typing-sound-preferences.json':{enabled:true,volume:41},'keyboard-pocket/pockets.json':{slots:[{id:'user-file'}]},'music-works/test.json':{userWork:'not read by navigation'},'drag-convert.json':{enabled:true}};
  for(const [file,data] of Object.entries(files))await writeFile(path.join(dir,file),JSON.stringify(data));
  const before=await Promise.all(Object.keys(files).map(file=>readFile(path.join(dir,file))));const store=await new Store(dir).load();
- assert.deepEqual(store.data.settings.sidebarFeatures,FEATURE_IDS.filter(id=>!['color-picker','screen-replay'].includes(id)));assert.equal(store.data.settings.language,'en');assert.equal(store.data.settings.codexEnabled,true);
+ assert.deepEqual(store.data.settings.sidebarFeatures,FEATURE_IDS.filter(id=>!['color-picker','screen-replay','screen-awareness','smart-clipboard'].includes(id)));assert.equal(store.data.settings.language,'en');assert.equal(store.data.settings.codexEnabled,true);
  for(const [i,file] of Object.keys(files).entries())assert.deepEqual(await readFile(path.join(dir,file)),before[i]);
  await store.settings({sidebarFeatures:['library']});assert.deepEqual((await new Store(dir).load()).data.settings.sidebarFeatures,['library']);
  for(const [i,file] of Object.keys(files).entries())if(file!=='library.json')assert.deepEqual(await readFile(path.join(dir,file)),before[i]);

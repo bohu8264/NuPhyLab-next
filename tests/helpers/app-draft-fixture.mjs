@@ -73,6 +73,8 @@ export async function appDraftFixture(options={}){
     if(name==='./FeatureCenter')return {FeatureCenter:component('FeatureCenter'),features:sidebarFeatures.FEATURE_IDS.map((id,index)=>({id,zh:['灯光创作','作品库','AI 助手','灯光游戏','模拟声浪','演奏模式','智能框选','拖拽转换','键盘口袋','语音输入','Dock 场景','取色器','刚刚怎么了'][index],en:id,icon:component('feature-icon')}))};
     if(name==='./UnifiedLibrary')return {UnifiedLibrary:component('Library')};
     if(name==='./DockScenes')return {DockScenes:component('DockScenes')};
+    if(name==='./MySelectionCommands')return {SmartSelectionPage:component('SelectionLab')};
+    if(name==='./AssistSettings')return {AssistSettings:component('AssistSettings')};
     if(name==='./ScreenReplay')return {ScreenReplay:component('ScreenReplay')};
     if(name==='./ColorPicker')return {ColorPicker:component('ColorPicker')};
     if(name==='./VoiceControl')return {VoiceControl:component('VoiceControl')};

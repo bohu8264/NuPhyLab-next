@@ -2,18 +2,17 @@ import AppKit
 import QuartzCore
 import SwiftUI
 
-@available(macOS 14, *)
 @MainActor final class SelectionNotchSurface:NSObject {
- let panel:SelectionResultPanel
+ let panel:NSPanel
  private let cap:NSPanel
- private var displayLink:CADisplayLink?
+ private var invalidateDisplayLink:(()->Void)?
  private var lastTimestamp:CFTimeInterval=0
  private var destination:LabNotchLayout?
  private var width=LabNotchSpring(value:0),height=LabNotchSpring(value:0),opacity=LabNotchSpring(value:1)
  private var dismissing=false
  /// Synthetic QA observes only geometry/cadence, never answer text or user input.
  var onFrame:((NSRect,NSRect,CFTimeInterval,Bool)->Void)?
- init(panel:SelectionResultPanel){
+ init(panel:NSPanel){
   self.panel=panel
   cap=NSPanel(contentRect:.zero,styleMask:[.borderless,.nonactivatingPanel],backing:.buffered,defer:false)
   super.init()
@@ -22,8 +21,12 @@ import SwiftUI
   cap.collectionBehavior=[.canJoinAllSpaces,.fullScreenAuxiliary];cap.level=panel.level
   cap.contentView=SelectionNotchCapView()
  }
+ private var canAnimate:Bool {
+  if #available(macOS 14,*) {return panel.isVisible && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion}
+  return false
+ }
  func place(_ layout:LabNotchLayout,animated:Bool){
-  let animate=animated && panel.isVisible && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+  let animate=animated && canAnimate
   if !animate {
    stop();dismissing=false;destination=layout
    width=LabNotchSpring(value:layout.frame.width);height=LabNotchSpring(value:layout.frame.height);opacity=LabNotchSpring(value:1)
@@ -31,20 +34,21 @@ import SwiftUI
   }
   let same=destination?.frame==layout.frame && destination?.capFrame==layout.capFrame && !dismissing
   guard !same else{return}
-  if displayLink==nil {width=LabNotchSpring(value:panel.frame.width);height=LabNotchSpring(value:panel.frame.height);opacity=LabNotchSpring(value:panel.alphaValue)}
+  if invalidateDisplayLink==nil {width=LabNotchSpring(value:panel.frame.width);height=LabNotchSpring(value:panel.frame.height);opacity=LabNotchSpring(value:panel.alphaValue)}
   destination=layout;dismissing=false
   if layout.capFrame != nil,!cap.isVisible{cap.orderFrontRegardless()}
   start()
  }
  private func start(){
-  guard displayLink==nil else{return}
+  guard #available(macOS 14,*),invalidateDisplayLink==nil else{return}
   lastTimestamp=0
   let link=panel.displayLink(target:self,selector:#selector(tick(_:)))
   let maximum=Float(panel.screen?.maximumFramesPerSecond ?? 60)
   link.preferredFrameRateRange=CAFrameRateRange(minimum:min(60,maximum),maximum:maximum,preferred:maximum)
-  displayLink=link;link.add(to:.main,forMode:.common)
+  invalidateDisplayLink = {link.invalidate()};link.add(to:.main,forMode:.common)
  }
- private func stop(){displayLink?.invalidate();displayLink=nil;lastTimestamp=0}
+ private func stop(){invalidateDisplayLink?();invalidateDisplayLink=nil;lastTimestamp=0}
+ @available(macOS 14,*)
  @objc private func tick(_ link:CADisplayLink){
   guard let target=destination,panel.isVisible else{stop();return}
   if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
@@ -78,8 +82,8 @@ import SwiftUI
  func show(){dismissing=false;panel.alphaValue=1;cap.alphaValue=1;panel.orderFrontRegardless()}
  func hide(){stop();dismissing=false;destination=nil;panel.orderOut(nil);cap.orderOut(nil)}
  func dismiss(to layout:LabNotchLayout){
-  guard panel.isVisible,!NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else{hide();return}
-  if displayLink==nil {width=LabNotchSpring(value:panel.frame.width);height=LabNotchSpring(value:panel.frame.height);opacity=LabNotchSpring(value:panel.alphaValue)}
+  guard canAnimate else{hide();return}
+  if invalidateDisplayLink==nil {width=LabNotchSpring(value:panel.frame.width);height=LabNotchSpring(value:panel.frame.height);opacity=LabNotchSpring(value:panel.alphaValue)}
   destination=layout;dismissing=true;start()
  }
 }

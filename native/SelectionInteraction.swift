@@ -202,6 +202,7 @@ final class SelectionOverlayView:NSView{
  var language=AppLanguage.zh{didSet{needsDisplay=true}}
  var invalid:(()->Void)?;var finish:((NSRect)->Void)?;var start:(()->Void)?;var cancel:(()->Void)?;var mode:((Int)->Void)?
  var action=LabAction.translate{didSet{needsDisplay=true}};var speech=""{didSet{needsDisplay=true}}
+ var selectionTitle:String?
  var sideButtonSelection=false
  func showSideRegion(_ global:NSRect?){
   guard let global,let window else{rectangle = .zero;needsDisplay=true;return}
@@ -246,7 +247,7 @@ final class SelectionOverlayView:NSView{
   }
   if let context=NSGraphicsContext.current?.cgContext{context.addPath(LabNotchStyle.bodyPath(in:box,camera:cameraWidth>0,flipped:false));context.fillPath()}
   guard reveal>0.7 else{return}
-  let title=(action.keepsSpokenIntent || speech.isEmpty ? action.title(in:language):LabText.text("提问",language:language)) as NSString
+  let title=(selectionTitle ?? (action.keepsSpokenIntent || speech.isEmpty ? action.title(in:language):LabText.text("提问",language:language))) as NSString
   let attrs:[NSAttributedString.Key:Any]=[.font:NSFont.systemFont(ofSize:12,weight:.medium),.foregroundColor:NSColor.white.withAlphaComponent(0.88)]
   let size=title.size(withAttributes:attrs)
   title.draw(at:NSPoint(x:box.midX-size.width/2,y:box.midY-size.height/2),withAttributes:attrs)

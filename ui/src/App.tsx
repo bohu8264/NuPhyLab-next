@@ -40,7 +40,7 @@ import { Codex } from "./Codex";
 import { ClaudeCode } from "./ClaudeCode";
 import { agentSource } from "./AgentSourceSwitch";
 import { Device } from "./Device";
-import {SelectionLab} from "./SelectionLab";
+import {SmartSelectionPage} from "./MySelectionCommands";
 import {MusicLab} from "./music/MusicLab";
 import {TypingSounds} from "./TypingSounds";
 import { Settings } from "./Settings";
@@ -58,6 +58,7 @@ import type { Scene, StudioMode } from "./types";
 import {useLanguage, setLanguage} from "./i18n";
 import {DragConvertLab} from './DragConvertLab';
 import {VoiceInput} from './VoiceInput';
+import {AssistSettings} from './AssistSettings';
 import {ScreenReplay} from './ScreenReplay';
 import {ColorPicker} from './ColorPicker';
 import {DockScenes} from './DockScenes';
@@ -65,7 +66,7 @@ import {VoiceControl} from './VoiceControl';
 import type {VoicePage} from './voice-control-actions';
 import {KeyboardPocketLab} from './KeyboardPocketLab';
 
-type Page = "screen-replay" | "color-picker" | "dock-scenes" | "voice-input" | "features" | "keyboard-pocket" | "drag-convert" | "music" | "typing-sounds" | "selection-question" | "studio" | "library" | "codex" | "device" | "settings" | "game" | "audio" | "offline";
+type Page = "screen-awareness" | "smart-clipboard" | "screen-replay" | "color-picker" | "dock-scenes" | "voice-input" | "features" | "keyboard-pocket" | "drag-convert" | "music" | "typing-sounds" | "selection-question" | "studio" | "library" | "codex" | "device" | "settings" | "game" | "audio" | "offline";
 const cloneScene = (scene: Scene): Scene => JSON.parse(JSON.stringify(scene));
 const modeForScene = (scene: Scene): StudioMode =>
   scene.trigger ? "trigger" : scene.animation.effect === "static" ? "paint" : "animation";
@@ -85,7 +86,7 @@ export default function App() {
     const navigate=(event:Event)=>{
       const target=(event as CustomEvent<string>).detail;
       if(target === "ai" || target === "lighting" || target === "permissions" || target === "updates" || target === "about" || target === "general") {setSettingsTab(target);setPage("settings");}
-      else if(target === "screen-replay" || target === "color-picker" || target === "dock-scenes" || target === "voice-input" || target === "drag-convert" || target === "keyboard-pocket"){setPage(target);}
+      else if(target === "screen-awareness" || target === "smart-clipboard" || target === "screen-replay" || target === "color-picker" || target === "dock-scenes" || target === "voice-input" || target === "drag-convert" || target === "keyboard-pocket"){setPage(target);}
       else if(target === "device" || target === "library")setPage(target);
     };
     window.addEventListener("nuphylab:navigate",navigate);
@@ -392,7 +393,7 @@ export default function App() {
   };
   const creative = ["studio", "audio", "offline"].includes(page);
   useEffect(()=>{window.scrollTo(0,0);},[page]);
-  const pageTitle = page === 'screen-replay' ? (language==='en'?'Instant Replay':'刚刚怎么了') : page === 'color-picker' ? (language==='en'?'Color Picker':'取色器') : page === 'dock-scenes' ? (language==='en'?'Dock Scenes':'Dock 场景') : page === 'voice-input' ? (language==='en'?'Voice Input':'语音输入') : page === 'features' ? (language==='en'?'Feature Center':'功能中心') : page === 'keyboard-pocket' ? '键盘口袋' : page === 'drag-convert' ? (language === 'en' ? 'Drag Convert' : '拖拽转换') : page === "music" ? "演奏模式" : page === "typing-sounds" ? "模拟声浪" : page === "selection-question" ? "智能框选" : creative ? "灯光创作" : page === "library" ? "作品库" : page === "codex" ? "AI 助手" : page === "game" ? "灯光游戏" : page === "settings" ? "设置" : "设备";
+  const pageTitle = page === 'screen-awareness' ? (language==='en'?'Screen Awareness':'AI 屏幕感知') : page === 'smart-clipboard' ? (language==='en'?'Smart Clipboard':'智能剪贴板') : page === 'screen-replay' ? (language==='en'?'Instant Replay':'刚刚怎么了') : page === 'color-picker' ? (language==='en'?'Color Picker':'取色器') : page === 'dock-scenes' ? (language==='en'?'Dock Scenes':'Dock 场景') : page === 'voice-input' ? (language==='en'?'Voice Input':'语音输入') : page === 'features' ? (language==='en'?'Feature Center':'功能中心') : page === 'keyboard-pocket' ? '键盘口袋' : page === 'drag-convert' ? (language === 'en' ? 'Drag Convert' : '拖拽转换') : page === "music" ? "演奏模式" : page === "typing-sounds" ? "模拟声浪" : page === "selection-question" ? "智能框选" : creative ? "灯光创作" : page === "library" ? "作品库" : page === "codex" ? "AI 助手" : page === "game" ? "灯光游戏" : page === "settings" ? "设置" : "设备";
   return (
     <KeyboardModuleContext.Provider value={state?.settings.airTopRightModule === "keycap" ? "keycap" : "rotary"}>
     <div className="app-shell lab-v5" data-page={page} data-native={Boolean((window as Window & {webkit?:unknown}).webkit)}>
@@ -486,8 +487,9 @@ export default function App() {
           {page === "music" && <MusicLab entry={musicEntry} onLibrary={browseMusic}/>}
           {page === "typing-sounds" && <TypingSounds/>}
           {page === 'drag-convert' && <DragConvertLab/>}
-          {page === "selection-question" && <SelectionLab/>}
+          {page === "selection-question" && <SmartSelectionPage/>}
           {page === "dock-scenes" && <DockScenes/>}
+          {(page === "screen-awareness" || page === "smart-clipboard") && <AssistSettings key={page} feature={page} onPermissions={()=>{setSettingsTab("permissions");setPage("settings");}} onModels={()=>{setSettingsTab("ai");setPage("settings");}}/>}
           {page === "screen-replay" && <ScreenReplay onPermissions={()=>{setSettingsTab("permissions");setPage("settings");}}/>}
           {page === "color-picker" && <ColorPicker onPermissions={()=>{setSettingsTab("permissions");setPage("settings");}}/>}
           {page === "voice-input" && <VoiceInput/>}

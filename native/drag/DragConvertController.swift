@@ -9,11 +9,13 @@ final class DragConvertController {
     var canPresent: () -> Bool = { true }
     var reservedKeyCodes: () -> Set<UInt32> = { [] }
     var selectionReservedTrigger: () -> String? = { nil }
+    var commandReservedTriggers: () -> [String] = { [] }
+    var activeTrigger: String? { featureAdded && preferences.enabled ? selectedTrigger.rawValue : nil }
     var inputAccess: () -> Bool = { IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted }
     private var selectedTrigger:DragTrigger { DragTrigger(preferences.trigger) ?? DragTrigger("shift")! }
     private var inputPermissionNeeded:Bool { selectedTrigger.needsInputAccess && !inputAccess() }
     private var aiTriggerConflict:Bool { selectedTrigger.keyCode.map { reservedKeyCodes().contains(UInt32($0)) } ?? false }
-    private var selectionTriggerConflict:Bool { selectionReservedTrigger() == selectedTrigger.rawValue }
+    private var selectionTriggerConflict:Bool { ([selectionReservedTrigger()].compactMap { $0 } + commandReservedTriggers()).contains(selectedTrigger.rawValue) }
     private var triggerConflict:Bool { aiTriggerConflict || selectionTriggerConflict }
     private var triggerIssue:String {
         if selectionTriggerConflict { return "该按键已用于智能框选，请选择其他触发键 / This key is used by Smart Selection. Choose another trigger key." }
@@ -144,7 +146,7 @@ final class DragConvertController {
                 guard let object = body["preferences"] as? [String: Any] else { throw DragConvertError.invalidSettings }
                 var next = try JSONDecoder().decode(DragConvertPreferences.self, from: JSONSerialization.data(withJSONObject: object)).validated()
                 if !featureAdded {next.enabled=false}
-                if next.enabled, (next.trigger != preferences.trigger || !preferences.enabled), selectionReservedTrigger() == next.trigger {
+                if next.enabled, (next.trigger != preferences.trigger || !preferences.enabled), ([selectionReservedTrigger()].compactMap { $0 } + commandReservedTriggers()).contains(next.trigger) {
                     reply(nil, english ? "This key is used by Smart Selection. Choose another trigger key." : "该按键已用于智能框选，请选择其他触发键。"); return
                 }
                 if next.trigger != preferences.trigger, let code=DragTrigger(next.trigger)?.keyCode, reservedKeyCodes().contains(UInt32(code)) {

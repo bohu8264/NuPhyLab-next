@@ -1,5 +1,5 @@
 .brand .drag-edition{display:block;margin-top:4px;font-size:10px;font-weight:400;color:#858585;letter-spacing:.1px}
-.dc-page{max-width:1120px;margin:0 auto;color:#252525;padding-bottom:24px;font-size:13px}
+.dc-page{min-width:0;color:#252525;padding-bottom:24px;font-size:13px}
 .dc-heading{display:flex;align-items:center;justify-content:space-between;gap:20px;margin:0 0 22px}
 .dc-heading p{margin:0;color:#777;font-size:15px}.dc-enabled{display:flex;align-items:center;gap:12px;font-size:12px;white-space:nowrap}
 .dc-error{background:#f0f0f0;border:1px solid #aaa;padding:12px 16px;border-radius:12px;margin-bottom:16px;overflow-wrap:anywhere}

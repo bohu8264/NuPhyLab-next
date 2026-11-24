@@ -70,7 +70,7 @@
 .lab-settings-tabs > button { position:relative; padding:8px 0 13px; border:0; background:transparent; color:#777; font-size:13px; line-height:20px; white-space:nowrap; }
 .lab-settings-tabs > button[aria-selected="true"] { color:#202020; font-weight:500; }
 .lab-settings-tabs > button[aria-selected="true"]:after { position:absolute; content:""; height:2px; border-radius:1px; background:#202020; bottom:0; left:0; right:0; }
-.lab-settings-content { max-width:640px; margin-top:28px; }
+.lab-settings-content { min-width:0; margin-top:28px; }
 .lab-setting-panel { background:#f7f7f7; border-radius:12px; overflow:hidden; }
 .lab-setting-row { display:flex; justify-content:space-between; align-items:center; gap:24px; margin:0 20px; padding:20px 0; min-height:92px; border-bottom:1px solid #e8e8e8; }
 .lab-setting-row:last-child { border-bottom:0; }

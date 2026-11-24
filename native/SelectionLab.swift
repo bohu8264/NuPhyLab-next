@@ -58,6 +58,7 @@ enum LabKeychain {
   do{let account=try value.configuration.credentialAccount();return LabKeychain.has(account) ? "":"请先在“模型与 API”中保存此服务的 API Key。"}catch{return Self.friendly(error,language:language)}
  }
  var commandModel:AIConfiguration? {preferences.configuration}
+ var assistTranslationLanguage:String {preferences.translationLanguage.englishName}
  private var preferences=LabPreferences();private let input=SelectionHoldMonitor();private let voice=LocalVoiceCapture()
  private var overlays:[SelectionOverlayWindow]=[];private var panel:SelectionResultPanel?;private var task:Task<Void,Never>?;private var utilityTask:Task<Void,Never>?
  private var utilityGeneration=UUID();private var generation=UUID();private var imagePNG:Data?;private var observers:[NSObjectProtocol]=[];private var monitor:Timer?

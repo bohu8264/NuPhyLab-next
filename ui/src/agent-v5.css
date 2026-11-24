@@ -82,7 +82,7 @@
 .agent-light-inspector .status-color-swatch { width:14px; height:14px; border-radius:50%; box-shadow:none; border:0; flex:none; }
 .agent-light-switches { margin-top:14px; padding-top:16px; border-top:1px solid #e3e3e3; display:flex; flex-direction:column; gap:8px; }
 .agent-light-switches .switch-field { display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:12px; min-height:20px; }
-.agent-setup-page { margin-top:30px; max-width:640px; }
+.agent-setup-page { margin-top:30px; min-width:0; }
 .agent-setup-group { border-radius:12px; padding:0 20px; background:#f7f7f7; }
 .agent-setup-setting,.agent-setup-group .codex-setup-banner { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:20px 0; margin:0; border:0; border-bottom:1px solid #e4e4e4; border-radius:0; background:transparent; box-shadow:none; min-height:84px; }
 .agent-setup-setting:last-child { border-bottom:0; min-height:110px; }

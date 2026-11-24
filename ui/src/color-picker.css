@@ -1,4 +1,4 @@
-.color-picker-page{max-width:820px;display:grid;gap:16px}
+.color-picker-page{min-width:0;display:grid;gap:16px}
 .color-picker-action,.color-picker-shortcuts{border:1px solid #dedede;border-radius:12px}
 .color-picker-action,.color-picker-feedback{display:flex;align-items:center;justify-content:space-between;gap:16px}
 .color-picker-action{padding:18px 20px;background:#f7f7f7}

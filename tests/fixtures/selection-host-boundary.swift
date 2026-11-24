@@ -25,6 +25,45 @@ enum VoiceL10n {static func text(_ value:String)->String{value}}
  func setAdded(_ value:Bool){}; func refresh(){}; func interrupt(){}; func cancelRecording(){}; func shutdown(){}
  func handle(_ body:[String:Any],reply:@escaping(Any?,String?)->Void){reply(nil,"Color Picker boundary fixture")}
 }
+enum AssistFeature: String { case screen = "screen-awareness", history = "smart-clipboard" }
+@MainActor final class AssistTools {
+ var english=false, busy=false
+ var configuration: () -> AIConfiguration? = { nil }
+ var translationLanguage: () -> String = { "English" }
+ var allowed = { true }
+ var conflict: (VoiceShortcutValue) -> String? = { _ in nil }
+ var activityChanged = {}
+ var reservedValues: [VoiceShortcutValue] { [] }
+ func reserved(_ value: VoiceShortcutValue) -> String? { nil }
+ init(directory: URL) {}
+ func setSessionAvailable(_ value: Bool) {}
+ func setAdded(_ added: Set<AssistFeature>) {}
+ func refresh() {}
+ func shutdown() {}
+ func cancelRecording() {}
+ func handle(_ body: [String:Any], reply: @escaping (Any?,String?) -> Void) { reply(nil,"Assist boundary fixture") }
+}
+enum SelectionCommandError: Error {
+ case unavailable
+ func message(_ english:Bool) -> String { "Command boundary fixture" }
+}
+@MainActor final class MySelectionCommands {
+ let shortcut = FixtureCommandShortcut()
+ var enabled = false, english = false, busy = false
+ var session: NSObject? { nil }
+ var reservedShortcut: VoiceShortcutValue? { nil }
+ var reservedMessage: String { "My Commands" }
+ var configuration: () -> AIConfiguration? = { nil }
+ var canRecord: () -> Bool = { false }
+ var changed: () -> Void = {}
+ init(directory: URL) {}
+ static func dragKey(_ value: VoiceShortcutValue) -> String? { nil }
+ static func usesPasteShortcut(_ value: VoiceShortcutValue) -> Bool { false }
+ func setAdded(_ added: Bool) {}
+ func interrupt() {}
+ func receiveServiceSelection(_ board: NSPasteboard) throws { throw SelectionCommandError.unavailable }
+ func handle(_ body:[String:Any],reply:@escaping(Any?,String?)->Void) { reply(nil,"Command boundary fixture") }
+}
 @MainActor final class ScreenReplay {
  let shortcut=FixtureCommandShortcut()
  var english=false,enabled=false,canSave=false,exporting=false
@@ -95,6 +134,7 @@ enum AppLanguage {case zh,en}
  var fileDragActive:(()->Bool)? {get set}
  var shortcutSaveIssue:((InputBinding)->String?)? {get set}
  var commandModel:AIConfiguration? {get}
+ var assistTranslationLanguage:String {get}
  var isBusy:Bool {get}
  var dragReservedTrigger:String? {get}
  var selectionReservedBinding:InputBinding? {get}
@@ -114,6 +154,7 @@ enum AppLanguage {case zh,en}
 }
 @MainActor private final class SelectionBoundaryFixture:SelectionFeature {
  var commandModel:AIConfiguration? {nil}
+ var assistTranslationLanguage:String {"English"}
  var dragReservedTrigger:String? {nil}
  var selectionReservedBinding:InputBinding? {nil}
  func setFeatureAdded(_ added:Bool) {}
@@ -144,6 +185,8 @@ enum TypingDictationCompletion {
 // File conversion is isolated from keyboard/updater harnesses. Production
 // converters and drop callbacks are tested with generated file fixtures.
 final class DragConvertController {
+ var commandReservedTriggers:()->[String] = {[]}
+ var activeTrigger:String? {nil}
  var selectionReservedTrigger:()->String?={nil}
  var reservedKeyCodes:()->Set<UInt32> = {[]}
  var busy=false; var isFileDragActive=false

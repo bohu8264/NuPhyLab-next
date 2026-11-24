@@ -47,7 +47,27 @@ struct VoiceHotkeyEvent:Equatable {
     var isRepeat=false
     var owned=false
 }
-struct VoiceHotkeyDecision:Equatable {var fire=false;var consume=false}
+struct VoiceHotkeyDecision: Equatable {
+    var fire = false
+    var consume = false
+    var commandKeyCode: CGKeyCode?
+
+    func filtered(_ event: CGEvent) -> CGEvent? {
+        guard let commandKeyCode else { return consume ? nil : event }
+        // Change the key equivalent on the original down/up. The source responder
+        // handles the command normally; nothing posts another event or activates an app.
+        event.setIntegerValueField(.keyboardEventKeycode, value:Int64(commandKeyCode))
+        event.flags = .maskCommand
+        // Let macOS translate the physical key. An explicit Unicode payload is
+        // text input and AppKit does not dispatch it as a menu key equivalent.
+        return event
+    }
+}
+
+struct VoiceForegroundPress {
+    var commandKeyCode: CGKeyCode?
+    let perform: () -> Void
+}
 
 /// Pure modifier recognizer. Complete taps only; every original modifier event passes.
 struct VoiceModifierTapState {
@@ -336,6 +356,12 @@ struct VoiceEscapeState {
     var onRegistrationError:((Error)->Void)?
     var onCancelSession:(()->Void)?
     var canHandle:()->Bool = {true}
+    // Only foreground-dependent actions capture a target, and only on a matched press.
+    var prepareForegroundPress: ((pid_t, VoiceHotkeyEventKind) -> VoiceForegroundPress)?
+    /// Installed only while My Commands is asking the user to copy in the source app.
+    var onPassThroughCopy: (() -> Bool)?
+    /// Optional eligibility check for a real down on this particular registered key.
+    var acceptsKeyDown: ((VoiceHotkeyEvent) -> Bool)?
     private var escape=VoiceEscapeState()
     private var tap:CFMachPort?
     private var source:CFRunLoopSource?
@@ -355,7 +381,12 @@ struct VoiceEscapeState {
     private var secureInputBlocked=false
     private var handlingSuspended=false
     private let listenToSystemEvents:Bool
-    init(listenToSystemEvents:Bool=true){self.listenToSystemEvents=listenToSystemEvents}
+    private let frontmostPID: () -> pid_t?
+    private var forwardedCommand: (key: UInt32, pid: pid_t, commandKey: CGKeyCode)?
+    init(listenToSystemEvents:Bool=true, frontmostPID: @escaping () -> pid_t? = { NSWorkspace.shared.frontmostApplication?.processIdentifier }) {
+        self.listenToSystemEvents=listenToSystemEvents
+        self.frontmostPID=frontmostPID
+    }
     private var generation:UInt64=0
     private var boundEvents=0, activations=0, recoveries=0
     private var lastBoundEvent="none"
@@ -448,11 +479,34 @@ struct VoiceEscapeState {
         let owned=event.getIntegerValueField(.eventSourceUserData)==VoiceHotkeyPolicy.ownEventMarker || event.getIntegerValueField(.eventSourceUnixProcessID)==Int64(ProcessInfo.processInfo.processIdentifier)
         if kind == .flags,code==63,!owned{functionObserved=true}
         let input=VoiceHotkeyEvent(kind:kind,keyCode:code,flags:event.flags.rawValue,time:TimeInterval(event.timestamp)/1_000_000_000,isRepeat:isKeyboard && event.getIntegerValueField(.keyboardEventAutorepeat) != 0,owned:owned)
-        if recordingMonitor != nil {return receiveRecording(input,origin:.tap) ? nil:Unmanaged.passUnretained(event)}
-        return observeRuntime(input).consume ? nil:Unmanaged.passUnretained(event)
+        if recordingMonitor != nil {
+            if let tail = commandKeyTail(input) { return tail.filtered(event).map { Unmanaged.passUnretained($0) } }
+            return receiveRecording(input,origin:.tap) ? nil:Unmanaged.passUnretained(event)
+        }
+        return observeRuntime(input).filtered(event).map { Unmanaged.passUnretained($0) }
     }
+
+    private func commandKeyTail(_ input: VoiceHotkeyEvent) -> VoiceHotkeyDecision? {
+        guard let press = forwardedCommand, !input.owned, press.key == input.keyCode else { return nil }
+        switch input.kind {
+        case .up:
+            forwardedCommand = nil
+            _ = machine?.observe(input)
+            let sameSource = frontmostPID() == press.pid && (!listenToSystemEvents || !IsSecureEventInputEnabled())
+            return .init(consume:true, commandKeyCode:sameSource ? press.commandKey : nil)
+        case .down where input.isRepeat:
+            return .init(consume:true)
+        case .down:
+            // A new physical press can follow a release missed during sleep.
+            forwardedCommand = nil
+            return nil
+        default: return nil
+        }
+    }
+
     /// Shared by the real event tap and isolated lifecycle replay; no events are posted.
     func observeRuntime(_ input:VoiceHotkeyEvent)->VoiceHotkeyDecision {
+        if let tail = commandKeyTail(input) { return tail }
         if consumePendingMouseRelease(input){return .init(consume:true)}
         let kind=input.kind,code=input.keyCode,owned=input.owned
         let isKeyboard=kind == .down || kind == .up || kind == .flags
@@ -471,6 +525,12 @@ struct VoiceEscapeState {
         }
         if listenToSystemEvents && IsSecureEventInputEnabled(){if !secureInputBlocked{secureInputBlocked=true;resetMachine(flags:input.flags)};return .init()}
         if secureInputBlocked{secureInputBlocked=false;resetMachine(flags:input.flags);return .init()}
+        if let onPassThroughCopy, !owned, kind == .down, !input.isRepeat,
+           input.flags & VoiceHotkeyPolicy.physicalFlagMask == UInt64(NSEvent.ModifierFlags.command.rawValue),
+           (code == UInt32(kVK_ANSI_C) || Self.label(keyCode:code,modifiers:0) == "C"),
+           onPassThroughCopy() {
+            return .init() // The source app must receive and perform the user's original Copy.
+        }
         if listenToSystemEvents,kind == .flags,!owned {
             let tracked=machine?.trackedOrdinaryKeys ?? []
             let stillDown=Set(tracked.filter{CGEventSource.keyState(.hidSystemState,key:CGKeyCode($0))})
@@ -482,14 +542,37 @@ struct VoiceEscapeState {
                 lastBoundEvent=input.flags & modifier.flag != 0 ? "pressed" : "released"
             } else {lastBoundEvent=(kind == .down || kind == .mouseDown) ? "pressed" : (kind == .mouseUp || kind == .up) ? "released":"dragged"}
         }
-        let decision=machine?.observe(input) ?? .init()
+        if let acceptsKeyDown, !owned, kind == .down, !input.isRepeat, registeredMouseButton == nil,
+           code == registeredCode, !acceptsKeyDown(input) {
+            return machine?.observe(input,allowed:false) ?? .init()
+        }
+        var decision=machine?.observe(input) ?? .init()
         if decision.fire {
             let currentGeneration=generation
+            let originPID: pid_t?
+            let action: (() -> Void)?
+            if let prepareForegroundPress {
+                guard let pid = frontmostPID() else { return decision }
+                originPID = pid
+                let prepared = prepareForegroundPress(pid, kind)
+                if let commandKey = prepared.commandKeyCode {
+                    guard kind == .down, decision.consume, frontmostPID() == pid else { return decision }
+                    forwardedCommand = (code,pid,commandKey)
+                    decision.commandKeyCode = commandKey
+                }
+                action = prepared.perform
+            } else {
+                originPID = nil
+                action = onPress
+            }
             // Audio/network/UI work runs outside the event-tap callback.
             DispatchQueue.main.async{[weak self] in
                 guard let self,self.generation==currentGeneration,self.recordingMonitor==nil,self.isReady else{return}
+                if let originPID {
+                    guard self.frontmostPID() == originPID, self.canHandle() else { return }
+                }
                 self.activations += 1
-                self.onPress?()
+                action?()
             }
         }
         return decision
@@ -503,6 +586,7 @@ struct VoiceEscapeState {
     }
     func unregister() {
         cancelRecording(notify:false,restore:false);generation &+= 1
+        forwardedCommand=nil
         if let tap{CGEvent.tapEnable(tap:tap,enable:false);CFMachPortInvalidate(tap)}
         if let source{CFRunLoopRemoveSource(CFRunLoopGetMain(),source,.commonModes)}
         tap=nil;source=nil;machine=nil;registeredCode=nil;registeredModifiers=nil;registeredMouseButton=nil;onPress=nil
@@ -590,6 +674,35 @@ struct VoiceEscapeState {
         }
         if notify && hadMonitor{onRecordingCancelled?()}
     }
+    private static func keyboardLayoutSource() -> TISInputSource? {
+        let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue()
+        if let source, TISGetInputSourceProperty(source,kTISPropertyUnicodeKeyLayoutData) != nil { return source }
+        return TISCopyCurrentASCIICapableKeyboardLayoutInputSource()?.takeRetainedValue()
+    }
+
+    /// Resolve the actual Command-C equivalent, including layouts whose Command layer differs.
+    static func copyKeyCode() -> CGKeyCode? {
+        commandKeyCode(for:67, usual:CGKeyCode(kVK_ANSI_C))
+    }
+    /// Unicode ASCII letter on the Command layer (or on the base layer for physical Control-V).
+    static func commandKeyCode(for uppercase: UInt16, usual: CGKeyCode, commandLayer: Bool = true) -> CGKeyCode? {
+        guard let source = keyboardLayoutSource(), let pointer = TISGetInputSourceProperty(source,kTISPropertyUnicodeKeyLayoutData) else { return nil }
+        return withExtendedLifetime(source) {
+            let data = Unmanaged<CFData>.fromOpaque(pointer).takeUnretainedValue()
+            let layout = UnsafeRawPointer(CFDataGetBytePtr(data)).assumingMemoryBound(to:UCKeyboardLayout.self)
+            let keyboard = UInt32(LMGetKbdType())
+            func matches(_ key: CGKeyCode) -> Bool {
+                var dead: UInt32 = 0, count = 0
+                var chars = [UniChar](repeating:0,count:4)
+                let result = UCKeyTranslate(layout,key,UInt16(kUCKeyActionDown),commandLayer ? UInt32(cmdKey) >> 8 : 0,keyboard,
+                                            UInt32(kUCKeyTranslateNoDeadKeysBit),&dead,chars.count,&count,&chars)
+                return result == noErr && count == 1 && (chars[0] == uppercase || chars[0] == uppercase+32)
+            }
+            if matches(usual) { return usual }
+            return (CGKeyCode(0)...CGKeyCode(50)).first(where:matches)
+        }
+    }
+
     static func label(keyCode:UInt32,modifiers:UInt64,mouseButton:UInt32?=nil)->String {
         if mouseButton==nil,modifiers==0,let modifier=VoiceHotkeyPolicy.modifiers[keyCode]{return modifier.name}
         let flags=NSEvent.ModifierFlags(rawValue:UInt(modifiers))
@@ -598,11 +711,7 @@ struct VoiceEscapeState {
         if let button=mouseButton {return prefix+"鼠标侧键 \(button-2)"}
         let names:[UInt32:String]=[49:"Space",36:"Return",48:"Tab",51:"Delete",114:"Help",115:"Home",116:"Page Up",117:"Forward Delete",119:"End",121:"Page Down",123:"←",124:"→",125:"↓",126:"↑",122:"F1",120:"F2",99:"F3",118:"F4",96:"F5",97:"F6",98:"F7",100:"F8",101:"F9",109:"F10",103:"F11",111:"F12",105:"F13",107:"F14",113:"F15",106:"F16",64:"F17",79:"F18",80:"F19",90:"F20"]
         if let name=names[keyCode]{return prefix+name}
-        var source=TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue()
-        if source.flatMap({TISGetInputSourceProperty($0,kTISPropertyUnicodeKeyLayoutData)}) == nil {
-            source=TISCopyCurrentASCIICapableKeyboardLayoutInputSource()?.takeRetainedValue()
-        }
-        if let source,let pointer=TISGetInputSourceProperty(source,kTISPropertyUnicodeKeyLayoutData) {
+        if let source=keyboardLayoutSource(),let pointer=TISGetInputSourceProperty(source,kTISPropertyUnicodeKeyLayoutData) {
             let data=Unmanaged<CFData>.fromOpaque(pointer).takeUnretainedValue()
             let layout=UnsafeRawPointer(CFDataGetBytePtr(data)).assumingMemoryBound(to:UCKeyboardLayout.self)
             var dead:UInt32=0,length=0;var chars=[UniChar](repeating:0,count:8)

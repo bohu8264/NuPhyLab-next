@@ -374,7 +374,7 @@ final class PocketStore {
         return String(first.trimmingCharacters(in: .whitespaces).prefix(80))
     }
 
-    private static func isSupportedLink(_ value: String) -> Bool {
+    static func isSupportedLink(_ value: String) -> Bool {
         guard !value.contains(where: { $0.isWhitespace }), let url = URL(string: value), let scheme = url.scheme?.lowercased() else { return false }
         if scheme == "http" || scheme == "https" { return !(url.host ?? "").isEmpty }
         return scheme == "mailto" && !url.path.isEmpty
@@ -383,7 +383,7 @@ final class PocketStore {
     /// A deliberately small HTML-to-text fallback for clipboard payloads without plain text.
     /// Tags and attributes are never interpreted as resources. Escaped markup is decoded only
     /// after tag removal, so it remains literal text; declarations/entities cannot read files.
-    private static func plainTextFromHTML(_ html: String) -> String {
+    static func plainTextFromHTML(_ html: String) -> String {
         var source = html[...]
         if let start = source.range(of: "<!--StartFragment-->", options: .caseInsensitive),
            let end = source.range(of: "<!--EndFragment-->", options: .caseInsensitive, range: start.upperBound..<source.endIndex) {
