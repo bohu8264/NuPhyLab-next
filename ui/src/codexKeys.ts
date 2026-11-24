@@ -1,14 +1,12 @@
 import {useEffect,useRef} from 'react';
 import type {AppState,Command,Notify} from './types';
+import {nativeDesktopRequest,usesDesktopKeyRouting} from '../../shared/desktop-transport.mjs';
 
-type NativeWindow = Window & {webkit?:{messageHandlers?:{codexKeys?:{postMessage:(value:unknown)=>Promise<unknown>}}}};
 export async function nativeCodexKeys(value:Record<string,unknown>) {
   return (await nativeCodexRequest(value)).available;
 }
 export async function nativeCodexRequest(value:Record<string,unknown>):Promise<{available:boolean;result:unknown}> {
-  const bridge=(window as NativeWindow).webkit?.messageHandlers?.codexKeys;
-  if(!bridge) return {available:false,result:null};
-  return {available:true,result:await bridge.postMessage(value)};
+  return nativeDesktopRequest('codexKeys',value);
 }
 const editable = () => document.activeElement?.matches('input,textarea,select,[contenteditable="true"]') ?? false;
 export function useCodexKeys(state:AppState|null,command:Command,notify:Notify) {
@@ -31,7 +29,7 @@ export function useCodexKeys(state:AppState|null,command:Command,notify:Notify) 
   useEffect(()=>{
     // The native host owns global keys; the browser uses the same action path
     // only while this window has focus. Never dispatch both.
-    if((window as NativeWindow).webkit?.messageHandlers?.codexKeys) return;
+    if(usesDesktopKeyRouting()) return;
     const held=new Set<string>();
     let tail=Promise.resolve();
     const send=(code:string,phase:string)=>{tail=tail.then(()=>latest.current.command({op:'codexKey',code,phase})).then(()=>{},()=>{});};

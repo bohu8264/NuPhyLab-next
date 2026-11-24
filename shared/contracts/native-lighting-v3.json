@@ -1,0 +1,27 @@
+{
+  "profile": "windows-lighting-v3",
+  "protocolVersion": 3,
+  "implementation": "windows-lighting-controller",
+  "maxLineBytes": 32768,
+  "maxPending": 8,
+  "handshakeTimeoutMs": 3000,
+  "heartbeatIntervalMs": 1000,
+  "heartbeatReplyTimeoutMs": 3000,
+  "heartbeatTimeoutMs": 5000,
+  "requestTimeoutMs": 120000,
+  "operationTimeoutMs": 30000,
+  "maxFrameAgeMs": 500,
+  "shutdownTimeoutMs": 3000,
+  "operations": ["arm", "armNative", "nativeLighting", "nativeSnapshot", "paint", "side", "restore", "recoveryStatus", "recoverExisting", "heartbeat", "quit"],
+  "capabilities": {
+    "lightingWrite": true,
+    "recoveryJournal": true,
+    "coldRecovery": true,
+    "nativeLighting": true,
+    "boardSleepLease": true,
+    "keymapWrite": false,
+    "globalKeys": false,
+    "audioCapture": false,
+    "agentControl": false
+  }
+}

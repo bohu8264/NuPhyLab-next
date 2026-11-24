@@ -23,7 +23,8 @@ export function hookCommand(hookDir, spoolDir) {
   return `${shellQuote(path.join(hookDir, HOOK_MARKER))} ${shellQuote(spoolDir)}`;
 }
 const isOurs = (entry) =>
-  entry && entry.type === "command" && typeof entry.command === "string" && entry.command.includes(HOOK_MARKER);
+  entry && entry.type === "command" && typeof entry.command === "string" &&
+  (entry.command.includes(HOOK_MARKER)||/[\\/]nuphylab-claude-hook\.exe$/i.test(entry.command));
 
 export class ClaudeHookInstaller {
   constructor({ dataDir, claudeDir = process.env.CLAUDE_CONFIG_DIR ?? path.join(homedir(), ".claude"), sourceDir = source } = {}) {
@@ -38,6 +39,9 @@ export class ClaudeHookInstaller {
   get command() {
     return hookCommand(this.hookDir, this.spoolDir);
   }
+  get entry(){return {type:'command',command:this.command,timeout:TIMEOUT_SECONDS};}
+  entryMatches(item){return item.command===this.command&&JSON.stringify(item.args??null)===JSON.stringify(this.entry.args??null)&&
+    (this.entry.onFailure===undefined||item.onFailure===this.entry.onFailure);}
   async readSettings() {
     try {
       const raw = await readFile(this.settingsPath, "utf8");
@@ -88,7 +92,7 @@ export class ClaudeHookInstaller {
   /** Merges our entries into an existing hooks object without disturbing others. */
   mergeHooks(existing) {
     const hooks = { ...(existing && typeof existing === "object" && !Array.isArray(existing) ? existing : {}) };
-    const entry = { type: "command", command: this.command, timeout: TIMEOUT_SECONDS };
+    const entry = this.entry;
     for (const event of HOOK_EVENTS) {
       const groups = Array.isArray(hooks[event]) ? hooks[event].map((group) => ({ ...group })) : [];
       let placed = false;
@@ -181,7 +185,7 @@ export class ClaudeHookInstaller {
       const groups = Array.isArray(hooks[event]) ? hooks[event] : [];
       const ours = groups.flatMap((group) => (Array.isArray(group?.hooks) ? group.hooks.filter(isOurs) : []));
       if (!ours.length) missing.push(event);
-      else if (!ours.every((item) => item.command === this.command)) outdated.push(event);
+      else if (!ours.every((item) => this.entryMatches(item))) outdated.push(event);
     }
     let scripts = true;
     try {

@@ -8,6 +8,7 @@ import path from 'node:path';
 import {applyOutputColorProfile, deriveOutputColorProfileStatus, validateOutputColorProfile} from '../shared/output-color-profile.mjs';
 import {scaleColor} from '../shared/render-animation.mjs';
 import {supportsAirConnectionWake} from './connection-wake.mjs';
+import {NATIVE_READONLY,bridgeError,encodeNativeRequest,validateHello,validateReadonlyResult,readNativeLines} from './native-contract.mjs';
 
 // Native's Kick journal directory is scoped to its serial (or USB location).
 // The legacy AIR backup directory identifies the application, not a keyboard,
@@ -53,7 +54,11 @@ export class Hardware extends EventEmitter {
     
     super();
     this.#nativeHoldEnvironment=nativeHoldEnvironment;
-    this.binary = binary;
+    this.binary = typeof binary==='string'?binary:binary.command;
+    this.binaryArgs = typeof binary==='string'?[]:[...(binary.args??[])];
+    this.bridgeProfile = typeof binary==='string'?null:binary.protocol??null;
+    if(this.bridgeProfile!==null&&this.bridgeProfile!==NATIVE_READONLY.profile)throw new TypeError('Unsupported native bridge protocol');
+    if(typeof this.binary!=='string'||this.binaryArgs.some(arg=>typeof arg!=='string'))throw new TypeError('Invalid native helper launch');
     this.backup = backup;
     this.requests = new Map();
     this.serial = 0;
@@ -74,26 +79,35 @@ export class Hardware extends EventEmitter {
     this.connecting = null;
     this.outputColorProfile = null;
     this.lastPaintAcknowledgement = null;
+    this.pendingCount = 0;
+    this.bridgeState = {status:this.bridgeProfile?'not-started':'legacy',available:false};
   }
+  bridgeStatus() { return structuredClone(this.bridgeState); }
   start() {
     if (this.child) return;
     this.restoreFailure = null;
     this.keyRestoreFailure = null;
     this.shutdownResult = null;
     this.diagnostics = "";
-    const child = spawn(this.binary, ["--backup", this.backup], {
+    this.bridgeHello = null;
+    this.bridgeFailure = null;
+    this.bridgeSession = randomUUID();
+    this.lastEventSequence = 0;
+    if(this.bridgeProfile)this.bridgeState={status:'starting',available:false};
+    const child = spawn(this.binary, [...this.binaryArgs,"--backup", this.backup], {
+      windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
       env:helperProcessEnvironment(this.#nativeHoldEnvironment),
     });
     this.child = child;
-    createInterface({ input: child.stdout }).on("line", (line) => {
-      let msg;
-      try {
-        msg = JSON.parse(line);
-      } catch {
-        return;
-      }
+    const receive = msg => {
+      if(this.bridgeProfile&&(this.child!==child||this.bridgeFailure))return;
       if (msg.event) {
+        if(this.bridgeProfile){
+          if(this.bridgeState.available!==true||msg.sessionId!==this.bridgeSession||msg.eventSequence!==this.lastEventSequence+1)
+            throw bridgeError('BRIDGE_PROTOCOL_ERROR','桥接事件不属于当前会话或顺序不匹配');
+          this.lastEventSequence=msg.eventSequence;
+        }
         if (msg.event === "disconnected") {
           this.transportEpoch++;
           this.identityPresent = false;
@@ -110,7 +124,7 @@ export class Hardware extends EventEmitter {
             identified: false,
             firmwareDetectionAvailable: false,
             capabilities: null,
-            readOnly: false,
+            readOnly: Boolean(this.bridgeProfile),
             protocolReady: false,
             ledCount: 0,
           };
@@ -126,6 +140,7 @@ export class Hardware extends EventEmitter {
       }
       const req = this.requests.get(msg.id);
       if (!req) return;
+      if(this.bridgeProfile&&msg.ok&&req.op!=='hello')validateReadonlyResult(req.op,msg.result);
       this.requests.delete(msg.id);
       clearTimeout(req.timer);
       if (req.epoch !== null && req.epoch !== this.transportEpoch) {
@@ -141,6 +156,11 @@ export class Hardware extends EventEmitter {
         error.controlDiagnostic=controlDiagnostic(msg.error?.controlDiagnostic);
         req.reject(error);
       }
+    };
+    if(this.bridgeProfile)readNativeLines(child.stdout,receive,error=>this.abortProtocol(child,error));
+    else createInterface({ input: child.stdout }).on('line',line=>{
+      let msg;try{msg=JSON.parse(line);}catch{return;}
+      receive(msg);
     });
     child.stderr.on("data", (data) => {
       const detail = data.toString();
@@ -150,15 +170,56 @@ export class Hardware extends EventEmitter {
     child.on("error", (e) => {
       if (this.child !== child) return;
       this.child = null;
+      if(this.bridgeProfile)this.bridgeState={status:'failed',available:false,error:e.message};
       this.failed(e);
     });
     // 'close' runs after stdout/stderr drain; 'exit' can precede the final
     // restore result and used to discard the only useful failure diagnostic.
-    child.on("close", () => {
+    child.on("close", code => {
       if (this.child !== child) return;
       this.child = null;
-      this.failed(new Error("键盘控制进程已退出"));
+      const error=this.bridgeFailure??new Error("键盘控制进程已退出");
+      if(this.bridgeProfile)this.bridgeState=this.bridgeState.status==='closing'&&code===0&&this.shutdownResult?.sessionId===this.bridgeSession
+        ? {...this.bridgeState,status:'closed',available:false}
+        : {status:'failed',available:false,error:error.message};
+      this.failed(error);
       this.emit("disconnect");
+    });
+  }
+  abortProtocol(child,error) {
+    if(this.child!==child||this.bridgeFailure)return;
+    this.bridgeFailure=error;
+    this.bridgeState={status:'failed',available:false,error:error.message,errorCode:error.code};
+    this.failed(error);
+    // This profile cannot write. EOF asks the helper to clean up; no request
+    // on this child is retried after a mismatch.
+    child.stdin.end();
+  }
+  async ensureHandshake(child) {
+    if(this.bridgeFailure)throw this.bridgeFailure;
+    if(!this.bridgeHello)this.bridgeHello=this.sendRequest(child,'hello',{
+      protocolVersion:NATIVE_READONLY.protocolVersion,sessionId:this.bridgeSession,
+    },null,NATIVE_READONLY.handshakeTimeoutMs).then(value=>{
+      const info=validateHello(value,this.bridgeSession);
+      if(this.child!==child||this.bridgeFailure)throw this.bridgeFailure??bridgeError('SESSION_CHANGED','桥接进程已变化');
+      this.bridgeState={...info,status:'ready',available:true};return info;
+    }).catch(error=>{this.abortProtocol(child,error);throw error;});
+    await this.bridgeHello;
+  }
+  sendRequest(child,op,args,epoch,timeoutMs=12000) {
+    const id=++this.serial;
+    const line=this.bridgeProfile?encodeNativeRequest(id,op,args):JSON.stringify({id,op,...args})+'\n';
+    return new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>{
+        this.requests.delete(id);
+        const error=this.bridgeProfile?bridgeError('BRIDGE_TIMEOUT','键盘响应超时，请重新连接'):new Error('键盘响应超时，请重新连接');
+        reject(error);
+        if(this.bridgeProfile)this.abortProtocol(child,error);
+      },timeoutMs);
+      this.requests.set(id,{resolve,reject,timer,epoch,op});
+      child.stdin.write(line,error=>{
+        if(error){clearTimeout(timer);this.requests.delete(id);reject(error);if(this.bridgeProfile)this.abortProtocol(child,error);}
+      });
     });
   }
   failed(error) {
@@ -173,6 +234,7 @@ export class Hardware extends EventEmitter {
       firmware: null,
       firmwareVersion: null,
       capabilities: null,
+      ...(this.bridgeProfile?{readOnly:true,errorCode:error.code??'BRIDGE_EXITED'}:{}),
       error: error.message,
     };
     for (const req of this.requests.values()) {
@@ -182,33 +244,28 @@ export class Hardware extends EventEmitter {
     this.requests.clear();
   }
   request(op, args = {}) {
+    if(this.bridgeProfile){
+      if(op==='hello')return Promise.reject(bridgeError('BRIDGE_REQUEST_INVALID','桥接握手由后台自动完成'));
+      try{encodeNativeRequest(1,op,args);}catch(error){return Promise.reject(error);}
+      if(this.pendingCount>=NATIVE_READONLY.maxPending)return Promise.reject(bridgeError('BRIDGE_QUEUE_FULL','键盘请求过多，请等待当前操作完成'));
+      this.pendingCount++;
+    }
     const deviceOperation = ['connect','status','arm','armConnectionWake','paint','restore','disconnect','readColors','nativeLighting','readKeymap',
       'readBoardSleep','acquireBoardSleepLease','releaseBoardSleepLease',
       'prepareFunctionKey','previewFunctionKeyRecovery','confirmFunctionKeyRecovery','side'].includes(op) ||
       (['adaptKeys','keyMappingStatus'].includes(op) && args.transport !== 'bluetooth');
-    const epoch = deviceOperation ? this.transportEpoch : null;
+    const epoch = deviceOperation||this.bridgeProfile ? this.transportEpoch : null;
     const run = async () => {
       if (epoch !== null && epoch !== this.transportEpoch)
         throw Object.assign(new Error('键盘连接正在恢复，请稍候。'), {code:'SESSION_CHANGED'});
       if (!this.child) this.start();
-      return new Promise((resolve, reject) => {
-        const id = ++this.serial;
-        const timer = setTimeout(() => {
-          this.requests.delete(id);
-          reject(new Error("键盘响应超时，请重新连接"));
-        }, 12000);
-        this.requests.set(id, { resolve, reject, timer, epoch });
-        this.child.stdin.write(
-          JSON.stringify({ id, op, ...args }) + "\n",
-          (e) => {
-            if (e) {
-              clearTimeout(timer);
-              this.requests.delete(id);
-              reject(e);
-            }
-          },
-        );
-      });
+      const child=this.child;
+      if(this.bridgeProfile){
+        await this.ensureHandshake(child);
+        if(epoch!==this.transportEpoch||this.child!==child)throw bridgeError('SESSION_CHANGED','桥接进程已变化，请重新连接');
+        if(op==='quit')this.bridgeState={...this.bridgeState,status:'closing'};
+      }
+      return this.sendRequest(child,op,args,epoch,this.bridgeProfile?NATIVE_READONLY.requestTimeoutMs:12000);
     };
     const promise = this.tail.then(run, run).then(result => {
       // One stdout chunk can contain a successful reply followed immediately
@@ -224,7 +281,7 @@ export class Hardware extends EventEmitter {
       if(['arm','armConnectionWake','paint','restore','nativeLighting','side','acquireBoardSleepLease','releaseBoardSleepLease'].includes(op))
         error.hardwareOperation=op;
       throw error;
-    });
+    }).finally(()=>{if(this.bridgeProfile)this.pendingCount--;});
     this.tail = promise.catch(() => {});
     return promise;
   }
@@ -427,7 +484,9 @@ export class Hardware extends EventEmitter {
     if (!pending) this.restoreFailure = this.keyRestoreFailure = null;
     return this.state;
   }
-  async close() {
+  async close({restoreLighting=true}={}) {
+    if(typeof restoreLighting!=='boolean'||!restoreLighting&&this.bridgeProfile!==NATIVE_READONLY.profile)
+      throw new TypeError('Only the read-only probe can skip lighting restoration');
     let failure;
     try {
       await this.tail;
@@ -435,7 +494,7 @@ export class Hardware extends EventEmitter {
         try { await this.request("restoreKeys"); }
         catch (e) { failure = e; }
       }
-      if (this.state.connected) await this.restore();
+      if (restoreLighting&&this.state.connected) await this.restore();
     } catch (e) {
       // The helper verifies its durable journal before accepting a deferred
       // quit with no USB device. Real restore/verification failures still fail.
@@ -450,11 +509,12 @@ export class Hardware extends EventEmitter {
           }, 25000);
           child.once("close", (code, signal) => {
             clearTimeout(timeout);
-            if (code === 0 && !this.restoreFailure && !this.keyRestoreFailure) resolve();
+            if (code === 0 && !this.restoreFailure && !this.keyRestoreFailure && (!this.bridgeProfile||this.shutdownResult?.sessionId===this.bridgeSession)) resolve();
             else
               reject(
                 new Error(
                   this.restoreFailure ?? this.keyRestoreFailure ??
+                    (this.bridgeProfile&&!this.shutdownResult?'桥接进程未确认清理完成':null) ??
                     `键盘控制进程退出异常（code=${code}, signal=${signal ?? "none"}）${this.diagnostics ? ": " + this.diagnostics.trim() : ""}`,
                 ),
               );

@@ -20,9 +20,9 @@ export const features = [
   {id:'keyboard-pocket',zh:'键盘口袋',en:'Keyboard Pocket',icon:Archive,description:['随手收纳文字、图片与文件，用快捷键取用。','Keep text, images and files ready to use with a shortcut.']},
 ] satisfies {id:FeatureId;zh:string;en:string;icon:typeof Folder;description:string[]}[];
 
-export function FeatureCenter({added,busy,onToggle,onOpen}:{added:FeatureId[];busy:boolean;onToggle:(id:FeatureId)=>void;onOpen:(id:FeatureId)=>void}) {
+export function FeatureCenter({added,busy,onToggle,onOpen,available}:{available?:readonly FeatureId[];added:FeatureId[];busy:boolean;onToggle:(id:FeatureId)=>void;onOpen:(id:FeatureId)=>void}) {
   const en=useLanguage()==='en', [search,setSearch]=useState('');
-  const visible=features.filter(feature=>[feature.zh,feature.en,...feature.description].join(' ').toLowerCase().includes(search.trim().toLowerCase()));
+  const visible=features.filter(feature=>(!available||available.includes(feature.id))&&[feature.zh,feature.en,...feature.description].join(' ').toLowerCase().includes(search.trim().toLowerCase()));
   return <section className="feature-center">
     <div className="feature-center-intro"><div><h2>{en?'Your tools, your sidebar':'把常用功能留在手边'}</h2><p>{en?'Add the tools you use. Removing a tool turns it and its shortcuts off. Your content and preferences are kept.':'添加常用功能。移除后将关闭功能及其快捷键，内容和配置仍会保留。'}</p></div><span>{en?`${added.length} added`:`已添加 ${added.length} 项`}</span></div>
     <label className="feature-search"><Search size={16}/><input type="search" value={search} onChange={event=>setSearch(event.target.value)} aria-label={en?'Search features':'搜索功能'} placeholder={en?'Search features':'搜索功能'}/></label>

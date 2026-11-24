@@ -57,7 +57,7 @@ try {
   const event = clean(payload?.hook_event_name, 40);
   const session = clean(payload?.session_id, 80);
   if (event && ALLOWED.has(event) && session && /^[A-Za-z0-9_.:-]{1,80}$/.test(session)) {
-    const pid = Number.parseInt(process.env.NUPHYLAB_HOOK_PID ?? "", 10);
+    const pid = Number.parseInt(process.env.NUPHYLAB_HOOK_PID ?? (process.platform==='win32'?String(process.ppid):''), 10);
     const record = {
       v: 1,
       at: Date.now(),
@@ -76,7 +76,8 @@ try {
       a: clean(payload.agent_type, 60),
     };
     mkdirSync(spool, { recursive: true, mode: 0o700 });
-    const file = path.join(spool, `${session}.jsonl`);
+    const filename=process.platform==='win32'||process.argv[3]==='--portable'?`session~${Buffer.from(session).toString('base64url')}`:session;
+    const file = path.join(spool, `${filename}.jsonl`);
     let size = 0;
     try { size = statSync(file).size; } catch { size = 0; }
     // One short line per append keeps concurrent writers from interleaving.

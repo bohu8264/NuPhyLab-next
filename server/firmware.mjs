@@ -1,5 +1,6 @@
 import {KEYBOARD_MODELS} from '../shared/keyboard-models.mjs';
-export const FIRMWARE_URL = "https://drive.nuphy.io/#/setting";
+import firmwareLinks from '../shared/contracts/firmware-links.json' with {type:'json'};
+export const FIRMWARE_URL = firmwareLinks.officialDriverUrl;
 export const FIRMWARE_API = "https://drive.nuphy.io/prod-api/api/nuphyIo/getLastFirmwareVersionsByType?businessId=1930212869851615233&type=1";
 // Hardware-tested version is distinct from protocol support and online latest.
 export const VERIFIED_FIRMWARE = "2.0.0.7";

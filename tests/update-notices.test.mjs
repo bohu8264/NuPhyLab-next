@@ -36,6 +36,7 @@ for(const language of ['zh-CN','en'])test(`actual Updates panel shows precise fi
     './primitives':{Button,run:p=>ui.track(p)},'./codexKeys':{nativeCodexKeys:async body=>{nativeCalls.push(plain(body));return true;}},
     './StartupGuide':{useStartupCopy:()=> (zh,en)=>language==='en'?en:zh,OFFICIAL_DRIVER_URL:'https://drive.nuphy.io/#/setting',OfficialDriverAccess:Driver},
     '../../shared/firmware-onboarding.mjs':{availableFirmwareUpdate},'../../package.json':{default:{version:'fixture-version'}},
+    './WindowsUpdatePanel':{WindowsUpdatePanel:()=>null},
   });
   const Component=(await ui.load(new URL('../ui/src/UpdatePreferences.tsx',import.meta.url))).exports.UpdatePreferences;
   const state=old(),panel=ui.mount(Component,{state,command:async body=>commands.push(plain(body))});

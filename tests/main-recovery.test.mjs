@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fakeService, until } from "./helpers/fake-service.mjs";
+import { enableGameFeature, fakeService, until } from "./helpers/fake-service.mjs";
 
 function assertArmedAndMutedBeforePaint(operations, event) {
   const eventAt = operations.findLastIndex((entry) => entry.event === event);
@@ -46,14 +46,17 @@ test('unplug in Win then reconnect in Mac preserves Win recovery and allows a ne
   assert.equal((await s.command(scene)).ok,true);
 });
 test('unplug and automatic same-profile reconnect restores before the next animation frame',async t=>{
-  const s=await fakeService(t);await s.command({op:'connect'});
+  const s=await fakeService(t,{recordVisibleWrites:true});await s.command({op:'connect'});
   assert.equal((await s.command({op:'play',colors:Array(84).fill('#123456'),animation:{effect:'pulse',speed:3,loop:true}})).ok,true);
   await s.configure({disconnect:1,present:false});await until(s.state,x=>!x.device.connected,'unplug');
   await s.configure({present:true});await until(s.state,x=>x.device.connected&&x.device.armed,'automatic resume',8000);
-  const ops=await until(s.operations,ops=>ops.slice(ops.findLastIndex(x=>x.event==='simulatedDisconnect')+1).some(x=>x.op==='paint'),'first resumed frame');
+  // A request already in the pipe can arrive after removal and be rejected.
+  // Observe accepted device writes, rather than treating that request as a frame.
+  const committed=(entry,operation)=>entry.event==='simulatedVisibleWrite'&&entry.operation===operation;
+  const ops=await until(s.operations,ops=>ops.slice(ops.findLastIndex(x=>x.event==='simulatedDisconnect')+1).some(x=>committed(x,'paint')),'first committed resumed frame');
   const tail=ops.slice(ops.findLastIndex(x=>x.event==='simulatedDisconnect')+1);
-  assert(tail.findIndex(x=>x.op==='restore')<tail.findIndex(x=>x.op==='arm'));
-  assert(tail.findIndex(x=>x.op==='arm')<tail.findIndex(x=>x.op==='paint'));
+  const restoreAt=tail.findIndex(x=>committed(x,'restore')),armAt=tail.findIndex(x=>committed(x,'arm')),paintAt=tail.findIndex(x=>committed(x,'paint'));
+  assert(restoreAt>=0&&armAt>restoreAt&&paintAt>armAt,`expected committed restore → arm → paint, got ${JSON.stringify(tail)}`);
   assert.equal((await s.state()).playback.lastError,null);
 });
 
@@ -70,6 +73,7 @@ test('a verified explicit reconnect clears a prior playback error',async t=>{
 
 test("successful explicit restore clears the playback recovery warning", { timeout: 15000 }, async (t) => {
   const service = await fakeService(t);
+  await enableGameFeature(service);
   assert.equal((await service.command({ op: "gameStart", speed: 10 })).ok, true);
   await service.configure({ failPaint: 1 });
   await until(service.state, state => Boolean(state.playback.lastError), "playback failure was not surfaced");
@@ -86,6 +90,7 @@ test(
   { timeout: 15000 },
   async (t) => {
     const service = await fakeService(t, { failPaint: 1 });
+    await enableGameFeature(service);
     const failed = await service.command({ op: "gameStart", speed: 1 });
     assert.equal(failed.ok, false);
     assert.match(failed.error, /simulated paint failure/);
@@ -106,6 +111,7 @@ test(
   { timeout: 15000 },
   async (t) => {
     const service = await fakeService(t);
+    await enableGameFeature(service);
     assert.equal(
       (await service.command({ op: "gameStart", speed: 10 })).ok,
       true,
@@ -135,6 +141,7 @@ test(
   { timeout: 15000 },
   async (t) => {
     const service = await fakeService(t);
+    await enableGameFeature(service);
     assert.equal(
       (await service.command({ op: "gameStart", speed: 1 })).ok,
       true,

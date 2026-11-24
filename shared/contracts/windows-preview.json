@@ -1,0 +1,168 @@
+{
+  "version": 15,
+  "readRoutes": [
+    "/api/state",
+    "/api/layout"
+  ],
+  "commandRoute": "/api/command",
+  "maxBytes": 8388608,
+  "operations": [
+    "connect",
+    "disconnect",
+    "refresh",
+    "refreshPermissions",
+    "lightActivity",
+    "stop",
+    "restore",
+    "triggerStop",
+    "gameStop",
+    "audioStop",
+    "saveScene",
+    "deleteScene",
+    "importScenes"
+  ],
+  "inspectionOperations": [
+    "inspectLighting",
+    "inspectSleep",
+    "inspectFunctionKeys",
+    "audioRefresh",
+    "windowsDiagnostics"
+  ],
+  "handoffOperations": [
+    "prepareFirmwareUpdate"
+  ],
+  "lightingOperations": {
+    "nativeLighting": [
+      "mode",
+      "brightness",
+      "speed",
+      "color"
+    ],
+    "play": [
+      "colors",
+      "animation",
+      "editorId",
+      "connectionSessionId"
+    ],
+    "preview": [
+      "colors",
+      "editorId",
+      "connectionSessionId",
+      "animation"
+    ],
+    "pause": [],
+    "triggerArm": [
+      "colors",
+      "trigger",
+      "editorId",
+      "connectionSessionId"
+    ],
+    "triggerFire": [
+      "code"
+    ],
+    "gameSelect": [
+      "gameType"
+    ],
+    "gameStart": [
+      "gameType",
+      "speed"
+    ],
+    "gameRestart": [
+      "speed"
+    ],
+    "gamePause": [
+      "paused"
+    ],
+    "gameInput": [
+      "direction",
+      "code",
+      "pressed"
+    ],
+    "audioStart": []
+  },
+  "nativeRequirements": {
+    "triggerArm": "globalKeys",
+    "audioStart": "audio"
+  },
+  "agentOperations": {
+    "agentMode": [
+      "source",
+      "enabled"
+    ],
+    "refreshCodex": [],
+    "refreshClaude": [],
+    "codexSelect": [
+      "threadId"
+    ],
+    "claudeSelect": [
+      "sessionId"
+    ],
+    "claudeHookStatus": [],
+    "claudeHookInstall": [],
+    "claudeHookRemove": [
+      "purgeSpool"
+    ],
+    "windowsAgentAction": [
+      "source",
+      "action",
+      "id"
+    ],
+    "windowsPrepareResume": [
+      "source",
+      "id",
+      "requestId"
+    ],
+    "windowsPrepareTaskFocus": [
+      "source",
+      "id",
+      "requestId"
+    ]
+  },
+  "agentSettings": [
+    "agentSource",
+    "codexEnabled",
+    "claudeEnabled",
+    "codexKeyAdaptation",
+    "codexLightMode",
+    "claudeLightMode",
+    "codexStatusColors",
+    "claudeStatusColors",
+    "codexTaskSource",
+    "slotIds",
+    "claudeTaskSource",
+    "claudeSlotIds",
+    "codexBrightness",
+    "claudeBrightness",
+    "codexSelectedPulse",
+    "claudeSelectedPulse",
+    "codexAmbient",
+    "claudeAmbient",
+    "codexWholeTaskId",
+    "claudeWholeTaskId"
+  ],
+  "recoveryOperations": [
+    "checkWindowsRecovery",
+    "recoverWindowsLighting"
+  ],
+  "settings": [
+    "language",
+    "brightness",
+    "autoConnect",
+    "lightDurationMs",
+    "lightIdleMs",
+    "audio",
+    "airTopRightModule",
+    "sidebarFeatures"
+  ],
+  "featureIds": [
+    "studio",
+    "library",
+    "codex",
+    "game"
+  ],
+  "editorOperations": {
+    "endEditorLighting": [
+      "editorId"
+    ]
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "schemas": [
+    {"modelId": "air75-v3", "firmwareVersion": "1.0.23.6", "stateLength": 4},
+    {"modelId": "air75-v3", "firmwareVersion": "2.0.0.7", "stateLength": 4}
+  ]
+}

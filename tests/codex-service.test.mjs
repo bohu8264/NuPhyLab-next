@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {fakeService,until} from './helpers/fake-service.mjs';
+import {enableGameFeature,fakeService,until} from './helpers/fake-service.mjs';
 import {SHORTCUTS} from '../server/codex.mjs';
 
 const tasks=[{id:'working',title:'Working',status:'running'},{id:'waiting',title:'Waiting',status:'needsInput',pendingKind:'approval',pinned:true,pinOrder:0},{id:'unread',title:'Unread',status:'completed'}];
@@ -16,6 +16,7 @@ test('duplicate physical terminal press sends only one toggle',async t=>{
 });
 test('dictation release survives binding changes and mode changes without an orphan keydown',async t=>{
  const service=await fakeService(t,{tasks});
+ await enableGameFeature(service);
  await service.command({op:'settings',settings:{codexEnabled:true}});
  assert.equal((await service.nativeKey({op:'codexKey',code:'F9',phase:'down'})).ok,true);
  assert.equal((await service.state()).codex.keys.held.source,'F9');
@@ -129,6 +130,7 @@ test('enabling Codex overlays a paused animation without changing its position o
 
 test('direct task keys and commands remap atomically, move lights, and pause for games',async t=>{
  const service=await fakeService(t,{tasks});
+ await enableGameFeature(service);
  await service.command({op:'settings',settings:{codexEnabled:true,brightness:100,codexBrightness:100,codexSelectedPulse:false}});
  await service.command({op:'settings',settings:{codexEnabled:true}});
  assert.equal((await service.command({op:'codexKey',code:'F1'})).ok,true);

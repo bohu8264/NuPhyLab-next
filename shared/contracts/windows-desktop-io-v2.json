@@ -1,0 +1,17 @@
+{
+  "protocolVersion": 2,
+  "implementation": "windows-desktop-io",
+  "maxLineBytes": 32768,
+  "maxPending": 16,
+  "heartbeatTimeoutMs": 15000,
+  "requestTimeoutMs": 8000,
+  "maxStartingKeys": 128,
+  "maxStartingKeyAgeMs": 500,
+  "keyResetReasons": ["INPUT_SOURCE_CHANGED", "INPUT_EVENT_OVERFLOW", "INPUT_WORKER_FAILED", "INPUT_SOURCE_LIMIT", "INPUT_CHANNEL_CLOSED"],
+  "operations": {
+    "hello": ["protocolVersion", "sessionId"], "heartbeat": [], "inventory": [],
+    "startAudio": ["session", "source", "deviceId"], "stopAudio": [],
+    "monitorKeys": ["modelId", "codes", "monitorId"], "stopKeys": [], "quit": []
+  },
+  "events": ["audioFeature", "key", "keysReset", "systemSuspend", "shutdownComplete"]
+}

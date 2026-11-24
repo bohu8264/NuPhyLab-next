@@ -34,7 +34,7 @@ export function normalizeEvent(raw, index = 0) {
     session,
     at,
     order: index,
-    cwd: typeof raw.c === "string" && raw.c.startsWith("/") && raw.c.length <= 1024 ? raw.c : null,
+    cwd: typeof raw.c === "string" && (raw.c.startsWith("/")||/^[A-Za-z]:[\\/]/.test(raw.c)) && raw.c.length <= 1024 && !/[\x00-\x1f\x7f]/.test(raw.c) ? raw.c : null,
     pid: Number.isInteger(raw.p) && raw.p > 0 && raw.p < 2 ** 31 ? raw.p : null,
     tool: text(raw.t, 60),
     note: id(raw.k, 60) ?? text(raw.k, 60),

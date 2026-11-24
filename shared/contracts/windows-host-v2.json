@@ -1,0 +1,5 @@
+{
+  "protocolVersion": 2,
+  "heartbeatTimeoutMs": 15000,
+  "shutdownTimeoutMs": 135000
+}

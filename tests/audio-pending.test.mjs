@@ -161,3 +161,10 @@ test('actual AudioPanel Stop bypasses failed pending settings and leaves them av
   node(panel,entry=>entry.type?.name==='Button'&&textOf(entry)==='停止律动').props.onClick();await f.ui.settle(panel);
   assert.equal(f.calls.filter(call=>call.op==='audioStop').length,1);assert.equal(f.calls.some(call=>call.op==='audioStart'),false);assert.equal(f.store.getSnapshot().audioPending,true);assert.equal(f.store.getSnapshot().audio.effect,'rain');assert.match(textOf(panel.tree),/声音设置的保存结果尚未确认/);
 });
+test('Windows audio failures guide the user to the selected source instead of Mac recording permissions',async()=>{
+  for(const source of ['system','microphone']){
+    const f=await uiFixture();f.state.desktop={host:'tauri'};f.state.settings.audio.source=source;f.state.audio.error='systemCapture';
+    const panel=f.panel(),text=textOf(panel.tree);assert.doesNotMatch(text,/录音权限|macOS/);
+    assert.match(text,source==='system'?/检查默认输出设备后重新开始/:/检查 Windows 麦克风设置或更换设备/);panel.unmount();
+  }
+});

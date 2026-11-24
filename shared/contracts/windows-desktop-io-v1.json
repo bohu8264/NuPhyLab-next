@@ -1,0 +1,19 @@
+{
+  "protocolVersion": 1,
+  "implementation": "windows-desktop-io",
+  "maxLineBytes": 32768,
+  "maxPending": 16,
+  "heartbeatTimeoutMs": 15000,
+  "requestTimeoutMs": 8000,
+  "operations": {
+    "hello": ["protocolVersion", "sessionId"],
+    "heartbeat": [],
+    "inventory": [],
+    "startAudio": ["session", "source", "deviceId"],
+    "stopAudio": [],
+    "monitorKeys": ["modelId", "codes", "monitorId"],
+    "stopKeys": [],
+    "quit": []
+  },
+  "events": ["audioFeature", "key", "keysReset", "keysStopped", "systemSuspend", "shutdownComplete"]
+}

@@ -101,3 +101,8 @@ Build headers: upstream v3.7.4, native/drag/archive-headers/ORIGIN.json. Runtime
 WebP 图片编码使用内置的 libwebp，BSD 许可及专利授权随包附带。
 WebP image encoding uses the bundled libwebp library. Its BSD license and patent grant are included in `drag-convert-licenses/libwebp-COPYING.txt` and `libwebp-PATENTS.txt`.
 Source: https://chromium.googlesource.com/webm/libwebp/
+## Windows runtime and SQLite
+
+The Windows preview bundles Node.js, Tauri 2 and the Rust crates recorded in Cargo.lock. Tauri and its updater plugin are MIT OR Apache-2.0. Windows uses its installed Microsoft WebView2 runtime; the NSIS installer can download the official bootstrapper when required.
+
+SQLite 3.54.1 is public domain. The official x64 executable is downloaded with pinned SHA-256 and SHA3-256 archive checks and an independent executable SHA-256 check. Its public-domain notice accompanies the Windows app as runtime/LICENSE.sqlite. Source and public-domain information: https://www.sqlite.org/ and https://www.sqlite.org/copyright.html . SQLite is used for read-only local task metadata; no SQLite extensions are loaded.

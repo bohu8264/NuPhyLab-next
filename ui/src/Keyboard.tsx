@@ -7,6 +7,7 @@ import './keyboard-models.css';
 
 export type AirTopRightModule = 'rotary' | 'keycap';
 export const KeyboardModuleContext = createContext<AirTopRightModule>('rotary');
+export const KeyboardPlatformContext = createContext<'darwin'|'win32'>('darwin');
 export function lightingPeak(frames: readonly (readonly string[])[]) {
   let peak = 1;
   for (const frame of frames) for (const color of frame)
@@ -31,6 +32,7 @@ export type KeyboardProps = {
 export function Keyboard({ modelId, layout, geometry = keyboardGeometry[modelId], colors, selected = [], mini = false, lightPreview = false,
   onKey, onGameKey, onStrokeStart, sideColor, airTopRightModule }: KeyboardProps) {
   const preference = useContext(KeyboardModuleContext);
+  const platform=useContext(KeyboardPlatformContext);
   const stroke = useRef<{pointerId: number; modelId: string; last: number | null} | null>(null);
   const module = airTopRightModule || preference;
   const interactive = !mini && Boolean(onKey || onGameKey);
@@ -56,7 +58,9 @@ export function Keyboard({ modelId, layout, geometry = keyboardGeometry[modelId]
   const englishLabels: Record<string, string> = {
     PrintScreen: 'PrtSc', LockScreen: 'Lock', ShowDesktop: 'Desk', ControlCenter: 'Ctrl Ctr', TaskManager: 'Task',
   };
-  const label = (key: KeyboardLayoutKey) => language() === 'en' && englishLabels[key.code] ? englishLabels[key.code]
+  const windowsLabels:Record<string,string>={MetaLeft:'Win',MetaRight:'Win',AltLeft:'Alt',AltRight:'Alt'};
+  const label = (key: KeyboardLayoutKey) => platform==='win32'&&windowsLabels[key.code]?windowsLabels[key.code]
+    :language() === 'en' && englishLabels[key.code] ? englishLabels[key.code]
     : key.label === '⌘' ? 'Cmd' : key.label === '⌫' ? 'Back' : tr(key.label);
   const accessibleLabel = (key: KeyboardLayoutKey) => `${label(key) || 'Space'}${key.code.startsWith('Numpad') ? (language() === 'en' ? ' numpad' : ' 数字区') : ''} ${colorAt(key.index)}`;
   const activate = (index: number) => {

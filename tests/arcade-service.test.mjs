@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fakeService, until } from "./helpers/fake-service.mjs";
+import { enableGameFeature, fakeService, until } from "./helpers/fake-service.mjs";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
@@ -8,6 +8,7 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 test("all arcade games own lighting and return to the previous scene without changing it", async (t) => {
   const service = await fakeService(t);
+  await enableGameFeature(service);
   const colors = Array(84).fill("#000000");
   colors[20] = "#dc847b";
   colors[23] = "#6493d7";
@@ -39,6 +40,7 @@ test("all arcade games own lighting and return to the previous scene without cha
 
 test("arcade commands reject invalid types before changing the current session or hardware", async (t) => {
   const service = await fakeService(t);
+  await enableGameFeature(service);
   const before = (await service.operations()).length;
   for (const gameType of ["__proto__", "constructor", "missing", {}, null]) {
     assert.equal((await service.command({ op: "gameSelect", gameType })).ok, false);
@@ -54,6 +56,7 @@ test("arcade commands reject invalid types before changing the current session o
 
 test("whack input scores immediately, pause freezes time, and records stay separated by game", async (t) => {
   const service = await fakeService(t);
+  await enableGameFeature(service);
   await service.command({ op: "gameStart", gameType: "whack", speed: 1 });
   const first = (await service.state()).game;
   const hit = await service.command({ op: "gameInput", code: first.targetCode, pressed: true });
@@ -73,6 +76,7 @@ test("whack input scores immediately, pause freezes time, and records stay separ
 
 test("pong releases both players on pause and disconnect and resumes only on request", async (t) => {
   const service = await fakeService(t);
+  await enableGameFeature(service);
   await service.command({ op: "gameStart", gameType: "pong", speed: 1 });
   await service.command({ op: "gameInput", code: "KeyW", pressed: true });
   await service.command({ op: "gameInput", code: "ArrowDown", pressed: true });
@@ -96,6 +100,7 @@ test("pong releases both players on pause and disconnect and resumes only on req
 
 test("record write failure leaves play and lighting responsive and reports an unsaved record", async (t) => {
   const service = await fakeService(t);
+  await enableGameFeature(service);
   await service.command({ op: "gameStart", gameType: "whack", speed: 1 });
   await mkdir(path.join(service.dataDir, "library.json.tmp"));
   const first = (await service.state()).game;
@@ -114,6 +119,7 @@ test("record write failure leaves play and lighting responsive and reports an un
 
 test("ending a disconnected game defers its previous scene until reconnect, while explicit stop cancels it", async (t) => {
   const service = await fakeService(t);
+  await enableGameFeature(service);
   const colors = Array(84).fill("#000000");
   colors[20] = "#dc847b";
   await service.command({ op: "settings", settings: { brightness: 100, autoConnect: false } });
@@ -148,6 +154,7 @@ const allDark = state => state.colors.every(c=>c==='#000000');
 
 test('loss keeps output advancing through three flashes, then stops dark; restart is idempotent',async t=>{
   const service=await fakeService(t,{tasks:[{id:'test',status:'running'}]});
+  await enableGameFeature(service);
   await service.command({op:'settings',settings:{brightness:100,codexEnabled:true}});
   await failMemory(service);
   let state=await service.state();
@@ -175,6 +182,7 @@ test('loss keeps output advancing through three flashes, then stops dark; restar
 
 test('restart during a red flash cancels the old sequence; ending feedback restores the prior scene',async t=>{
   const service=await fakeService(t);
+  await enableGameFeature(service);
   const art=Array(84).fill('#123456');art[83]='#000000';
   await service.command({op:'settings',settings:{brightness:100,codexEnabled:false}});
   await service.command({op:'preview',colors:art});

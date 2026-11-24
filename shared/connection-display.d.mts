@@ -1,11 +1,12 @@
 import type {KeyboardModel} from './layout.mjs';
 export type ConnectionDisplayCopy = Readonly<{zh:string;en:string}>;
-export type ConnectionStateId = 'serviceUnknown'|'loading'|'attention'|'reconnecting'|'paused'|'usbReady'|'bluetoothOnly'|'disconnected';
+export type ConnectionStateId = 'serviceUnknown'|'loading'|'attention'|'reconnecting'|'paused'|'usbReady'|'usbPreview'|'bluetoothOnly'|'disconnected';
 export type ConnectionReasonId = 'multipleUsb'|'appUpdateRequired'|'keyRecoveryBlocked'|'lightingRecoveryBlocked'|'readOnly'|'genericConnection';
 export type ConnectionActionId = 'navigateDevice'|'continueCreation'|'refreshService'|'connect'|'checkAppUpdates'|'restore'|'save';
 export type ConnectionTone = 'neutral'|'attention'|'ready';
 /** A minimal read-only structural view; compatible with the existing AppState. */
 export type ConnectionDisplayState = {
+  desktop?:{host:string;capabilities?:Record<string,boolean>};
   device?: {
     connected?:boolean;armed?:boolean;modelId?:string;model?:string;readOnly?:boolean;
     connectionSessionId?:string;connectionPaused?:unknown;errorCode?:unknown;

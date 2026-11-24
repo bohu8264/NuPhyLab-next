@@ -140,7 +140,7 @@ export function TriggerPanel({
       <Button kind="ghost" busy={busy} icon={<Play size={16}/>} disabled={cross?!hasPattern:!armed||trigger?.flashing} onClick={()=>{const result=testOnce();if(result)run(result);}}>{tr(cross?'试放一次':'试闪一次')}</Button>
       {!cross&&!armed&&<span>{tr('启用后可试闪')}</span>}
     </div>
-    {trigger?.warning&&<details className="trigger-warning inline-v6-details"><summary>{tr('全局监听提示')}</summary><div className="inline-v6-detail-body"><p>{tr(trigger.warning)}</p><p>{tr('按键仍会正常输入。')}</p>{armed&&trigger.monitor==='window'&&<p>{tr('点击图案后按键。')}</p>}<Button kind="ghost" icon={<ArrowUpRight size={14}/>} onClick={()=>window.dispatchEvent(new CustomEvent('nuphylab:navigate',{detail:'permissions'}))}>{tr('管理权限')}</Button></div></details>}
+    {trigger?.warning&&<details className="trigger-warning inline-v6-details"><summary>{tr('全局监听提示')}</summary><div className="inline-v6-detail-body"><p>{tr(trigger.warning)}</p><p>{tr('按键仍会正常输入。')}</p>{armed&&trigger.monitor==='window'&&<p>{tr('点击图案后按键。')}</p>}{state?.desktop?.platform!=='win32'&&<Button kind="ghost" icon={<ArrowUpRight size={14}/>} onClick={()=>window.dispatchEvent(new CustomEvent('nuphylab:navigate',{detail:'permissions'}))}>{tr('管理权限')}</Button>}</div></details>}
     {error&&<div className="inline-v6-notice inline-v6-error" role="alert">{tr(error)}</div>}
     {!hasPattern&&<p className="trigger-warning">{tr((draft.animation.brightness??100)===0?'作品亮度为 0%，调高亮度后可启用按键触发。':cross?'当前设置下图案没有亮起的按键，请调整颜色或作品亮度。':'当前没有亮起的按键，先选一个图案。')}</p>}
   </aside>;

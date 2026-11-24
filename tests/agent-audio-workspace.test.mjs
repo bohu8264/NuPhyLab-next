@@ -27,6 +27,7 @@ async function environment(mode){
     './AgentSideLighting':{AgentLightingZone:stub('AgentLightingZone'),AgentSideLighting:stub('AgentSideLighting')},
     './Keyboard':{Keyboard:stub('Keyboard')},'./StartupGuide':{useStartupCopy:()=>zh=>zh},'./CodexStatusColors':{CodexStatusColors:stub('CodexStatusColors')},'./ClaudeStatusColors':{ClaudeStatusColors:stub('ClaudeStatusColors')},'./ColorWheel':{ColorWheel:stub('ColorWheel')},
     './primitives':{Button:stub('Button'),Switch:stub('Switch'),run:promise=>promise},'./i18n':{t:value=>value},'./rangeStyle':{rangeStyle:()=>({})},'./connection-copy-v7':{connectionCopy:value=>value.zh},'./api':{readAppState:async()=>({settings:{}})},
+    './useAgentPreviewFit':{useAgentPreviewFit:()=>({ref:{current:null},style:{}})},
     './useWorkspaceLayout':{useWorkspaceLayout:options=>{args.push(options);return workspace;}},
   });
   ui.window.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});

@@ -85,7 +85,10 @@ test('errors remain local and sanitized, retry does not carry the previous human
 async function deviceFixture(current=state()){
   const names=['Button','Keyboard','FunctionKeyRecoveryDialog'],nodes=Object.fromEntries(names.map(name=>[name,stub(name)])),commands=[];
   const ui=createVMEnvironment({'lucide-react':Object.fromEntries(['ArrowLeft','Bluetooth','Cable','ChevronRight','CircleAlert','RotateCcw','Unplug'].map(name=>[name,stub(name)])),
-    './primitives':{Button:nodes.Button,run:promise=>promise.catch(()=>{})},'./Keyboard':{Keyboard:nodes.Keyboard},'./FunctionKeyRecoveryDialog':{FunctionKeyRecoveryDialog:nodes.FunctionKeyRecoveryDialog},
+    './primitives':{Button:nodes.Button,run:promise=>promise.catch(()=>{})},'./Keyboard':{Keyboard:nodes.Keyboard},'./FunctionKeyRecoveryDialog':{FunctionKeyRecoveryDialog:nodes.FunctionKeyRecoveryDialog},'./WindowsRecoveryPanel':{WindowsRecoveryPanel:stub('WindowsRecoveryPanel')},'./WindowsFunctionKeys':{WindowsFunctionKeys:stub('WindowsFunctionKeys')},
+    './FirmwareManagement':{FirmwareManagement:stub('FirmwareManagement')},
+    './WindowsRecoveryPanel':{WindowsRecoveryPanel:stub('WindowsRecoveryPanel')},
+    './WindowsFunctionKeys':{WindowsFunctionKeys:stub('WindowsFunctionKeys')},
     './StartupGuide':{firmwarePrompt:()=>null,showFirmwareGuide(){},useStartupCopy:()=>zh=>zh},'./KeyRecoveryPanel':{friendlyConnectionError:value=>value,keyRecoveryProblem:()=>null},'./codexKeys':{nativeCodexKeys:async()=>{}},'./connection-copy-v7':{connectionCopy:value=>value},'./i18n':{t:value=>value}});
   const Device=(await ui.load(new URL('../ui/src/Device.tsx',import.meta.url))).exports.Device,props={state:current,command:async body=>commands.push(body),serviceError:''},instance=ui.mount(Device,props);
   return{nodes,commands,current,props,instance};

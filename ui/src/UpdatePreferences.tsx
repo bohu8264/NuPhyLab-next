@@ -6,6 +6,7 @@ import {availableFirmwareUpdate} from '../../shared/firmware-onboarding.mjs';
 import type {AppState,Command} from './types';
 import packageInfo from '../../package.json';
 import './update-notices.css';
+import {WindowsUpdatePanel} from './WindowsUpdatePanel';
 
 export function UpdatePreferences({state,command}:{state:AppState|null;command:Command}){
   const copy=useStartupCopy();
@@ -30,6 +31,7 @@ export function UpdatePreferences({state,command}:{state:AppState|null;command:C
     :fw?.checking?copy('正在检查官方固件…','Checking official firmware…')
     :firmwareMatches&&fw?.latestConfirmed&&['current','newer'].includes(fw.status)?copy('当前键盘固件已是最新版本。','This keyboard firmware is up to date.')
     :copy('尚未确认这把键盘的最新固件，可手动重新检查。','The latest firmware for this keyboard is not confirmed. Check again manually.');
+  if(state?.desktop?.host==='tauri')return <div className="lab-update-preferences"><WindowsUpdatePanel state={state}/></div>;
   return <div className="lab-update-preferences">
     <section className="lab-setting-panel lab-update-panel" aria-label={copy('软件更新','Software updates')}>
       <div className="lab-setting-row lab-app-update-row"><div className="lab-app-update-brand"><img src="/nuphy-studio.png" alt="" width={48} height={48}/><div><h2>NuPhy Lab</h2><p>{copy('当前版本','Installed version')} {state?.build?.version||packageInfo.version}</p></div></div><Button busy={checking} onClick={()=>run(checkApp())}>{copy('检查软件更新','Check app updates')}</Button></div>

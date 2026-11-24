@@ -1,14 +1,22 @@
 import {getKeyboardProfile,isKeyboardModel} from '../shared/keyboard-models.mjs';
 import {AIR_CONNECTION_WAKE_DURATION_MS, renderConnectionWake} from '../shared/air-connection-wake.mjs';
+import {windowsLightingPolicy} from '../shared/windows-lighting-firmware.mjs';
 
 export function supportsAirConnectionWake(device) {
   const profile=isKeyboardModel(device?.modelId)?getKeyboardProfile(device.modelId):null;
   return !!profile && device?.connected === true && device.identified === true &&
     device.transport === 'USB' && device.vendorId === 0x19f5 && profile.productIds.includes(device.productId) &&
     device.ledCount === profile.keyCount+profile.sideCount && device.keyLedCount === profile.keyCount &&
-    device.protocolReady === true && device.readOnly === false &&
+    device.readOnly === false &&
     typeof device.connectionSessionId === 'string' && device.connectionSessionId.length > 0 &&
-    device.capabilities?.perKey === true && device.capabilities.readProbeVerified === true &&
+    device.capabilities?.perKey === true &&
+    (device.windowsLighting
+      // Windows has a separate owner that must verify its durable palette and
+      // blackout before acknowledging arm. Do not fabricate Mac probe flags.
+      ? device.windowsLighting.available===true && device.windowsLighting.connectionWakeReady===true &&
+        windowsLightingPolicy(device.modelId,device.firmwareVersion)!==null && [0,1].includes(device.lightingProfile) &&
+        device.identityQualification?.status==='qualified' && device.identityQualification.source==='embeddedUsbSerial'
+      : device.protocolReady===true && device.capabilities.readProbeVerified===true) &&
     device.capabilities.connectionWake === true &&
     device.historicalRecoveryLost !== true;
 }

@@ -441,10 +441,11 @@ export class ReadOnlyAppServerClient {
   }
   async start() {
     if (this.ready) return;
-    this.child = this.spawnProcess(this.executable, ["app-server", "--stdio"], {
+    this.child = this.spawnProcess(this.executable, ["app-server"], {
       cwd: homedir(),
       env: { ...process.env, CODEX_HOME: this.codexHome },
       stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
     });
     this.child.stdout.on("data", (chunk) => this.consume(chunk));
     this.child.stdin.on("error", () => this.failAll("Codex 额度连接不可写"));
@@ -569,6 +570,9 @@ export class CodexAdapter {
     now = Date.now,
     clientFactory = (options) => new ReadOnlyAppServerClient(options),
     liveWriters = readLiveWriters,
+    discoverCLI = discoverCodexCLI,
+    databaseExec = execFileAsync,
+    sqliteArgs = [],
   } = {}) {
     Object.assign(this, {
       codexHome: path.resolve(codexHome),
@@ -579,6 +583,7 @@ export class CodexAdapter {
       now,
       clientFactory,
       liveWriters,
+      discoverCLI,databaseExec,sqliteArgs,
     });
     this.pollIntervalMs = Math.max(1_000, pollIntervalMs);
     this.quotaIntervalMs = Math.max(15_000, quotaIntervalMs);
@@ -711,10 +716,10 @@ export class CodexAdapter {
     }
   }
   async sql(database, statement) {
-    const { stdout } = await execFileAsync(
+    const { stdout } = await this.databaseExec(
       this.sqlitePath,
-      ["-readonly", "-json", "-cmd", ".timeout 250", database, statement],
-      { timeout: 3_000, maxBuffer: this.aggregateEnabled ? 8_388_608 : 1_048_576, encoding: "utf8" },
+      ["-readonly", "-json", ...this.sqliteArgs, "-cmd", ".timeout 250", database, statement],
+      { timeout: 3_000, maxBuffer: this.aggregateEnabled ? 8_388_608 : 1_048_576, encoding: "utf8", windowsHide:true },
     );
     return stdout.trim() ? JSON.parse(stdout) : [];
   }
@@ -996,7 +1001,7 @@ export class CodexAdapter {
     this.lastQuotaAttemptAt = this.now();
     try {
       if (!this.client) {
-        const executable = await discoverCodexCLI(this.cliPath);
+        const executable = await this.discoverCLI(this.cliPath);
         if (!executable) throw new Error("missing_cli");
         if (!this.running) return;
         this.client = this.clientFactory({

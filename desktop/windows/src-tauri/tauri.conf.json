@@ -1,0 +1,16 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "NuPhy Lab Windows Preview",
+  "version": "1.2.54",
+  "identifier": "io.nuphy.lab.windows.preview",
+  "build": {"frontendDist": "../../../ui/dist"},
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [{"label":"main","create":false,"title":"NuPhy Lab · Windows 预览版","width":1400,"height":960,"minWidth":960,"minHeight":680}],
+    "security": {
+      "capabilities": ["main"],
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: blob:; connect-src ipc: http://ipc.localhost; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'none'"
+    }
+  },
+  "bundle": {"active":true,"targets":["nsis"],"icon":["icons/icon.ico"]}
+}

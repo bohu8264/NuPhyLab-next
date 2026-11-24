@@ -39,6 +39,7 @@ export function NativeLighting({ state, layout, command, onOffline, onDevice }:{
   state: AppState; layout: Key[]; command: Command; onOffline: () => void; onDevice: () => void;
 }) {
   const copy = useStartupCopy();
+  const perKey=state.device.capabilities?.perKey===true;
   const [hex, setHex] = useState("");
   const [config, setConfig] = useState(() => fromState(state.device.state));
   const [busy, setBusy] = useState("");
@@ -86,11 +87,11 @@ export function NativeLighting({ state, layout, command, onOffline, onDevice }:{
   const readback = state.playback.mode === "native" && !dirty.current && state.colors.length >= 80;
   const hexField=<div className="lab-native-hex"><input type="color" aria-label={copy("灯效颜色", "Effect color")} value={config.color} disabled={!!busy} onChange={event => change({color:event.target.value})}/><input aria-label={copy("颜色 HEX", "Color HEX")} aria-invalid={!!hexError} aria-describedby={hexError?'native-color-error':undefined} value={hex} maxLength={7} disabled={!!busy} onChange={event => {setHex(event.target.value);setHexError('');setApplied(false);}} onBlur={validateHex} onKeyDown={event => {if(event.key === "Enter"){event.preventDefault();validateHex();}if(event.key==='Escape'){setHex(config.color.toUpperCase());setHexError('');}}}/></div>;
   return <section className="lab-native-page">
-    <div className="lab-native-workrow"><div><h2>{copy("Kick75 内置灯效", "Kick75 built-in lighting")}</h2><p>{copy("旧固件兼容状态", "Legacy firmware compatibility")}</p></div><Button kind="primary" icon={applied ? <Check size={16}/> : <Play size={16}/>} busy={busy === "apply"} disabled={!!busy || !state.device.connected || state.device.capabilities?.stockEffects !== true} onClick={() => run(apply())}>{copy(applied ? "已应用到键盘" : "应用内置灯效", applied ? "Applied to keyboard" : "Apply built-in effect")}</Button></div>
+    <div className="lab-native-workrow"><div><h2>{copy("Kick75 内置灯效", "Kick75 built-in lighting")}</h2><p>{perKey?copy("使用键盘自带的灯光模式", "Use the keyboard's built-in lighting modes"):copy("旧固件兼容状态", "Legacy firmware compatibility")}</p></div><Button kind="primary" icon={applied ? <Check size={16}/> : <Play size={16}/>} busy={busy === "apply"} disabled={!!busy || !state.device.connected || state.device.capabilities?.stockEffects !== true} onClick={() => run(apply())}>{copy(applied ? "已应用到键盘" : "应用内置灯效", applied ? "Applied to keyboard" : "Apply built-in effect")}</Button></div>
     <div className="lab-native-grid"><div className="lab-native-canvas">
-      <div className="lab-native-intro"><h3>{copy("当前固件支持键盘内置灯效", "Built-in lighting is available on this firmware")}</h3><p>{copy("升级固件后可使用逐键创作。", "Update firmware to enable per-key creation.")}</p></div>
+      <div className="lab-native-intro"><h3>{copy("当前固件支持键盘内置灯效", "Built-in lighting is available on this firmware")}</h3><p>{perKey?copy("调整模式、亮度和速度。停止或退出时恢复原设置。", "Adjust mode, brightness and speed. Stop or exit to restore the original settings."):copy("升级固件后可使用逐键创作。", "Update firmware to enable per-key creation.")}</p></div>
       <div className="lab-native-keyboard"><Keyboard modelId={getLayoutModel()} layout={layout} colors={readback ? state.colors : blank().fill(previewColor)}/></div>
-      <div className="lab-native-canvas-actions"><Button kind="ghost" icon={<RotateCcw size={16}/>} busy={busy === "restore"} disabled={!!busy || !state.device.connected} onClick={() => run(restore())}>{copy("恢复原灯效", "Restore lighting")}</Button><Button kind="ghost" icon={<Paintbrush size={16}/>} onClick={onOffline}>{copy("进入离线绘图", "Open offline drawing")}</Button></div>
+      <div className="lab-native-canvas-actions"><Button kind="ghost" icon={<RotateCcw size={16}/>} busy={busy === "restore"} disabled={!!busy || !state.device.connected} onClick={() => run(restore())}>{copy("恢复原灯效", "Restore lighting")}</Button><Button kind="ghost" icon={<Paintbrush size={16}/>} onClick={onOffline}>{perKey?copy("返回绘图", "Back to drawing"):copy("进入离线绘图", "Open offline drawing")}</Button></div>
       {error&&<div className="inline-v6-notice inline-v6-error" role="alert">{t(error)}</div>}
       <details className="lab-native-preview-note inline-v6-details"><summary>{copy("预览说明", "About this preview")}</summary><div className="inline-v6-detail-body"><p>{t(readback ? "上次回读颜色 · 动态效果以实体键盘为准，旋钮不作为按键灯。" : "颜色示意 · 动态效果以实体键盘为准，旋钮不作为按键灯。")}</p><p>{copy("应用前会备份当前灯效；点击恢复可还原。", "Current lighting is backed up before applying. Use Restore to return to it.")}</p></div></details>
     </div><aside className="lab-native-inspector">

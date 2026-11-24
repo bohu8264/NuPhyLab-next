@@ -1,6 +1,7 @@
 import {FirmwareManagement} from './FirmwareManagement';
 import {blank,getLayoutModel} from '../../shared/layout.mjs';
 import {getKeyboardProfile,isKeyboardModel} from '../../shared/keyboard-models.mjs';
+import {isWindowsReadonlyPreview} from '../../shared/device-status.mjs';
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Bluetooth, Cable, ChevronRight, CircleAlert, RotateCcw, Unplug } from "lucide-react";
 import { Button, run } from "./primitives";
@@ -10,6 +11,8 @@ import { firmwarePrompt, showFirmwareGuide, useStartupCopy } from "./StartupGuid
 import { friendlyConnectionError, keyRecoveryProblem } from "./KeyRecoveryPanel";
 import { nativeCodexKeys } from "./codexKeys";
 import { FunctionKeyRecoveryDialog } from "./FunctionKeyRecoveryDialog";
+import {WindowsRecoveryPanel} from './WindowsRecoveryPanel';
+import {WindowsFunctionKeys} from './WindowsFunctionKeys';
 import type { ConnectionDisplay } from "../../shared/connection-display.mjs";
 import { connectionCopy } from "./connection-copy-v7";
 import { t } from "./i18n";
@@ -33,6 +36,11 @@ export function Device({ state, command, serviceError, layout = state?.layout ||
   const recoveryTrigger=useRef<HTMLElement|null>(null);
   const actionPending=useRef(false),actionContext=useRef(0);
   const device = state?.device;
+  const windowsDesktop=state?.desktop?.host==='tauri';
+  const windowsPreview=isWindowsReadonlyPreview(state);
+  const currentDevice=Boolean(!serviceError&&device?.connected===true&&(!display||display.freshUsb));
+  const inspection=currentDevice?device?.lightingSnapshot:null;
+  const sleepInspection=currentDevice?device?.sleepSnapshot:null;
   const phase = device?.connection?.status;
   const recovery = keyRecoveryProblem(state);
   const wireless = state?.bluetooth?.connected === true && !device?.connected;
@@ -45,7 +53,7 @@ export function Device({ state, command, serviceError, layout = state?.layout ||
   const kick = device?.modelId === "kick75";
   const profile=isKeyboardModel(device?.modelId)?getKeyboardProfile(device.modelId):null;
   const hasModule = device?.modelId === "air75-v3" || device?.modelId === "air65-v3" || device?.modelId === "air100-v3";
-  const outdated = firmwarePrompt(state);
+  const outdated = !windowsDesktop&&firmwarePrompt(state);
   const firmware = state?.firmware;
   const module = state?.settings.airTopRightModule === "keycap" ? "keycap" : "rotary";
   const nativeOnly = kick && device?.capabilities?.stockEffects === true && device?.capabilities?.perKey === false;
@@ -53,7 +61,7 @@ export function Device({ state, command, serviceError, layout = state?.layout ||
   useEffect(()=>()=>{actionContext.current++;},[]);
   useEffect(()=>{setRecoveryOpen(false);},[device?.connectionSessionId,device?.modelId,connected,state?.settings.codexEnabled,state?.settings.claudeEnabled]);
   const transient = phase === "waiting" || phase === "reconnecting";
-  const connectionError = outdated || transient ? "" : phase === "updateRequired"
+  const connectionError = windowsPreview || outdated || transient ? "" : phase === "updateRequired"
     ? copy("请更新 NuPhy Lab 后继续使用。", "Update NuPhy Lab to continue.")
     : phase === "attention" || recovery
       ? copy("请确认键盘已切到有线模式，并关闭其他键盘设置程序。软件会自动重试。", "Switch your keyboard to wired mode and close other keyboard apps. We will retry automatically.")
@@ -71,6 +79,7 @@ export function Device({ state, command, serviceError, layout = state?.layout ||
     finally {actionPending.current=false;setBusy("");}
   };
   const status = wireless ? copy("蓝牙已连接 · 灯光播放需要 USB 连接", "Bluetooth connected · USB required for lighting")
+    : windowsPreview ? copy("已识别 · Windows 只读预览", "Identified · Windows read-only preview")
     : outdated ? copy("固件待更新", "Firmware update required")
     : phase === "reconnecting" ? copy("正在重新连接", "Reconnecting")
     : phase === "attention" ? copy("连接暂时中断", "Connection interrupted")
@@ -158,7 +167,7 @@ export function Device({ state, command, serviceError, layout = state?.layout ||
       <div className="lab-device-canvas">
         {!display&&<div className={`lab-device-status ${connected && !outdated && !recovery ? "ready" : ""}`} role="status"><i/>{status}</div>}
         <Keyboard modelId={getLayoutModel()} layout={layout} colors={blank()} sideColor={connected && typeof device?.sideColor === 'string' ? device.sideColor : undefined} />
-        <div className="lab-device-restore"><Button kind="ghost" icon={<RotateCcw size={16}/>} disabled={!connected || Boolean(busy)} busy={busy === "restore"} onClick={() => run(execute("restore"))}>{copy("恢复键盘原灯效", "Restore keyboard lighting")}</Button></div>
+        {!windowsDesktop&&<div className="lab-device-restore"><Button kind="ghost" icon={<RotateCcw size={16}/>} disabled={!connected || Boolean(busy)} busy={busy === "restore"} onClick={() => run(execute("restore"))}>{copy("恢复键盘原灯效", "Restore keyboard lighting")}</Button></div>}
         {recoveryPending&&<div className="function-key-recovery-entry"><p>{copy("部分按键的原功能尚未确认，可先检查当前键盘。","Some original key functions have not been confirmed. Check the connected keyboard first.")}</p><Button kind="ghost" disabled={!connected||Boolean(busy)||Boolean(serviceError)} onClick={event=>{recoveryTrigger.current=event.currentTarget;setRecoveryOpen(true);}}>{copy("检查并恢复按键","Check and restore keys")}</Button></div>}
         {wireless && !display && <p className="lab-device-note">{copy("任务键和命令键继续可用，灯光保持键盘自身的设置。", "Task and command keys remain available. The keyboard keeps its own lighting.")}</p>}
         {connectionError && <div className={display?"lab-device-reconnect-v7":"lab-device-error"} role={display?undefined:"status"}>{!display&&<><CircleAlert size={16}/><span>{t(connectionError)}</span></>}<Button disabled={Boolean(busy)} onClick={() => run(phase === "updateRequired" ? nativeCodexKeys({kind: "checkForUpdates"}) : execute("connect"))}>{copy(phase === "updateRequired" ? "检查更新" : "重新连接", phase === "updateRequired" ? "Check for updates" : "Reconnect")}</Button></div>}
@@ -167,6 +176,29 @@ export function Device({ state, command, serviceError, layout = state?.layout ||
       </div>
       <aside className="lab-device-inspector">
         <h2>{copy(kick ? "设备信息" : "设备配置", kick ? "Device information" : "Device configuration")}</h2>
+        {windowsDesktop&&<section className="lab-module-section">
+          <h3>{copy("键盘身份","Keyboard identity")}</h3>
+          <p>{currentDevice&&device?.identityQualification?.status==='qualified'
+            ?copy("已核对键盘的硬件唯一编号。","The keyboard's hardware identity has been verified.")
+            :currentDevice&&device?.identityQualification?.status==='candidate'
+              ?copy("已读到硬件编号，仍需核对其稳定性。","A hardware identifier was found; its stability still needs verification.")
+              :copy("尚未核对唯一编号，保持只读。","The unique identity is not verified. The keyboard remains read-only.")}</p>
+          <p>{copy("身份核对和固件检查分别进行，通过身份检查也不代表可以播放灯光。","Identity and firmware are checked separately. A verified identity alone does not enable lighting playback.")}</p>
+          <h3>{copy("键盘档位","Keyboard switch")}</h3>
+          <p>{currentDevice&&device?.lightingProfile===0?copy("Mac 档","Mac position"):currentDevice&&device?.lightingProfile===1?copy("Windows 档","Windows position"):copy("尚未确认","Unconfirmed")}</p>
+          <h3>{copy("灯效检查","Lighting inspection")}</h3>
+          <p>{copy("只读取当前设置和颜色采样，不修改键盘。","Reads settings and sampled colors without changing the keyboard.")}</p>
+          {currentDevice&&device?.lightingInspection?.available===false&&<p>{copy("此固件的灯光结构尚未核对，暂不读取灯效。键盘识别和离线创作可继续使用。","The lighting format for this firmware is not verified yet. Device identification and offline editing remain available.")}</p>}
+          <Button kind="ghost" disabled={!currentDevice||!windowsPreview||device?.lightingInspection?.available!==true||Boolean(busy)} busy={busy==='inspectLighting'} onClick={()=>run(execute('inspectLighting'))}>{copy("读取灯效信息","Read lighting information")}</Button>
+          {inspection&&<><p>{copy(`已读取 ${inspection.ledCount} 个灯位的颜色采样。`,`Sampled colors from ${inspection.ledCount} LEDs.`)}</p><p>{copy(`主灯亮度 ${inspection.state[1]}% · 侧灯亮度 ${inspection.state[10]}%`,`Main brightness ${inspection.state[1]}% · Side brightness ${inspection.state[10]}%`)}</p><p>{copy("此结果仅用于检查，还不是可恢复的备份。","This observation is for inspection and is not a restorable backup.")}</p></>}
+          <h3>{copy("键盘休眠检查","Keyboard sleep inspection")}</h3>
+          <p>{copy("读取键盘自身是否启用自动休眠。不会关闭休眠，也不会调整等待时间。","Read whether the keyboard’s own automatic sleep is enabled. This does not disable sleep or change its timing.")}</p>
+          {currentDevice&&device?.sleepInspection?.available===false&&<p>{copy("此型号或固件的休眠结构尚未核对，暂不能读取。","The sleep format for this model or firmware is not verified yet.")}</p>}
+          <Button kind="ghost" disabled={!currentDevice||!windowsPreview||device?.sleepInspection?.available!==true||Boolean(busy)||device?.windowsRecovery?.status==='checking'||device?.windowsRecovery?.status==='recovering'} busy={busy==='inspectSleep'} onClick={()=>run(execute('inspectSleep'))}>{copy("读取休眠设置","Read sleep settings")}</Button>
+          {sleepInspection&&<p role="status">{sleepInspection.enabled?copy("键盘当前已启用自动休眠。","Automatic sleep is currently enabled on the keyboard."):copy("键盘当前未启用自动休眠。","Automatic sleep is currently disabled on the keyboard.")}{copy("这次读取不会生成恢复备份。","This reading does not create a recovery backup.")}</p>}
+        </section>}
+        {windowsDesktop&&<WindowsFunctionKeys state={state} command={command} current={currentDevice}/>}
+        {windowsDesktop&&<WindowsRecoveryPanel state={state} command={command} current={currentDevice}/>}
         {hasModule && <section className="lab-module-section">
           <h3>{copy("右上角模块", "Top-right module")}</h3>
           <div className="lab-module-options" role="group" aria-label={copy("右上角模块", "Top-right module")}>
@@ -187,7 +219,7 @@ export function Device({ state, command, serviceError, layout = state?.layout ||
           {firmware?.latest && <p>{firmwareUnconfirmed?`${copy("上次状态","Last known state")} · `:""}{copy("官方版本", "Official version")} {firmware.latest}</p>}
           {(!(firmware?.error || firmware?.stale) || firmware?.checking) && <p role="status">{firmwareUnconfirmed?copy("上次状态","Last known state"):firmwareStatus}</p>}
           {(firmware?.error || firmware?.stale) && !firmware?.checking && <p className="settings-v6-note is-error" role="status">{copy("暂时无法检查官方最新固件，请稍后重试。","Could not check the latest official firmware. Try again later.")}{firmware.error&&<span className="settings-v6-error-detail">{t(firmware.error)}</span>}</p>}
-          <Button disabled={!connected || Boolean(busy) || firmware?.checking} busy={busy === "checkFirmware"} onClick={() => run(execute("checkFirmware"))}>{copy("检查固件", "Check firmware")}</Button>
+          {!windowsDesktop&&<Button disabled={!connected || Boolean(busy) || firmware?.checking} busy={busy === "checkFirmware"} onClick={() => run(execute("checkFirmware"))}>{copy("检查固件", "Check firmware")}</Button>}
           {outdated && <Button kind="primary" onClick={showFirmwareGuide}>{copy("前往 NuPhyIO 更新", "Update in NuPhyIO")}</Button>}
         </div></details>
         <Button kind="ghost" className="lab-device-disconnect" icon={wireless ? <Bluetooth size={16}/> : <Unplug size={16}/>} busy={busy === "disconnect" || busy === "refreshBluetooth"} disabled={Boolean(busy)} onClick={() => run(execute(wireless ? "refreshBluetooth" : connected ? "disconnect" : "connect"))}>{copy(wireless ? "检查连接" : connected ? "断开连接" : "重新连接", wireless ? "Check connection" : connected ? "Disconnect" : "Reconnect")}</Button>

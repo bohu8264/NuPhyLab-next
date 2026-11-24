@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "additionalVersions": [
+    {
+      "modelId": "air75-v3",
+      "firmwareVersion": "2.0.0.7",
+      "policy": "air75-v3-2.0.0.7",
+      "stateLength": 22,
+      "keyCount": 84,
+      "sideCount": 20,
+      "boardSleep": false
+    }
+  ],
+  "scope": "Windows native lighting only. Does not qualify keymap writes, AI gestures, other firmware versions or macOS."
+}

@@ -4,7 +4,7 @@ import {DEFAULT_AUDIO,AudioReactive,validateAudio,validateAudioFeature} from '..
 import {AudioSession} from '../server/audio.mjs';
 import {validateSettings} from '../server/storage.mjs';
 import {layout} from '../shared/layout.mjs';
-import {fakeService,until} from './helpers/fake-service.mjs';
+import {enableGameFeature,fakeService,until} from './helpers/fake-service.mjs';
 import {AUDIO_EFFECTS} from '../shared/audio-effects.mjs';
 import {translate} from '../shared/i18n.mjs';
 import {hexToHsv} from '../shared/color.mjs';
@@ -200,6 +200,7 @@ test('session gates stale data, host loss and sleep without persisting audio',()
 });
 test('real service integrates audio rendering, live edits, Codex lights and stop/scene/game handoffs',async t=>{
   const s=await fakeService(t,{tasks:[{id:'audio-status-task',status:'running'}]});
+  await enableGameFeature(s);
   await s.command({op:'connect'});assert.equal((await s.command({op:'audioStart'})).ok,false);
   await s.command(inventory);await s.command({op:'settings',settings:{brightness:100,codexBrightness:100,codexEnabled:true,codexSelectedPulse:false,codexAmbient:false,audio:{color:'#ff0000'}}});
   assert.equal((await s.command({op:'audioStart'})).ok,true);

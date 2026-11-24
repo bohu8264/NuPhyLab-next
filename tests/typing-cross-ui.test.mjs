@@ -10,6 +10,12 @@ const animation={effect:'static',direction:'right',speed:4,loop:true,frames:[],b
 const cross={code:'Space',count:3,intervalMs:600,effect:'cross',color:'#ffffff',speed:4};
 const scene=()=>({name:'My editable cross',colors:blank(),animation:{...animation},trigger:{...cross}});
 
+test('Windows input reset warnings preserve normal typing and do not offer macOS permission settings',async()=>{
+  const f=await fixture();f.state.trigger.warning='按键事件未能完整接收，已停止灯效，请重新启用触发。';f.state.desktop={platform:'win32'};f.render();
+  assert.match(textOf(f.panel.tree),/按键事件未能完整接收/);assert.match(textOf(f.panel.tree),/按键仍会正常输入/);assert.equal(f.button('管理权限'),undefined);
+  delete f.state.desktop;f.render();assert(f.button('管理权限'));f.unmount();
+});
+
 async function fixture(draft=scene()){
   let now=1000,nextFrame=1,draftWrites=0,prevented=0;
   const frames=new Map(),commands=[],notices=[];
