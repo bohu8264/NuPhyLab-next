@@ -497,7 +497,15 @@ npm.cmd run windows:build -- --offline-installer
 
 后者要求构建机下载官方完整 WebView2 离线运行时，生成的安装包应单独在没有 WebView2、没有网络的干净 Windows 10/11 上验收。没有因此声称离线安装已经通过。
 
-签名发布使用 `npm.cmd run windows:release`，可追加 `-- --offline-installer`。构建前必须提供有效的 `windows-release.json` 公共配置、Windows 证书存储中的证书、`NUPHYLAB_CERT_THUMBPRINT`、HTTPS 的 `NUPHYLAB_TIMESTAMP_URL`、允许域名内的 `NUPHYLAB_DOWNLOAD_BASE`，以及秘密环境中的 `TAURI_SIGNING_PRIVATE_KEY`。私钥及口令不写入仓库、文档或日志。脚本对五个随包程序签名，Tauri 对主程序及 NSIS 安装包签名，再核对全部产物的可信证书与时间戳；缺任何条件都不生成新的发布清单。发布目录要求只含本次安装器，避免选中旧构建。
+本轮新增独立 Windows 签名入口：
+
+```bash
+bash ./nuphylab release --sign
+```
+
+该入口按用户要求参考 Talkflow 的交互式沃通/UKey 流程，默认使用 `C:\SignTools\wosigncodecmd.exe`、证书指纹 `68B94B194F597BA6E2694113268FE3956A041FEF` 和 `http://timestamp.digicert.com`，同目录须有 `wosigncode.exe`。无需设置环境变量；`NUPHYLAB_SIGN_TOOL`、`NUPHYLAB_CERT_THUMBPRINT` 和 `NUPHYLAB_TIMESTAMP_URL` 仅用于可选覆盖，无效覆盖报错，证书不可用时不自动改选。每次运行在签名时安全输入一次 PIN，旧 `NUPHYLAB_SIGN_PIN` 不能跳过输入，空输入失败且不重试；构建进程不继承 PIN 或更新私钥。主程序和五个配套程序、最终 setup 逐项验签并核对时间戳；固定 NSIS 标记后禁止封包改写已签字节，成功目录含安装器、校验值和构建清单。自动更新保持关闭，不生成更新签名/元数据，不上传、不安装、不主动启动 GUI。当前只实现 Windows `release --sign`，补签和其他统一命令未实现。实际证书签名及安装升级尚未验收，详细命令及自动检查记录见 [独立签名说明](BUILD_COMMAND_PLAN.summary.html)。
+
+原完整更新发布入口继续使用 `npm.cmd run windows:release`，可追加 `-- --offline-installer`。构建前必须提供有效的 `windows-release.json` 公共配置、Windows 证书存储中的证书、`NUPHYLAB_CERT_THUMBPRINT`、HTTPS 的 `NUPHYLAB_TIMESTAMP_URL`、允许域名内的 `NUPHYLAB_DOWNLOAD_BASE`，以及秘密环境中的 `TAURI_SIGNING_PRIVATE_KEY`。私钥及口令不写入仓库、文档或日志。脚本对五个随包程序签名，Tauri 对主程序及 NSIS 安装包签名，再核对全部产物的可信证书与时间戳；缺任何条件都不生成新的发布清单。发布目录要求只含本次安装器，避免选中旧构建。
 
 发布输出含平台更新元数据和产物大小/SHA-256 清单，但不自动上传或发布。自动更新采用 Windows 系统 TLS 证书链、最低 TLS 1.2、HTTPS 及准确域名限制，下载最多 512 MB，验证 Tauri minisign 签名、Windows 发布者与时间戳，并将暂存文件重新绑定到已验签的字节。页面只能请求检查或安装刚检查到的版本，不能指定下载 URL、安装器路径或参数。安装前必须取得本次后台的绑定退出回执、确认键盘恢复及进程正常退出；失败不启动安装器。当前配置关闭，页面只提示使用完整本地安装包。
 

@@ -34,6 +34,6 @@ footer: 由概要 Markdown 通过 doc-page 生成 · 完整记录见详细指南
 
 继续按场景验证新包安装、保存重开、声音、真实输入、Windows 11、升级卸载和长期运行。代码构建通过不能代替这些真实使用场景。
 
-Windows 与 Mac 尚未完全一样。音乐演奏、智能框选、键盘口袋、语音和屏幕类工具等还没有完整提供；将改键保存到键盘、通过真实 AI 按键执行、审批和听写仍未开放。正式签名和自动更新仍需对应证书、密钥及发布配置。
+Windows 与 Mac 尚未完全一样。音乐演奏、智能框选、键盘口袋、语音和屏幕类工具等还没有完整提供；将改键保存到键盘、通过真实 AI 按键执行、审批和听写仍未开放。Windows 独立签名入口已提供，默认使用 Talkflow 公开配置，无需每次设置环境变量，PIN 仍在签名时输入。真实 UKey 签名和安装验收待完成，自动更新保持关闭。
 
-[完整开发指南](WINDOWS_DEVELOPMENT.md) · [集成与检查结果](WINDOWS_UPSTREAM_INTEGRATION_PLAN.summary.html) · [查看远程检查](https://github.com/bohu8264/NuPhyLab-next/pull/3/checks)
+[Windows 独立签名说明](BUILD_COMMAND_PLAN.summary.html) · [完整开发指南](WINDOWS_DEVELOPMENT.md) · [集成与检查结果](WINDOWS_UPSTREAM_INTEGRATION_PLAN.summary.html) · [查看远程检查](https://github.com/bohu8264/NuPhyLab-next/pull/3/checks)

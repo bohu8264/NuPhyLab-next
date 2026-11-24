@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+usage() { printf '%s\n' 'NuPhy Lab Windows 独立代码签名' '用法：bash ./nuphylab release --sign' '只生成本地签名安装包；不启用自动更新、不上传或启动应用。'; }
+if [[ ${1:-} == --help || ${1:-} == -h ]]; then usage; exit 0; fi
+if [[ $# != 2 || ${1:-} != release || ${2:-} != --sign ]]; then usage >&2; exit 2; fi
+case "$(uname -s)" in MINGW*|MSYS*) ;; *) printf '%s\n' '当前入口仅支持 Windows Git Bash。' >&2; exit 2;; esac
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD PSModulePath
+exec powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$ROOT/scripts/windows/code-sign.ps1")"

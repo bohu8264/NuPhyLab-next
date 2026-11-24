@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>同一条命令，生成两端安装包</title>
+<title>Windows 可以单独生成签名安装包</title>
 <style>
 /* ==========================================================================
    TalkFlow 文档样式 —— 唯一样式源
@@ -1426,29 +1426,28 @@ body {
 </head>
 <body>
 <div class="shell">
-<nav class="toc" aria-label="文档目录"><div class="toc-head"><span class="toc-title">目录</span><span class="toc-actions"><button class="toc-btn" type="button" data-act="expand">全展开</button><button class="toc-btn" type="button" data-act="collapse">全收起</button><button class="toc-btn" type="button" data-act="hide">隐藏</button></span></div><div class="toc-scroll"><ul class="toc-list"><li class="toc-group" data-id="g0"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#打算怎样使用">打算怎样使用</a></div></li><li class="toc-group" data-id="g1"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#默认先生成候选包">默认先生成候选包</a></div></li><li class="toc-group" data-id="g2"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#签名失败可以接着做">签名失败可以接着做</a></div></li><li class="toc-group" data-id="g3"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#怎样确认拿到的是哪一包">怎样确认拿到的是哪一包</a></div></li><li class="toc-group" data-id="g4"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#接下来怎么落地">接下来怎么落地</a></div></li></ul></div></nav>
+<nav class="toc" aria-label="文档目录"><div class="toc-head"><span class="toc-title">目录</span><span class="toc-actions"><button class="toc-btn" type="button" data-act="expand">全展开</button><button class="toc-btn" type="button" data-act="collapse">全收起</button><button class="toc-btn" type="button" data-act="hide">隐藏</button></span></div><div class="toc-scroll"><ul class="toc-list"><li class="toc-group" data-id="g0"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#现在能做什么">现在能做什么</a></div></li><li class="toc-group" data-id="g1"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#打包机需要准备什么">打包机需要准备什么</a></div></li><li class="toc-group" data-id="g2"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#成功和失败怎样区分">成功和失败怎样区分</a></div></li><li class="toc-group" data-id="g3"><div class="toc-row"><button class="toc-toggle" type="button" aria-expanded="false"></button><a class="toc-link" href="#已经验证和仍待确认的部分">已经验证和仍待确认的部分</a></div></li></ul></div></nav>
 <main class="doc">
-<header class="masthead"><div class="kicker">NuPhy Lab · release 方案</div><h1>同一条命令，生成两端安装包</h1><p class="standfirst">参考 NuPhyHub 最新 release 设计，统一 Bash 入口，明确签名、公证和失败恢复；方案待审核，命令尚未实现。</p><div class="meta-strip"><span><b>方案状态</b> 待审核，尚未开始实现</span><span><b>默认产物</b> 当前系统的本地候选安装包</span><span><b>更新日期</b> 2026-11-11</span></div></header>
+<header class="masthead"><div class="kicker">NuPhy Lab · Windows 独立签名</div><h1>Windows 可以单独生成签名安装包</h1><p class="standfirst">Windows 独立签名入口已实现，自动更新保持关闭。真实 UKey 签名与安装验收仍待完成。</p><div class="meta-strip"><span><b>当前状态</b> 实现与封包验证通过，真实签名待验收</span><span><b>本轮范围</b> Windows 代码签名安装包</span><span><b>更新日期</b> 2026-11-23</span></div></header>
 
-<h2 id="打算怎样使用">打算怎样使用</h2>
-<p><strong>参考 NuPhyHub 最新设计，两端统一使用 Bash 的 release 命令。</strong> release 在这里表示优化编译并打包，不代表功能已经全部验收。下面是拟定用法，尚未实现：</p>
-<pre><code class="language-bash">bash ./nuphylab release
+<h2 id="现在能做什么">现在能做什么</h2>
+<p>Windows 已有独立代码签名入口。代码签名用于核对软件发布者；生成这样的安装包，无需先开启应用自动更新。</p>
+<p>在 Windows Git Bash，也就是 Windows 上的 Bash 命令环境中，进入仓库根目录运行：</p>
+<pre><code class="language-bash">bash ./nuphylab release --sign
 </code></pre>
-<p>Mac 在终端运行，Windows 使用 Git Bash（Windows 上的 Bash 环境），分别生成本系统的安装包。不能在一台 Mac 同时打两端包，也不支持用 WSL 构建 Windows 包。安装包使用者无需安装 Bash 或 Node。</p>
-<h2 id="默认先生成候选包">默认先生成候选包</h2>
-<p>Mac 生成稳定证书签名的应用和 DMG，默认不提交 Apple 公证。Windows 生成完整程序目录和 EXE 安装器，默认未签名，会清楚标明。</p>
-<p>需要公证时，Mac 在命令后加 <code>--notarize</code>；需要代码签名时，Windows 加 <code>--sign</code>。代码签名用于核对软件发布者，不要求先开启自动更新。工具或证书不齐就报错，失败不会自动降级。</p>
-<h2 id="签名失败可以接着做">签名失败可以接着做</h2>
-<p>借鉴 Hub，Windows 签名失败后保留构建记录与已完成部分。之后用 <code>sign</code> 加本次构建目录恢复，只做剩余签名与封包，不重新编译。源码、文件或证书变了就拒绝恢复，避免混入别的包。Mac 公证恢复暂不纳入这个入口。</p>
-<h2 id="怎样确认拿到的是哪一包">怎样确认拿到的是哪一包</h2>
-<p>每次构建有独立目录，记录版本、源码来源、签名和公证结果、文件校验值。过程显示当前步骤、耗时和日志位置；失败现场不会混进分发目录。</p>
-<p>打包不会自动安装、启动、上传，也不清空作品或结束负责恢复键盘的进程。产品身份和数据目录保持原样，不承诺测试版能独立并装。Mac 现有更新设置沿用，Windows 更新仍关闭。</p>
-<h2 id="接下来怎么落地">接下来怎么落地</h2>
-<p>先实现入口、环境检查和构建记录，再接签名恢复，最后在两端生成真实包验证。用 <code>doctor</code> 检查环境，用 <code>release --dry-run</code> 先看计划。新 <code>build</code> 仅作同义入口；已有 npm 命令保持原义。</p>
-<p>本次只更新方案，批准后再开发。真实签名、公证及灯光、改键、AI 等功能验收分别记录，不能用打包成功代替。</p>
-<p><a href="BUILD_COMMAND_PLAN.md">完整技术方案</a> · <a href="BUILD_COMMAND_PLAN.summary.md">概要 Markdown</a> · <a href="README.md">文档目录</a></p>
+<p>新入口参考 Talkflow 的 Windows 打包方式。先编译，再给主程序和五个配套程序签名，封包时保持已签文件不变，最后签安装器。所有签名都必须核对发布者和时间戳，完成后才提供安装包与校验清单。</p>
+<h2 id="打包机需要准备什么">打包机需要准备什么</h2>
+<p>使用沃通签名工具、对应驱动和 ePass2003 UKey。UKey 是保存签名私钥的硬件设备，需要在实际 Windows 桌面使用，不能通过 SSH 或后台服务完成真实签名。</p>
+<p>工具路径、证书指纹和时间戳地址已采用 Talkflow 的公开默认配置，无需每次设置环境变量；有特殊需要仍可单独覆盖，错误配置会报错。打包机仍须装好工具、驱动和对应证书，不会自动复制证书或密码。每次运行在签名时安全输入一次 PIN，旧密码环境变量不能跳过输入；编译进程不会收到 PIN 或自动更新私钥。</p>
+<h2 id="成功和失败怎样区分">成功和失败怎样区分</h2>
+<p>成功后，本轮独立目录的 artifacts 文件夹提供签名安装器、文件校验值和构建记录。发生签名、时间戳或封包失败时保留现场，并返回失败，不自动改成未签名成功，也不自动重试私钥操作。</p>
+<p>打包不会启动应用、安装程序或上传 GitHub。自动更新保持关闭；原有完整更新发布命令继续保留。内部卸载器和安装插件没有新增独立签名步骤。</p>
+<h2 id="已经验证和仍待确认的部分">已经验证和仍待确认的部分</h2>
+<p>隔离测试已覆盖默认配置、可选覆盖、强制输入 PIN、更新关闭、密码隔离、错误发布者、缺少时间戳及签名和封包失败。撤掉独立签名逻辑后，用例确实失败，恢复后通过。Windows 实际编译和封包验证已通过，封包保持主程序字节不变，未调用签名工具；真实 UKey 签名与安装、升级仍待实际打包机验收。</p>
+<p>本轮只提供 Windows 的上述命令。Mac 统一打包、环境检查命令和失败补签仍属于后续方案。</p>
+<p><a href="BUILD_COMMAND_PLAN.md">完整技术说明</a> · <a href="WINDOWS_DEVELOPMENT.summary.html">Windows 开发进度</a> · <a href="README.md">文档目录</a></p>
 
-<footer class="doc-footer"><span>由通俗概要通过 doc-page 生成 · 技术细节见完整方案</span><span>待审核，尚未开始实现 · 当前系统的本地候选安装包 · 2026-11-11</span></footer>
+<footer class="doc-footer"><span>由通俗概要通过 doc-page 生成 · 技术细节见完整方案</span><span>实现与封包验证通过，真实签名待验收 · Windows 代码签名安装包 · 2026-11-23</span></footer>
 </main>
 </div>
 <button class="toc-fab" type="button" aria-label="打开目录">目录</button>

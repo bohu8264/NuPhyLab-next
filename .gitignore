@@ -40,3 +40,4 @@ native/hardware-qa-results.json
 /references/upper-computer-control-v2/
 /references/原图/
 __pycache__/
+/.build/windows/code-sign/

@@ -11,7 +11,8 @@ let temporary;
 try{
   requireWindows();
   const action=process.argv[2];if(!['dev','build'].includes(action))throw new Error('请选择 dev 或 build');
-  const signed=process.argv.includes('--signed'),offline=process.argv.includes('--offline-installer');
+  const signed=process.argv.includes('--signed'),offline=process.argv.includes('--offline-installer'),noBundle=process.argv.includes('--no-bundle');
+  if(noBundle&&(action!=='build'||signed))throw Error('--no-bundle 仅用于未签名编译阶段');
   if((signed||offline)&&action!=='build')throw Error('签名与离线安装包选项仅用于 build');
   const release=signed?validateRelease(releaseConfig):null;
   const config={};
@@ -26,7 +27,7 @@ try{
   const require=createRequire(import.meta.url);
   await run(process.execPath,[path.join(root,'ui/node_modules/typescript/bin/tsc'),'-b'],{cwd:path.join(root,'ui')});
   await run(process.execPath,[path.join(root,'ui/node_modules/vite/bin/vite.js'),'build'],{cwd:path.join(root,'ui')});
-  await run(process.execPath,[require.resolve('@tauri-apps/cli/tauri.js'),action,...(action==='build'?['--target','x86_64-pc-windows-msvc']:[]),...(temporary?['--config',path.join(temporary,'config.json')]:[])],{cwd:desktop,interactive:action==='dev'});
+  await run(process.execPath,[require.resolve('@tauri-apps/cli/tauri.js'),action,...(action==='build'?['--target','x86_64-pc-windows-msvc']:[]),...(noBundle?['--no-bundle','--no-sign']:[]),...(temporary?['--config',path.join(temporary,'config.json')]:[])],{cwd:desktop,interactive:action==='dev'});
   if(signed)await writeReleaseArtifacts(releaseConfig,release);
 }catch(error){console.error(error.message);process.exitCode=1;}
 finally{if(temporary)await rm(temporary,{recursive:true,force:true});}
