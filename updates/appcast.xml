@@ -6,35 +6,31 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>NuPhy Lab</title>
         <item>
-            <title>1.2.55</title>
-            <pubDate>Tue, 24 Nov 2026 15:27:59 +0800</pubDate>
+            <title>1.2.56</title>
+            <pubDate>Tue, 24 Nov 2026 16:39:40 +0800</pubDate>
             <link>https://github.com/bohu8264/NuPhyLab-next</link>
-            <sparkle:version>1.2.55</sparkle:version>
-            <sparkle:shortVersionString>1.2.55</sparkle:shortVersionString>
+            <sparkle:version>1.2.56</sparkle:version>
+            <sparkle:shortVersionString>1.2.56</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.5</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <description sparkle:format="plain-text"><![CDATA[NUPHY-RELEASE-NOTES 1
-version:1.2.55
+version:1.2.56
 [zh-CN]
-NuPhy Lab 1.2.55
+NuPhy Lab 1.2.56
 
-• 在智能框选的「我的指令」中，用已保存的指令处理选中文字。可核对原文和处理要求、继续追问并复制答案。
-• AI 屏幕感知支持用文字或语音提问，覆盖鼠标所在显示器的可见窗口、单个窗口或框选区域。
-• 智能剪贴板支持搜索本机历史、筛选收藏，复制记录后保持窗口可见，也可交给已配置的模型处理。
-• 设置和功能页面随窗口宽度调整。AI 屏幕感知和智能剪贴板的回答区随内容收放，复制按钮位于右上角。
+• 键盘口袋显示文件夹传输缓存占用的硬盘空间。重复复制同一个未改动的文件夹会复用已有 ZIP。
+• Lab 在启动、唤醒和运行期间每小时检查过期传输。槽位、撤销记录或智能剪贴板历史仍在使用的 ZIP 会保留。
 [en]
-NuPhy Lab 1.2.55
+NuPhy Lab 1.2.56
 
-• My Commands in Smart Selection runs your saved instructions on selected text. Review the original and the instruction, ask a follow-up, and copy the answer.
-• Screen Awareness lets you ask by text or voice about the visible windows on the display under your pointer, a single window, or a region.
-• Smart Clipboard lets you search local history, filter favorites, and copy an entry while keeping the history open. You can also ask your configured model to edit a selected entry.
-• Settings and feature pages adapt to the window width. Screen Awareness and Smart Clipboard answers fit their content and provide a copy button at the upper right.
+• Keyboard Pocket shows the disk space used by temporary folder transfers. Copying the same unchanged folder again reuses its ZIP.
+• Lab checks for unused transfers at startup, on wake and hourly while running. ZIPs used by slots, Undo or Smart Clipboard history remain available.
 ]]></description>
-            <enclosure url="https://github.com/bohu8264/NuPhyLab-next/releases/download/v1.2.55/NuPhyLab-1.2.55-macOS-AppleSilicon.dmg" length="52821938" type="application/octet-stream" sparkle:edSignature="XVE1N0XtC8OOiz7eNs+Q8cwyDHywrCC6rH0uiFiJmyiOLtj0fXYfNzhg+gYq+f4f489Xzx7dQg7vot05qPnyCw=="/>
+            <enclosure url="https://github.com/bohu8264/NuPhyLab-next/releases/download/v1.2.56/NuPhyLab-1.2.56-macOS-AppleSilicon.dmg" length="53231380" type="application/octet-stream" sparkle:edSignature="49QzcDVIngzu58DTYEcBgFMPc4q97luDQ/slaW9EC9k+GoQQrZjU/a7p6NHYI8H+pXvihI5b71BHvVhysZU/DQ=="/>
         </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: xI3GtIJKDsT+N/XKY1eY2m7NJExinqhLCADd1Tfc1iJg7VmB3o+sNgLC9Yhp87A188IHEIngNCi8hL9gxrrZCQ==
-length: 2594
+edSignature: NBDKGPZKPc+oisHDcrlG1ecdMpZ0GFtndKiUCnpKhoXga4zy1L65mZh6oDZZc8aAQIordZe2IMjrI56i8mCzDg==
+length: 1946
 -->
