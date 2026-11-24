@@ -6,35 +6,35 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>NuPhy Lab</title>
         <item>
-            <title>1.2.54</title>
-            <pubDate>Sun, 22 Nov 2026 21:49:17 +0800</pubDate>
+            <title>1.2.55</title>
+            <pubDate>Tue, 24 Nov 2026 15:27:59 +0800</pubDate>
             <link>https://github.com/bohu8264/NuPhyLab-next</link>
-            <sparkle:version>1.2.54</sparkle:version>
-            <sparkle:shortVersionString>1.2.54</sparkle:shortVersionString>
+            <sparkle:version>1.2.55</sparkle:version>
+            <sparkle:shortVersionString>1.2.55</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.5</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <description sparkle:format="plain-text"><![CDATA[NUPHY-RELEASE-NOTES 1
-version:1.2.54
+version:1.2.55
 [zh-CN]
-NuPhy Lab 1.2.54
+NuPhy Lab 1.2.55
 
-• 在「作品库 → 灯光 → 默认预设」中新增圣诞帽、拐杖糖、圣诞树、圣诞袜、礼物盒和铃铛。
-• 新增「Bad Apple」，一段 30 帧的原创无声灯光动画。动画预览中，熄灭的按键显示为黑色，白色剪影更清晰。
-• 「流星划过」「琥珀落雨」「青绿扫描」已从默认预设移除。之前保存到「我的作品」的副本仍可使用。
-• 「一颗小心意」改用 #DC1210，「星光闪闪」改用 #DC9B1F。作品库各分类默认展示预设。打开灯光作品编辑时，已连接的兼容 USB 键盘同步显示该作品。画笔的颜色应用范围默认为「当前图案」。
+• 在智能框选的「我的指令」中，用已保存的指令处理选中文字。可核对原文和处理要求、继续追问并复制答案。
+• AI 屏幕感知支持用文字或语音提问，覆盖鼠标所在显示器的可见窗口、单个窗口或框选区域。
+• 智能剪贴板支持搜索本机历史、筛选收藏，复制记录后保持窗口可见，也可交给已配置的模型处理。
+• 设置和功能页面随窗口宽度调整。AI 屏幕感知和智能剪贴板的回答区随内容收放，复制按钮位于右上角。
 [en]
-NuPhy Lab 1.2.54
+NuPhy Lab 1.2.55
 
-• Find Santa Hat, Candy Cane, Christmas Tree, Christmas Stocking, Gift Box, and Christmas Bell in Library → Lighting → Presets.
-• Bad Apple is an original 30-frame silent lighting loop. Animation previews show unlit keys in black so white silhouettes stand out.
-• Meteor, Amber rain, and Teal sweep have been retired from Presets. Copies you saved to My works are still available.
-• A Little Heart now uses #DC1210 and Starlight uses #DC9B1F. Each Library category opens on Presets. Opening a lighting work in the editor also displays it on a compatible USB keyboard. The brush defaults to Current pattern.
+• My Commands in Smart Selection runs your saved instructions on selected text. Review the original and the instruction, ask a follow-up, and copy the answer.
+• Screen Awareness lets you ask by text or voice about the visible windows on the display under your pointer, a single window, or a region.
+• Smart Clipboard lets you search local history, filter favorites, and copy an entry while keeping the history open. You can also ask your configured model to edit a selected entry.
+• Settings and feature pages adapt to the window width. Screen Awareness and Smart Clipboard answers fit their content and provide a copy button at the upper right.
 ]]></description>
-            <enclosure url="https://github.com/bohu8264/NuPhyLab-next/releases/download/v1.2.54/NuPhyLab-1.2.54-macOS-AppleSilicon.dmg" length="52062547" type="application/octet-stream" sparkle:edSignature="3C7spGHpi3IxM+Ef98TQE4bdBu3xmno+ig/pGdl2E+EaoUnWpar00BdGIBSyO0ZF63YzULbWePdHre3YzfaeCw=="/>
+            <enclosure url="https://github.com/bohu8264/NuPhyLab-next/releases/download/v1.2.55/NuPhyLab-1.2.55-macOS-AppleSilicon.dmg" length="52821938" type="application/octet-stream" sparkle:edSignature="XVE1N0XtC8OOiz7eNs+Q8cwyDHywrCC6rH0uiFiJmyiOLtj0fXYfNzhg+gYq+f4f489Xzx7dQg7vot05qPnyCw=="/>
         </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: gvvglcf6wG9IfcwVeDqWcJgTXjdD/ZutOkTslru/i37YpqKo+3F6iasPBCLgosrJTLZcR5z8x54UDObop0UaDA==
-length: 2675
+edSignature: xI3GtIJKDsT+N/XKY1eY2m7NJExinqhLCADd1Tfc1iJg7VmB3o+sNgLC9Yhp87A188IHEIngNCi8hL9gxrrZCQ==
+length: 2594
 -->
