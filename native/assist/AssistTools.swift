@@ -31,6 +31,18 @@ enum AssistBinding: String, CaseIterable {
         try Task.checkCancellation()
         return try await AIClient().send(configuration:config,prompt:prompt,images:images,apiKey:key)
     }
+    var shelfAvailable:()->Bool={false}
+    var addShelfClip:((ClipContent)throws->Void)?
+    var addShelfCapture:((Data)throws->Void)?
+    func sendToShelf() {
+        guard shelfAvailable(),sessionAvailable else{return}
+        do{
+            if mode == .history,let id=highlight,let row=records.first(where:{$0.id==id}),privacy(.history).allows(row.appID),let archive,let addShelfClip{try addShelfClip(archive.content(id))}
+            else if mode == .screen,let c=captured,c.sources.allSatisfy({privacy(.screen).allows($0)}),let image=c.image,let addShelfCapture{try addShelfCapture(image)}
+            else{return}
+            notice=english ? "Added to Desktop Shelf.":"已加入桌面临时暂存台。"
+        }catch{notice=message(error)}
+    }
     var english = false
     var sessionAvailable = true
     var added = Set<AssistFeature>()

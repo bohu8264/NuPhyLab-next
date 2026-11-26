@@ -25,8 +25,35 @@ enum VoiceL10n {static func text(_ value:String)->String{value}}
  func setAdded(_ value:Bool){}; func refresh(){}; func interrupt(){}; func cancelRecording(){}; func shutdown(){}
  func handle(_ body:[String:Any],reply:@escaping(Any?,String?)->Void){reply(nil,"Color Picker boundary fixture")}
 }
+struct AIRequestPrompt {}
+struct AIImageAttachment {}
+struct ClipContent {}
+struct ShelfFailure: Error {
+ var issue: Error { NSError(domain:"DesktopShelfFixture",code:1) }
+}
+@MainActor final class DesktopTools {
+    var english=false,interactive=false,shelfEnabled=false
+    let reservedValues:[VoiceShortcutValue]=[]
+    var settingsChanged: () -> Void = {}
+    var allowed:()->Bool={false},peerBusy:()->Bool={false},allowsDrop:()->Bool={false},activityChanged:()->Void={}
+    var conflict:(VoiceShortcutValue)->String?={_ in nil},configuration:()->AIConfiguration?={nil}
+    var modelRequest:((AIConfiguration,AIRequestPrompt,[AIImageAttachment]) async throws -> String)?
+    init(directory:URL){}
+    func addClip(_ clip:ClipContent)throws{}
+    func addCaptured(_ data:Data)throws{}
+    func reserved(_ value:VoiceShortcutValue)->String?{nil}
+    func setAdded(_ ids:Set<String>){}
+    func setSessionAvailable(_ yes:Bool){}
+    func shutdown(){}
+    func refresh(){}
+    func cancelRecording(){}
+    func handle(_ body:[String:Any],reply:@escaping (Any?,String?)->Void){reply(nil,"Desktop tools boundary fixture")}
+}
 enum AssistFeature: String { case screen = "screen-awareness", history = "smart-clipboard" }
 @MainActor final class AssistTools {
+ var request:(AIConfiguration,AIRequestPrompt,[AIImageAttachment]) async throws -> String={_,_,_ in ""}
+ var shelfAvailable:()->Bool={false}
+ var addShelfClip:((ClipContent)throws->Void)?, addShelfCapture:((Data)throws->Void)?
  var english=false, busy=false
  var configuration: () -> AIConfiguration? = { nil }
  var translationLanguage: () -> String = { "English" }

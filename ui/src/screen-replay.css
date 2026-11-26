@@ -16,3 +16,7 @@
 .replay-save i.live{background:#40765b}
 .replay-last p{overflow-wrap:anywhere}
 .screen-replay .replay-path{margin:0}
+.desktop-shelf .shelf-switch-row .switch-field{display:flex;justify-content:space-between;width:100%;font-weight:600}
+.desktop-shelf .shelf-intro{padding:4px 20px 12px}
+.desktop-shelf .shelf-number{width:85px}
+.desktop-shelf .replay-row>div{min-width:0;overflow-wrap:anywhere}

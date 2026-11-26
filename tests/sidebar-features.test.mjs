@@ -19,7 +19,7 @@ test('legacy migration keeps active tools and saved music without rewriting thei
  const files={'dock-scenes-shortcuts.json':true,'voice-input/settings.json':{shortcutKeyCode:61},'library.json':{version:1,scenes:[],settings:{language:'en',codexEnabled:true},gameBestScores:{snake:10}},'selection-preferences.json':{enabled:true,actions:['reply']},'typing-sound-preferences.json':{enabled:true,volume:41},'keyboard-pocket/pockets.json':{slots:[{id:'user-file'}]},'music-works/test.json':{userWork:'not read by navigation'},'drag-convert.json':{enabled:true}};
  for(const [file,data] of Object.entries(files))await writeFile(path.join(dir,file),JSON.stringify(data));
  const before=await Promise.all(Object.keys(files).map(file=>readFile(path.join(dir,file))));const store=await new Store(dir).load();
- assert.deepEqual(store.data.settings.sidebarFeatures,FEATURE_IDS.filter(id=>!['color-picker','screen-replay','screen-awareness','smart-clipboard'].includes(id)));assert.equal(store.data.settings.language,'en');assert.equal(store.data.settings.codexEnabled,true);
+ assert.deepEqual(store.data.settings.sidebarFeatures,FEATURE_IDS.filter(id=>!['color-picker','screen-replay','screen-awareness','smart-clipboard','desktop-shelf'].includes(id)));assert.equal(store.data.settings.language,'en');assert.equal(store.data.settings.codexEnabled,true);
  for(const [i,file] of Object.keys(files).entries())assert.deepEqual(await readFile(path.join(dir,file)),before[i]);
  await store.settings({sidebarFeatures:['library']});assert.deepEqual((await new Store(dir).load()).data.settings.sidebarFeatures,['library']);
  for(const [i,file] of Object.keys(files).entries())if(file!=='library.json')assert.deepEqual(await readFile(path.join(dir,file)),before[i]);
@@ -122,4 +122,30 @@ test('removing Color Picker preserves its shortcut and requires a durable off sw
  await writeFile(file,JSON.stringify({enabled:false,shortcuts}));
  await store.settings({sidebarFeatures:['color-picker']});
  assert.deepEqual(JSON.parse(await readFile(file)),{enabled:false,shortcuts});
+});
+
+test('R54 sidebar drops only the retired tool and persists the remaining order on reopen', async t => {
+  for (const [before, expected] of [
+    [['desktop-shelf','keyboard-click'],['desktop-shelf']],
+    [['keyboard-click'],[]],
+    [['codex','desktop-shelf','keyboard-click','studio'],['codex','desktop-shelf','studio']],
+  ]) {
+    const dir = await temp(t), file = path.join(dir, 'sidebar-features.json');
+    await writeFile(file, JSON.stringify(before));
+    assert.deepEqual((await new Store(dir).load()).data.settings.sidebarFeatures, expected);
+    assert.deepEqual(JSON.parse(await readFile(file)), expected);
+    assert.deepEqual((await new Store(dir).load()).data.settings.sidebarFeatures, expected);
+  }
+  assert.throws(() => validateSettings({sidebarFeatures:['keyboard-click']}));
+});
+test('R54 library-only sidebar migrates to the dedicated file and keeps the library readable', async t => {
+  const dir = await temp(t);
+  const library = JSON.stringify({version:1,scenes:[],settings:{language:'en',sidebarFeatures:['keyboard-click','desktop-shelf']}});
+  await writeFile(path.join(dir, 'library.json'), library);
+  const store = await new Store(dir).load();
+  assert.equal(store.data.settings.language, 'en');
+  assert.equal(store.warning, null);
+  assert.deepEqual(store.data.settings.sidebarFeatures, ['desktop-shelf']);
+  assert.deepEqual(JSON.parse(await readFile(path.join(dir,'sidebar-features.json'))), ['desktop-shelf']);
+  assert.equal(await readFile(path.join(dir,'library.json'),'utf8'), library);
 });

@@ -74,6 +74,7 @@ export async function appDraftFixture(options={}){
     if(name==='./UnifiedLibrary')return {UnifiedLibrary:component('Library')};
     if(name==='./DockScenes')return {DockScenes:component('DockScenes')};
     if(name==='./MySelectionCommands')return {SmartSelectionPage:component('SelectionLab')};
+    if(name==='./DesktopToolsSettings')return {DesktopToolsSettings:component('DesktopToolsSettings')};
     if(name==='./AssistSettings')return {AssistSettings:component('AssistSettings')};
     if(name==='./ScreenReplay')return {ScreenReplay:component('ScreenReplay')};
     if(name==='./ColorPicker')return {ColorPicker:component('ColorPicker')};

@@ -161,6 +161,11 @@ export const defaultSettings = {
   claudeTaskAction: "openSession",
   claudeCommandIds: [...DEFAULT_CLAUDE_COMMAND_IDS],
 };
+// R54 installations may have saved the retired navigation tool in either settings file.
+function restoreSidebarFeatures(saved) {
+  return validateSidebarFeatures(Array.isArray(saved) ? saved.filter(id => id !== "keyboard-click") : saved);
+}
+
 export function validateSettings(input, previous = defaultSettings) {
   if (!input || typeof input !== "object" || Array.isArray(input))
     throw new Error("设置格式无效");
@@ -274,6 +279,7 @@ export class Store {
   }
   async load() {
     await mkdir(this.dir, { recursive: true, mode: 0o700 });
+    let embeddedSidebar;
     try {
       const data = JSON.parse(await readFile(this.file, "utf8"));
       if (
@@ -290,6 +296,7 @@ export class Store {
       // Retired UI preferences are ignored only on read. Do not rewrite the
       // library during load or relax unknown-key validation for new requests.
       const settings = { ...data.settings };
+      if (Object.hasOwn(settings, "sidebarFeatures")) settings.sidebarFeatures = restoreSidebarFeatures(settings.sidebarFeatures);
       delete settings.appearanceStyle;
       delete settings.glassStrength;
       if(JSON.stringify(settings.codexCommandIds)===JSON.stringify(["modelPicker","newTask","dictation","voice","toggleTerminal","settings"]))
@@ -311,6 +318,7 @@ export class Store {
         bestScore: gameBestScores.snake,
         gameBestScores,
       };
+      if (Object.hasOwn(settings, "sidebarFeatures")) embeddedSidebar = settings.sidebarFeatures;
     } catch (e) {
       if (e.code !== "ENOENT") {
         this.warning =
@@ -320,9 +328,19 @@ export class Store {
     }
     // Keep navigation separate so older Lab versions can still read the works.
     // Native tools and music may exist even when library.json has never existed.
-    let sidebar = await migrateSidebarFeatures(this.dir, this.data);
-    try { sidebar = validateSidebarFeatures(JSON.parse(await readFile(this.sidebarFile, "utf8"))); }
-    catch (error) { if (error.code !== "ENOENT") this.warning = "侧栏偏好读取失败，已有内容已保留。"; }
+    let sidebar = embeddedSidebar ?? await migrateSidebarFeatures(this.dir, this.data);
+    try {
+      const saved = JSON.parse(await readFile(this.sidebarFile, "utf8"));
+      sidebar = restoreSidebarFeatures(saved);
+      if (sidebar.length !== saved.length) await this.saveSidebar(sidebar);
+    }
+    catch (error) {
+      if (error.code !== "ENOENT") this.warning = "侧栏偏好读取失败，已有内容已保留。";
+      else if (embeddedSidebar !== undefined) {
+        try { await this.saveSidebar(embeddedSidebar); }
+        catch { this.warning = "侧栏偏好暂未保存。"; }
+      }
+    }
     this.data.settings.sidebarFeatures = sidebar;
     const settings=deactivateHiddenFeatures(this.data.settings);
     if (settings.codexEnabled !== this.data.settings.codexEnabled || settings.claudeEnabled !== this.data.settings.claudeEnabled) {

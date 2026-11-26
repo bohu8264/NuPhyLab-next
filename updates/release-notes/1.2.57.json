@@ -1,0 +1,13 @@
+{
+  "version": "1.2.57",
+  "en": [
+    "Desktop Shelf collects files, links, text and images across apps. Drag items back out, process selected items locally or ask your configured AI.",
+    "Drop items at the notch and the shelf closes after release. Use one Auto-collect switch and choose the source folder, destination shelf, and file types.",
+    "Choose Clear This Shelf from the context menu to see the confirmation in the shelf. Cancel or press Esc to restore your selection and scroll position. Original files and items added while the confirmation is open are kept."
+  ],
+  "zh-CN": [
+    "桌面临时暂存台跨应用收集文件、链接、文字与图片，可多选拖出、本地处理，或主动交给已配置的 AI。",
+    "拖到刘海后松手，素材即收入暂存台，面板随即收起。自动收集使用一个开关，可选择来源、目标暂存台和文件类型。",
+    "右键选择「清空此台」后，可在暂存台内直接确认。取消或按 Esc 可恢复原选中项和滚动位置。原始文件和确认期间新加入的素材会保留。"
+  ]
+}

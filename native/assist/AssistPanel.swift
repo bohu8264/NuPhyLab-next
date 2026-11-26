@@ -140,6 +140,9 @@ private struct AssistPanelView: View {
         HStack {
             Text(tools.mode == .history || tools.mode == .clipAI ? t("智能剪贴板","Smart Clipboard") : t("AI 屏幕感知","Screen Awareness")).font(.headline)
             Spacer()
+            if tools.shelfAvailable(), (tools.mode == .history && tools.highlight != nil) || (tools.mode == .screen && tools.captured?.image != nil) {
+                icon("tray.and.arrow.down",t("加入暂存台","Add to Desktop Shelf")) { tools.sendToShelf() }
+            }
             if showingInteraction, !tools.answer.isEmpty {
                 SelectionPanelButton(symbol:copied ? "checkmark" : "doc.on.doc",
                                      title:copied ? t("已复制回答","Answer copied") : t("复制回答","Copy answer"),
