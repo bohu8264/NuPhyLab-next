@@ -70,10 +70,11 @@ export async function appDraftFixture(options={}){
     if(name==='./connection-copy-v7')return{presentConnectionDisplay:v=>v,connectionCopy:v=>v.zh,connectionHeader:()=>'',connectionSidebar:()=>''};
     if(name==='./primitives')return{Button:component('Button'),Modal:component('Modal'),run:promise=>{void promise.catch(()=>{});}};
     if(name==='../../shared/sidebar-features.mjs')return sidebarFeatures;
-    if(name==='./FeatureCenter')return {FeatureCenter:component('FeatureCenter'),features:sidebarFeatures.FEATURE_IDS.map((id,index)=>({id,zh:['灯光创作','作品库','AI 助手','灯光游戏','模拟声浪','演奏模式','智能框选','拖拽转换','键盘口袋','语音输入','Dock 场景','取色器','刚刚怎么了'][index],en:id,icon:component('feature-icon')}))};
+    if(name==='./FeatureCenter')return {FeatureCenter:component('FeatureCenter'),features:sidebarFeatures.FEATURE_IDS.map((id,index)=>({id,zh:['灯光创作','作品库','AI 助手','灯光游戏','模拟声浪','演奏模式','智能框选','拖拽转换','键盘口袋','语音输入','Dock 场景','取色器','刚刚怎么了','AI 屏幕感知','智能剪贴板','桌面临时暂存台','键盘搭子'][index],en:id,icon:component('feature-icon')}))};
     if(name==='./UnifiedLibrary')return {UnifiedLibrary:component('Library')};
     if(name==='./DockScenes')return {DockScenes:component('DockScenes')};
     if(name==='./MySelectionCommands')return {SmartSelectionPage:component('SelectionLab')};
+    if(name==='./KeyBuddySettings')return {KeyBuddySettings:component('KeyBuddySettings')};
     if(name==='./DesktopToolsSettings')return {DesktopToolsSettings:component('DesktopToolsSettings')};
     if(name==='./AssistSettings')return {AssistSettings:component('AssistSettings')};
     if(name==='./ScreenReplay')return {ScreenReplay:component('ScreenReplay')};

@@ -31,14 +31,14 @@ test('direct production UI labels and conditional labels have English translatio
       else if(ts.isConditionalExpression(node)){check(node.whenTrue);check(node.whenFalse);}
     };
     const visit=node=>{
-      if(file==='DesktopToolsSettings.tsx' && ts.isArrayLiteralExpression(node) && node.elements.length===3){
+      if(['DesktopToolsSettings.tsx','KeyBuddySettings.tsx'].includes(file) && ts.isArrayLiteralExpression(node) && node.elements.length===3){
         const [id,zh,english]=node.elements;
         if(ts.isStringLiteralLike(id)&&ts.isStringLiteralLike(zh)&&han.test(zh.text)&&(!ts.isStringLiteralLike(english)||!english.text.trim()||han.test(english.text))){
           missing.push(file+': '+zh.text);
         }
       }
       if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&['t','tr'].includes(node.expression.text)&&node.arguments[0]){
-        if((['DockScenes.tsx','AssistSettings.tsx'].includes(file) || file==='DesktopToolsSettings.tsx' && ts.isStringLiteralLike(node.arguments[0])) && node.expression.text==='t'){
+        if((['DockScenes.tsx','AssistSettings.tsx'].includes(file) || ['DesktopToolsSettings.tsx','KeyBuddySettings.tsx'].includes(file) && ts.isStringLiteralLike(node.arguments[0])) && node.expression.text==='t'){
           const english=node.arguments[1];
           if(!english||!ts.isStringLiteralLike(english)||!english.text.trim()||han.test(english.text)){
             missing.push(file+': '+node.arguments[0].getText(source));

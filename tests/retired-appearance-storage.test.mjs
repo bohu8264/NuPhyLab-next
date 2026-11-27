@@ -1,3 +1,4 @@
+import {DEFAULT_SIDEBAR_FEATURES} from '../shared/sidebar-features.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,readFile,writeFile,rm} from 'node:fs/promises';
@@ -24,7 +25,7 @@ test('load ignores only the two retired UI keys without rewriting old libraries 
     const {store,file,bytes}=await fixture(t,extra);
     assert.equal(store.warning,null);assert.notEqual(store.readOnly,true);assert.equal(await readFile(file,'utf8'),bytes,'load is read-only');
     for(const key of retired){assert.equal(Object.hasOwn(store.data.settings,key),false);assert.equal(Object.hasOwn(defaultSettings,key),false);}
-    assert.deepEqual(store.data.settings,{...validateSettings(settings),sidebarFeatures:['studio','library','codex','game']});assert.deepEqual(store.data.scenes,[scene]);
+    assert.deepEqual(store.data.settings,{...validateSettings(settings),sidebarFeatures:[...DEFAULT_SIDEBAR_FEATURES,'game']});assert.deepEqual(store.data.scenes,[scene]);
     assert.equal(store.data.bestScore,37);assert.deepEqual(store.data.gameBestScores,library().gameBestScores);
   }
 });

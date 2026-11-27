@@ -32,6 +32,7 @@
 
 ### Version history
 
+- [1.2.59 Release notes](RELEASE_1.2.59.md#english)
 - [1.2.58 Release notes](RELEASE_1.2.58.md#english)
 - [1.2.57 Release notes](RELEASE_1.2.57.md#english)
 - [1.2.56 Release notes](RELEASE_1.2.56.md#english)
@@ -86,6 +87,7 @@
 
 ### 分版记录
 
+- [1.2.59 发行说明](RELEASE_1.2.59.md#简体中文)
 - [1.2.58 发行说明](RELEASE_1.2.58.md#简体中文)
 - [1.2.57 发行说明](RELEASE_1.2.57.md#简体中文)
 - [1.2.56 发行说明](RELEASE_1.2.56.md#简体中文)

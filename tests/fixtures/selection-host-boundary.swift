@@ -266,3 +266,26 @@ enum PocketConflictPolicy {static func conflict(settings:PocketSettings,selectio
  func suspend(){};func resume(){};func shutdown(){};func cancel(){};func refreshAuthorization(){}
  func handle(_ body:[String:Any],reply:@escaping(Any?,String?)->Void){reply(nil,"Voice boundary fixture")}
 }
+
+struct AIError: Error {}
+enum LabText {
+    static func modelError(_ error: AIError, language: AppLanguage) -> String { error.localizedDescription }
+}
+enum SelectionLab {
+    static func friendly(_ error: Error, language: AppLanguage) -> String { error.localizedDescription }
+}
+
+final class FixtureKeyBuddyGallery {
+    var configuration: () -> AIConfiguration? = { nil }
+    var request: (AIConfiguration, AIRequestPrompt, [AIImageAttachment]) async throws -> String = { _, _, _ in throw CancellationError() }
+    var errorText: (Error, Bool) -> String = { error, _ in error.localizedDescription }
+    func cancel(clearPhoto: Bool) {}
+}
+
+final class KeyBuddy {
+    let gallery = FixtureKeyBuddyGallery()
+    func setAdded(_ added: Bool) {}
+    func setSessionAvailable(_ available: Bool) {}
+    func shutdown() {}
+    func handle(_ data: [String:Any], reply:(Any?,String?)->Void) {reply(nil,nil)}
+}

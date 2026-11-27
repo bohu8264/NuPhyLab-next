@@ -643,6 +643,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
     let voiceControl = LabVoiceControl(hasKey: LabKeychain.has, readKey: LabKeychain.read)
     lazy var colorPicker = LabColorPicker(directory:dataDirectory)
+    lazy var keyBuddy = KeyBuddy()
     lazy var desktopTools = DesktopTools(directory:dataDirectory.appendingPathComponent("desktop-shelves"))
     lazy var assist = AssistTools(directory:dataDirectory.appendingPathComponent("smart-clipboard"))
     lazy var myCommands = MySelectionCommands(directory:dataDirectory)
@@ -744,6 +745,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         config.userContentController.addScriptMessageHandler(self, contentWorld:.page, name:"voiceInput")
         config.userContentController.addScriptMessageHandler(self, contentWorld:.page, name:"voiceControl")
         config.userContentController.addScriptMessageHandler(self, contentWorld:.page, name:"colorPicker")
+        config.userContentController.addScriptMessageHandler(self, contentWorld:.page, name:"keyBuddy")
         config.userContentController.addScriptMessageHandler(self, contentWorld:.page, name:"desktopTools")
         config.userContentController.addScriptMessageHandler(self, contentWorld:.page, name:"assistTools")
         config.userContentController.addScriptMessageHandler(self, contentWorld:.page, name:"screenReplay")
@@ -868,6 +870,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         desktopTools.activityChanged={ [weak self] in guard let self else{return};self.selectionLab.setExternalShortcutRecording(self.pickerOrReplayShortcutBusy || self.voiceControl.shortcut.isRecording || self.voiceInput.isBusy);self.refreshHotkeys() }
         desktopTools.settingsChanged = { [weak self] in
             self?.web?.evaluateJavaScript("window.dispatchEvent(new Event('nuphylab:shelf-settings'))", completionHandler: nil)
+        }
+        keyBuddy.gallery.configuration = { [weak self] in self?.selectionLab.commandModel }
+        keyBuddy.gallery.request = { [weak self] config,prompt,images in
+            guard let self else {throw CancellationError()}
+            return try await self.assist.request(config,prompt,images)
+        }
+        keyBuddy.gallery.errorText = { error,en in
+            if let issue=error as? AIError {return LabText.modelError(issue,language:en ? .en : .zh)}
+            if #available(macOS 14, *) {return SelectionLab.friendly(error,language:en ? .en : .zh)}
+            return en ? "Check your model and API key, then retry." : "请核对模型和 API Key 后重试。"
         }
         desktopTools.configuration={ [weak self] in self?.selectionLab.commandModel }
         desktopTools.modelRequest={ [weak self] config,prompt,images in guard let self else{throw CancellationError()};return try await self.assist.request(config,prompt,images) }
@@ -1492,7 +1504,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
     private var assistInterruptions = Set<String>()
     @objc private func screenSessionInterrupted(_ note: Notification) {
-        assistInterruptions.insert(note.name.rawValue); assist.setSessionAvailable(false); desktopTools.setSessionAvailable(false)
+        assistInterruptions.insert(note.name.rawValue); assist.setSessionAvailable(false); keyBuddy.setSessionAvailable(false); desktopTools.setSessionAvailable(false)
         myCommands.interrupt(); screenReplay.interrupt()
     }
     @objc private func resumeAssistSession(_ note: Notification) {
@@ -1500,13 +1512,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                      NSWorkspace.screensDidWakeNotification.rawValue:NSWorkspace.screensDidSleepNotification.rawValue,
                      "com.apple.screenIsUnlocked":"com.apple.screenIsLocked"]
         if let reason = names[note.name.rawValue] { assistInterruptions.remove(reason) }
-        assist.setSessionAvailable(!keySessionSuspended && assistInterruptions.isEmpty); desktopTools.setSessionAvailable(!keySessionSuspended && assistInterruptions.isEmpty)
+        assist.setSessionAvailable(!keySessionSuspended && assistInterruptions.isEmpty); keyBuddy.setSessionAvailable(!keySessionSuspended && assistInterruptions.isEmpty);desktopTools.setSessionAvailable(!keySessionSuspended && assistInterruptions.isEmpty)
     }
     @objc private func suspendReplay() { screenReplay.interrupt() }
     @objc private func replayDisplaysChanged() { screenReplay.displaysChanged() }
     @objc private func saveReplay() { screenReplay.save() }
-    @objc func willSleep(){ assist.setSessionAvailable(false); desktopTools.setSessionAvailable(false); myCommands.interrupt(); screenReplay.interrupt();colorPicker.interrupt();voiceControl.cancel();voiceInput.cancel();voiceInput.suspend(); dragConvert.suspend();pocket.suspend(); stopMusic(suspend:true); selectionLab.cancel(); keySessionSuspended=true;setHotkeysEnabled(false);audioCapture.stop();pendingAudio=nil }
-    @objc func didWake(){ voiceInput.resume(); keySessionSuspended=false;assist.setSessionAvailable(assistInterruptions.isEmpty);desktopTools.setSessionAvailable(assistInterruptions.isEmpty);if !terminating && !preparingUpdate && !updateInstallCommitted && !updateAbortRecoveryRequested {dragConvert.resume();pocket.resume();post(["op":"resumeConnection"]);refreshHotkeys()} }
+    @objc func willSleep(){ assist.setSessionAvailable(false); keyBuddy.setSessionAvailable(false); desktopTools.setSessionAvailable(false); myCommands.interrupt(); screenReplay.interrupt();colorPicker.interrupt();voiceControl.cancel();voiceInput.cancel();voiceInput.suspend(); dragConvert.suspend();pocket.suspend(); stopMusic(suspend:true); selectionLab.cancel(); keySessionSuspended=true;setHotkeysEnabled(false);audioCapture.stop();pendingAudio=nil }
+    @objc func didWake(){ voiceInput.resume(); keySessionSuspended=false;assist.setSessionAvailable(assistInterruptions.isEmpty);keyBuddy.setSessionAvailable(assistInterruptions.isEmpty);desktopTools.setSessionAvailable(assistInterruptions.isEmpty);if !terminating && !preparingUpdate && !updateInstallCommitted && !updateAbortRecoveryRequested {dragConvert.resume();pocket.resume();post(["op":"resumeConnection"]);refreshHotkeys()} }
     func post(_ data:[String:Any]){guard let base=baseURL else{return};var request=URLRequest(url:base.appendingPathComponent("api/command"));request.httpMethod="POST";request.setValue(apiToken,forHTTPHeaderField:"X-Air-Token");request.setValue("application/json",forHTTPHeaderField:"Content-Type");request.httpBody=try? JSONSerialization.data(withJSONObject:data);URLSession.shared.dataTask(with:request).resume()}
     func activateSlot(_ index:Int,phase:String="down",gesture:NativeKeyGesture?=nil,
                       source:NativeKeyEventSource?=nil,eventTime:Double?=nil){
@@ -1721,7 +1733,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     @discardableResult func syncFeatureAvailability(fallback:Any?=nil)->Bool {
         let file=dataDirectory.appendingPathComponent("sidebar-features.json")
         let saved=(try? Data(contentsOf:file)).flatMap{try? JSONSerialization.jsonObject(with:$0)}
-        let known:Set<String>=["studio","library","codex","game","typing-sounds","music","selection-question","drag-convert","keyboard-pocket","voice-input","dock-scenes","color-picker","screen-replay","screen-awareness","smart-clipboard","desktop-shelf"]
+        let known:Set<String>=["studio","library","codex","game","typing-sounds","music","selection-question","drag-convert","keyboard-pocket","voice-input","dock-scenes","color-picker","screen-replay","screen-awareness","smart-clipboard","desktop-shelf","key-buddy"]
         func valid(_ value:Any?)->[String]? {
             guard let original = value as? [String] else { return nil }
             let values = original.filter { $0 != "keyboard-click" }
@@ -1732,6 +1744,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         featureAvailabilityReady=true
         let previous=addedFeatures;addedFeatures=Set(values)
         selectionLab.setFeatureAdded(addedFeatures.contains("selection-question"))
+        keyBuddy.setAdded(addedFeatures.contains("key-buddy"))
         desktopTools.setAdded(addedFeatures)
         assist.setAdded(Set(addedFeatures.compactMap(AssistFeature.init(rawValue:))))
         myCommands.setAdded(addedFeatures.contains("selection-question"))
@@ -1812,11 +1825,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             voiceControl.handle(body, reply:replyHandler)
             return
         }
-        if ["colorPicker","screenReplay","mySelectionCommands","assistTools","desktopTools"].contains(message.name) {
+        if ["colorPicker","screenReplay","mySelectionCommands","assistTools","desktopTools","keyBuddy"].contains(message.name) {
             guard !terminating, !applicationQuitPending, !preparingUpdate, !updateInstallCommitted,
                   syncFeatureAvailability(fallback:featureAvailabilityReady ? Array(addedFeatures) : nil) else {
                 replyHandler(nil, english ? "Finishing the current operation." : "正在完成当前操作。"); return
             }
+            if message.name == "keyBuddy" {keyBuddy.handle(body,reply:replyHandler);return}
             if message.name == "desktopTools"{desktopTools.english=(body["language"] as? String).map{$0=="en"} ?? english;desktopTools.handle(body,reply:replyHandler);return}
             if message.name == "assistTools" { assist.english = (body["language"] as? String).map { $0 == "en" } ?? english; assist.handle(body,reply:replyHandler); return }
             if message.name == "mySelectionCommands" {
@@ -2536,7 +2550,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     func sendCapturedFunctionKey(_ code:String,phase:String) {
         web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('nuphylab:function-key',{detail:{code:'\(code)',phase:'\(phase)'}}));",completionHandler:nil)
     }
-    func applicationWillTerminate(_ notification:Notification) { desktopTools.shutdown();assist.shutdown();myCommands.interrupt();myCommands.shortcut.shutdown();screenReplay.interrupt();screenReplay.shortcut.shutdown();colorPicker.shutdown();voiceControl.cancel();voiceControl.shortcut.shutdown();voiceInput.shutdown(); pocket.shutdown();dragConvert.shutdown(); typingSounds.shutdown() }
+    func applicationWillTerminate(_ notification:Notification) { keyBuddy.gallery.cancel(clearPhoto:true);keyBuddy.shutdown();desktopTools.shutdown();assist.shutdown();myCommands.interrupt();myCommands.shortcut.shutdown();screenReplay.interrupt();screenReplay.shortcut.shutdown();colorPicker.shutdown();voiceControl.cancel();voiceControl.shortcut.shutdown();voiceInput.shutdown(); pocket.shutdown();dragConvert.shutdown(); typingSounds.shutdown() }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender:NSApplication)->Bool{return false}
     func applicationShouldHandleReopen(_ sender:NSApplication,hasVisibleWindows:Bool)->Bool{show();return true}
     func unlockMusicTransition(){if !terminating && !preparingUpdate && !updateInstallCommitted && !updateAbortRecoveryRequested && !keySessionSuspended {voiceInput.resume();dragConvert.resume();pocket.resume()};web?.evaluateJavaScript("window.dispatchEvent(new Event('nuphylab:music-quit-finished'))",completionHandler:nil)}

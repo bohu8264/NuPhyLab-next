@@ -1,5 +1,5 @@
-export const FEATURE_IDS = Object.freeze(['studio','library','codex','game','typing-sounds','music','selection-question','drag-convert','keyboard-pocket','voice-input','dock-scenes','color-picker','screen-replay','screen-awareness','smart-clipboard','desktop-shelf']);
-export const DEFAULT_SIDEBAR_FEATURES = Object.freeze(['studio','library','codex']);
+export const FEATURE_IDS = Object.freeze(['studio','library','codex','game','typing-sounds','music','selection-question','drag-convert','keyboard-pocket','voice-input','dock-scenes','color-picker','screen-replay','screen-awareness','smart-clipboard','desktop-shelf','key-buddy']);
+export const DEFAULT_SIDEBAR_FEATURES = Object.freeze(['studio','key-buddy','codex','library']);
 export function validateSidebarFeatures(value) {
   if (!Array.isArray(value) || value.length > FEATURE_IDS.length || value.some(id => !FEATURE_IDS.includes(id)) || new Set(value).size !== value.length)
     throw new Error('功能列表格式无效');

@@ -5,7 +5,7 @@ import {DEFAULT_SIDEBAR_FEATURES,FEATURE_IDS} from '../shared/sidebar-features.m
 // Read only evidence of prior use. Never rewrite feature settings, works or slots.
 // Unreadable existing preferences keep their entry visible for recovery.
 export async function migrateSidebarFeatures(dir, data) {
-  const selected = new Set(DEFAULT_SIDEBAR_FEATURES);
+  const selected = new Set();
   if (data.bestScore > 0 || Object.values(data.gameBestScores ?? {}).some(value => value > 0)) selected.add('game');
   const checks = [
     ['dock-scenes','dock-scenes-shortcuts.json', value => value === true],
@@ -24,5 +24,6 @@ export async function migrateSidebarFeatures(dir, data) {
   }));
   try { if ((await readdir(path.join(dir,'music-works'))).some(name => name.endsWith('.json'))) selected.add('music'); }
   catch (error) { if (error.code !== 'ENOENT') selected.add('music'); }
-  return FEATURE_IDS.filter(id => selected.has(id));
+  const previouslyUsed = FEATURE_IDS.filter(id => selected.has(id) && !DEFAULT_SIDEBAR_FEATURES.includes(id));
+  return [...DEFAULT_SIDEBAR_FEATURES, ...previouslyUsed];
 }

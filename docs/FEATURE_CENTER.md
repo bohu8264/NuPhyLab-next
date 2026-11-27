@@ -6,11 +6,11 @@
 
 ### Customize the sidebar
 
-New users start with Lighting Studio, Library and AI Assistant. Open **Feature Center** at the bottom of the sidebar, find a tool and choose **Add** to show it in the sidebar.
+The sidebar starts with Lighting Studio, Key Buddy, AI Assistant and Library. To add another tool, open **Feature Center** at the bottom of the sidebar and choose **Add**.
 
-Add Lighting Games, Typing Sounds, Music Mode, Smart Selection, Drag Convert, Keyboard Pocket, Voice Input, Dock Scenes, Color Picker and Instant Replay as needed. You can also remove the three default entries. Feature Center, Device and Settings always stay available, even when all optional entries have been removed.
+You can remove any of the four defaults. Feature Center, Device and Settings stay available even when you remove every tool.
 
-Upgrading keeps entries for tools you already use or have enabled. **Remove turns the tool and its shortcuts off** and stops its current activity. Works, Pocket contents, shortcut bindings and other preferences remain intact. Re-adding keeps it off until you enable it on its page.
+Upgrading preserves your saved sidebar and its order. **Remove turns the tool and its shortcuts off** and stops its current activity. Works, Pocket contents, shortcut bindings and other preferences remain intact. Re-adding keeps it off until you enable it on its page.
 
 ### Dock Scenes
 
@@ -36,11 +36,11 @@ Lighting keeps its existing save, import and export controls. Upgrading retains 
 
 ### 整理侧栏
 
-新用户默认看到灯光创作、作品库、AI 助手。打开侧栏底部的 **功能中心**，找到需要的功能并点击 **添加**，入口就会出现在侧栏。
+侧栏默认依次显示灯光创作、键盘搭子、AI 助手和作品库。打开侧栏底部的 **功能中心**，找到其他需要的工具并点击 **添加**。
 
-灯光游戏、模拟声浪、演奏模式、智能框选、拖拽转换、键盘口袋、语音输入、Dock 场景、取色器和刚刚怎么了均可按需添加。默认的三个入口也可以移除。功能中心、设备和设置始终保留，移除所有功能后也能重新添加。
+四个默认入口都可以移除。即使移除所有工具，也可以从侧栏进入功能中心、设备和设置。
 
-升级会保留已使用或已启用的功能入口。**移除会关闭功能及其快捷键**，同时停止当前功能的运行。作品、口袋内容、快捷键配置和其他偏好仍会保留。重新添加后保持关闭，请在页面按需开启。
+升级会保留你已保存的侧栏及其顺序。**移除会关闭功能及其快捷键**，同时停止当前功能的运行。作品、口袋内容、快捷键配置和其他偏好仍会保留。重新添加后保持关闭，请在页面按需开启。
 
 ### Dock 场景
 

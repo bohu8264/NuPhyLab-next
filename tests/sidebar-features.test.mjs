@@ -4,14 +4,20 @@ import {mkdtemp,mkdir,writeFile,readFile,rm} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import {Store,validateSettings} from '../server/storage.mjs';
-import {DEFAULT_SIDEBAR_FEATURES,FEATURE_IDS} from '../shared/sidebar-features.mjs';
+import {DEFAULT_SIDEBAR_FEATURES} from '../shared/sidebar-features.mjs';
 import {fakeService} from './helpers/fake-service.mjs';
 import {appDraftFixture} from './helpers/app-draft-fixture.mjs';
 const temp=async t=>{const dir=await mkdtemp(path.join(os.tmpdir(),'lab-features-'));t.after(()=>rm(dir,{recursive:true,force:true}));return dir;};
-test('fresh profile has three entries; an explicitly empty sidebar survives restart',async t=>{
- const dir=await temp(t),store=await new Store(dir).load();assert.deepEqual(store.data.settings.sidebarFeatures,DEFAULT_SIDEBAR_FEATURES);
- await store.settings({sidebarFeatures:[]});assert.deepEqual((await new Store(dir).load()).data.settings.sidebarFeatures,[]);
- await store.settings({sidebarFeatures:['keyboard-pocket','studio']});assert.deepEqual((await new Store(dir).load()).data.settings.sidebarFeatures,['keyboard-pocket','studio']);
+test('fresh profiles get four ordered entries and upgrades retain explicitly saved sidebars',async t=>{
+ const dir = await temp(t);
+ const store = await new Store(dir).load();
+ const defaults = ['studio','key-buddy','codex','library'];
+ assert.deepEqual(store.data.settings.sidebarFeatures, defaults);
+ assert.deepEqual((await new Store(dir).load()).data.settings.sidebarFeatures, defaults);
+ for (const saved of [[], ['studio','library','codex'], ['keyboard-pocket','studio'], ['library','key-buddy','codex','studio']]) {
+   await store.settings({sidebarFeatures:saved});
+   assert.deepEqual((await new Store(dir).load()).data.settings.sidebarFeatures, saved);
+ }
  for(const invalid of [null,'studio',['invalid'],['studio','studio'],Array(10).fill('studio')])assert.throws(()=>validateSettings({sidebarFeatures:invalid}));
 });
 test('legacy migration keeps active tools and saved music without rewriting their data; explicit removals are not re-added',async t=>{
@@ -19,7 +25,7 @@ test('legacy migration keeps active tools and saved music without rewriting thei
  const files={'dock-scenes-shortcuts.json':true,'voice-input/settings.json':{shortcutKeyCode:61},'library.json':{version:1,scenes:[],settings:{language:'en',codexEnabled:true},gameBestScores:{snake:10}},'selection-preferences.json':{enabled:true,actions:['reply']},'typing-sound-preferences.json':{enabled:true,volume:41},'keyboard-pocket/pockets.json':{slots:[{id:'user-file'}]},'music-works/test.json':{userWork:'not read by navigation'},'drag-convert.json':{enabled:true}};
  for(const [file,data] of Object.entries(files))await writeFile(path.join(dir,file),JSON.stringify(data));
  const before=await Promise.all(Object.keys(files).map(file=>readFile(path.join(dir,file))));const store=await new Store(dir).load();
- assert.deepEqual(store.data.settings.sidebarFeatures,FEATURE_IDS.filter(id=>!['color-picker','screen-replay','screen-awareness','smart-clipboard','desktop-shelf'].includes(id)));assert.equal(store.data.settings.language,'en');assert.equal(store.data.settings.codexEnabled,true);
+ assert.deepEqual(store.data.settings.sidebarFeatures,[...DEFAULT_SIDEBAR_FEATURES,'game','typing-sounds','music','selection-question','drag-convert','keyboard-pocket','voice-input','dock-scenes']);assert.equal(store.data.settings.language,'en');assert.equal(store.data.settings.codexEnabled,true);
  for(const [i,file] of Object.keys(files).entries())assert.deepEqual(await readFile(path.join(dir,file)),before[i]);
  await store.settings({sidebarFeatures:['library']});assert.deepEqual((await new Store(dir).load()).data.settings.sidebarFeatures,['library']);
  for(const [i,file] of Object.keys(files).entries())if(file!=='library.json')assert.deepEqual(await readFile(path.join(dir,file)),before[i]);
@@ -35,7 +41,7 @@ test('removing a running lighting feature stops output and preserves works; addi
 test('a native-only old profile keeps active entries without a lighting library',async t=>{
  const dir=await temp(t);await mkdir(path.join(dir,'music-works'));
  const prefs=JSON.stringify({enabled:true,hotkey:'Control'});await writeFile(path.join(dir,'selection-preferences.json'),prefs);await writeFile(path.join(dir,'music-works/old.json'),'original music');
- const store=await new Store(dir).load();assert.deepEqual(store.data.settings.sidebarFeatures,['studio','library','codex','music','selection-question']);
+ const store=await new Store(dir).load();assert.deepEqual(store.data.settings.sidebarFeatures,[...DEFAULT_SIDEBAR_FEATURES,'music','selection-question']);
  await assert.rejects(readFile(path.join(dir,'library.json')),e=>e.code==='ENOENT');
  await store.settings({sidebarFeatures:[]});assert.deepEqual((await new Store(dir).load()).data.settings.sidebarFeatures,[]);
  assert.equal(await readFile(path.join(dir,'selection-preferences.json'),'utf8'),prefs);
@@ -48,7 +54,7 @@ test('a late add-editor response cannot override a newer sidebar selection',asyn
 });
 test('App removes even default entries and reopens into Feature Center when no studio entry is selected',async()=>{
  const f=await appDraftFixture();await f.click('功能中心');const center=f.child('FeatureCenter');assert(center);center.props.onToggle('studio');await f.flush();
- assert.deepEqual(f.state.settings.sidebarFeatures,['library','codex']);assert(!f.button('灯光创作'));assert(f.child('FeatureCenter'));
+ assert.deepEqual(f.state.settings.sidebarFeatures,['key-buddy','codex','library']);assert(!f.button('灯光创作'));assert(f.child('FeatureCenter'));
  f.child('FeatureCenter').props.onToggle('music');await f.flush();assert(f.button('演奏模式'));f.unmount();
  const empty=await appDraftFixture({state:{settings:{sidebarFeatures:[]}}});assert(empty.child('FeatureCenter'));assert(empty.button('功能中心'));assert(empty.button('设备'));assert(empty.button('设置'));assert(!empty.button('作品库'));empty.unmount();
 });

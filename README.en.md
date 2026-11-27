@@ -22,7 +22,7 @@ Add **Color Picker** in **Feature Center** and click **Pick a color**. Click a p
 
 ## Feature Center and Library
 
-For new users, the sidebar starts with Lighting Studio, Library and AI Assistant. Upgrading keeps entries for tools already used or enabled; you can remove them at any time. Open **Feature Center** to add Lighting Games, Typing Sounds, Music Mode, Smart Selection, Drag Convert, Keyboard Pocket, Voice Input, Dock Scenes, Color Picker or Instant Replay. The three default entries can also be removed. Feature Center, Device and Settings always remain available. Removing a tool turns it and its shortcuts off while retaining its content and preferences. Re-add it, then enable it when needed.
+The sidebar starts with **Lighting Studio**, **Key Buddy**, **AI Assistant** and **Library**, in that order. Open **Feature Center** to add other tools or remove any of the four. Updates preserve your saved sidebar and its order. Feature Center, Device and Settings stay available. Removing a tool turns it and its shortcuts off and keeps your content and preferences.
 
 **Library** brings lighting and music together, with All, Lighting and Music filters. Music Mode opens this same library. Editing and saving updates the original work. If its editor is not in the sidebar, choose **Add Music Mode & edit** or **Add Lighting Studio & edit**. Music works support preview, duplication, renaming, project export and recovery from Recently deleted. Export WAV audio from the music editor.
 

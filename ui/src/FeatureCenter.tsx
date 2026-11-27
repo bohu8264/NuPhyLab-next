@@ -1,5 +1,5 @@
 import {useState} from 'react';
-import {Lightbulb,Folder,SquareTerminal,Gamepad2,AudioLines,Music2,ScanLine,Files,Archive,Mic,PanelsTopLeft,Pipette,History,ScanEye,ClipboardList,Layers,Plus,Minus,ArrowUpRight,Search} from 'lucide-react';
+import {Lightbulb,Folder,SquareTerminal,Gamepad2,AudioLines,Music2,ScanLine,Files,Archive,Mic,PanelsTopLeft,Pipette,History,ScanEye,ClipboardList,Layers,Cat,Plus,Minus,ArrowUpRight,Search} from 'lucide-react';
 import {useLanguage} from './i18n';
 import type {FeatureId} from '../../shared/sidebar-features.mjs';
 import './feature-center.css';
@@ -16,6 +16,7 @@ export const features = [
   {id:'voice-input',zh:'语音输入',en:'Voice Input',icon:Mic,description:['说话后自动整理语句，填入当前输入框。','Speak, refine your wording and insert it into the current text field.']},
   {id:'dock-scenes',zh:'Dock 场景',en:'Dock Scenes',icon:PanelsTopLeft,description:['按场景整理 Mac 的 Dock，用快捷键切换固定应用。','Organize pinned Mac apps into scenes and switch your Dock with a shortcut.']},
   {id:'screen-awareness',zh:'AI 屏幕感知',en:'Screen Awareness',icon:ScanEye,description:['读取整个屏幕或框选区域，用文字或语音提问并追问。','Ask about the full display or a selected area by text or voice, then follow up.']},
+  {id:'key-buddy',zh:'键盘搭子',en:'Key Buddy',icon:Cat,description:['打字、移动或点击鼠标时，桌面小猫会跟着操作它的 KICK75。','A desktop cat types on its KICK75 and follows your mouse.']},
   {id:'desktop-shelf',zh:'桌面临时暂存台',en:'Desktop Shelf',icon:Layers,description:['收集文件、图片、链接与文字，再一起拖出或处理。','Collect files, images, links and text, then drag or process them together.']},
   {id:'smart-clipboard',zh:'智能剪贴板',en:'Smart Clipboard',icon:ClipboardList,description:['搜索本机剪贴板历史，点选复制，或交给 AI 处理。','Search your local clipboard history, click an entry to copy it or use AI to edit it.']},
   {id:'screen-replay',zh:'刚刚怎么了',en:'Instant Replay',icon:History,description:['保存刚刚发生的事，回看最近 15 秒的全屏画面。','Save the last 15 seconds of your screen to see what just happened.']},

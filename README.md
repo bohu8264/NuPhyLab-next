@@ -55,7 +55,7 @@ Add **Color Picker** in **Feature Center** and click **Pick a color**. Click a p
 
 ### Feature Center and Library
 
-For new users, the sidebar starts with Lighting Studio, Library and AI Assistant. Upgrading keeps entries for tools already used or enabled; you can remove them at any time. Open **Feature Center** to add Lighting Games, Typing Sounds, Music Mode, Smart Selection, Drag Convert, Keyboard Pocket, Voice Input, Dock Scenes, Color Picker or Instant Replay. The three default entries can also be removed. Feature Center, Device and Settings always remain available. Removing a tool turns it and its shortcuts off while retaining its content and preferences. Re-add it, then enable it when needed.
+The sidebar starts with **Lighting Studio**, **Key Buddy**, **AI Assistant** and **Library**, in that order. Open **Feature Center** to add other tools or remove any of the four. Updates preserve your saved sidebar and its order. Feature Center, Device and Settings stay available. Removing a tool turns it and its shortcuts off and keeps your content and preferences.
 
 **Library** brings lighting and music together, with All, Lighting and Music filters. Music Mode opens this same library. Editing and saving updates the original work. If its editor is not in the sidebar, choose **Add Music Mode & edit** or **Add Lighting Studio & edit**. Music works support preview, duplication, renaming, project export and recovery from Recently deleted. Export WAV audio from the music editor.
 
@@ -205,7 +205,7 @@ Enable **Feature Center → Add Drag Convert**, drag files from Finder, press Sh
 
 ### 功能中心与作品库
 
-新用户的侧栏默认显示灯光创作、作品库和 AI 助手。升级时会保留已使用或已开启的功能入口，之后可以自行移除。打开 **功能中心**，按需添加灯光游戏、模拟声浪、演奏模式、智能框选、拖拽转换、键盘口袋、语音输入、Dock 场景、取色器和刚刚怎么了；默认的三项也可以移除。功能中心、设备和设置始终保留。移除会关闭功能及其快捷键，已有内容和配置保留。重新添加后，请按需手动开启。
+侧栏默认依次显示 **灯光创作、键盘搭子、AI 助手、作品库**。可以在 **功能中心** 添加其他工具，也可以移除这四项中的任何一项。升级会保留你已保存的侧栏及其顺序。功能中心、设备和设置始终可用。移除工具会关闭该功能及其快捷键，已有内容和偏好会保留。
 
 **作品库** 统一展示灯光和演奏作品，支持全部、灯光和演奏筛选。演奏模式中的作品库按钮进入同一个库；编辑并保存会更新原作品。编辑器尚未添加时，可直接选择“添加演奏模式并编辑”或“添加灯光创作并编辑”。演奏作品支持试听、复制、改名、工程导出及最近删除恢复；WAV 音频在演奏编辑页导出。
 

@@ -18,7 +18,7 @@ const cleanup=[],checks=[],exceptions=[];let chrome,ws,send;
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function until(read,check,label){for(let n=0;n<160;n++){const value=await read();if(check(value))return value;await delay(50);}throw Error('Timed out: '+label);}
 try {
- const service=await fakeService({after:fn=>cleanup.push(fn)},{freshLibrary:true,storedSettings:{language:'zh-CN',sidebarFeatures:['studio','library','codex']},firmwareVersion:'1.0.23.6',latestFirmware:'1.0.23.6',firmwareOffline:true},{environment:{PATH:'/usr/bin:/bin:/usr/sbin:/sbin',HOME:dir,TMPDIR:dir},uiDir:path.join(root,'ui/dist')});
+ const service=await fakeService({after:fn=>cleanup.push(fn)},{freshLibrary:true,storedSettings:{language:'zh-CN'},firmwareVersion:'1.0.23.6',latestFirmware:'1.0.23.6',firmwareOffline:true},{environment:{PATH:'/usr/bin:/bin:/usr/sbin:/sbin',HOME:dir,TMPDIR:dir},uiDir:path.join(root,'ui/dist')});
  const musicRequest=async(suffix,method='GET',value)=>{const response=await fetch(new URL('/api/music/'+suffix,service.url),{method,headers:{'X-Air-Token':service.token,'Content-Type':'application/json'},...(value?{body:JSON.stringify(value)}:{})});const data=await response.json();assert(data.ok,JSON.stringify(data));return data;};
  const original={...initialSession(),projectId:randomUUID(),name:'Morning Notes',events:demoEvents()};
  await musicRequest('session','POST',original);
@@ -37,7 +37,13 @@ try {
  const settle=()=>delay(180);
  const shot=async name=>{await settle();const value=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await writeFile(path.join(output,name+'.png'),Buffer.from(value.data,'base64'));};
  await send('Page.enable');await send('Runtime.enable');const downloads=path.join(dir,'downloads');await mkdir(downloads);await send('Page.setDownloadBehavior',{behavior:'allow',downloadPath:downloads});await send('Emulation.setDeviceMetricsOverride',{width:1120,height:820,deviceScaleFactor:1,mobile:false});await send('Page.navigate',{url:service.url});await page('studio');await click('稍后');
- await until(()=>evaluate(`document.querySelectorAll('.feature-sidebar-nav button').length`),n=>n===3,'default three');checks.push('fresh sidebar has only three features');
+ const sidebarNames = await until(
+   () => evaluate("Array.from(document.querySelectorAll('.feature-sidebar-nav button'), b => b.getAttribute('aria-label'))"),
+   names => names.length === 4, 'fresh sidebar'
+ );
+ assert.deepEqual(sidebarNames, ['灯光创作','键盘搭子','AI 助手','作品库']);
+ await click('键盘搭子');await page('key-buddy');
+ checks.push('Four default entries appear in the requested order and Key Buddy opens');
  const collection=()=>evaluate("document.querySelector('.unified-source button[aria-pressed=true]')?.textContent.trim()");
  await click('作品库');await page('library');
  assert.equal(await collection(),'默认预设');
