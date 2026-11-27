@@ -6,29 +6,31 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>NuPhy Lab</title>
         <item>
-            <title>1.2.58</title>
-            <pubDate>Fri, 27 Nov 2026 11:18:55 +0800</pubDate>
+            <title>1.2.59</title>
+            <pubDate>Fri, 27 Nov 2026 19:16:26 +0800</pubDate>
             <link>https://github.com/bohu8264/NuPhyLab-next</link>
-            <sparkle:version>1.2.58</sparkle:version>
-            <sparkle:shortVersionString>1.2.58</sparkle:shortVersionString>
+            <sparkle:version>1.2.59</sparkle:version>
+            <sparkle:shortVersionString>1.2.59</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.5</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <description sparkle:format="plain-text"><![CDATA[NUPHY-RELEASE-NOTES 1
-version:1.2.58
+version:1.2.59
 [zh-CN]
-NuPhy Lab 1.2.58
+NuPhy Lab 1.2.59
 
-• 首次打开时，NuPhy Lab 会按 Mac 的首选语言顺序显示英文或简体中文。可在「设置 → 通用」选择跟随系统，也可固定使用简体中文或英文。
+• 侧栏默认依次显示灯光创作、键盘搭子、AI 助手和作品库。可在功能中心添加或移除工具，升级会保留已保存的侧栏及其顺序。
+• 开启键盘搭子后，桌面小猫会跟着你敲 KICK75、动鼠标。可以挑选五只内置猫中的一只，也可以使用支持图片的模型，根据自家猫的照片生成外观。
 [en]
-NuPhy Lab 1.2.58
+NuPhy Lab 1.2.59
 
-• On first launch, NuPhy Lab uses the first supported language in your Mac’s preferred language list. Choose Follow System, English or Simplified Chinese in Settings → General.
+• The default sidebar now shows Lighting Studio, Key Buddy, AI Assistant and Library, in that order. Add or remove tools in Feature Center. Updates keep your saved sidebar and its order.
+• Turn on Key Buddy to see a desktop cat type on a KICK75 and reach for the mouse. Choose one of five built-in cats or create one from your own cat photo using a vision-capable model.
 ]]></description>
-            <enclosure url="https://github.com/bohu8264/NuPhyLab-next/releases/download/v1.2.58/NuPhyLab-1.2.58-macOS-AppleSilicon.dmg" length="52794203" type="application/octet-stream" sparkle:edSignature="aQeTAYxHNtF+eVdWu5pmuQY+0nMo325D+jn1JM0pBNIVzUWDlRPwwJ7LnNb39T0TPBp7Dvs5WFesacFeENVkAQ=="/>
+            <enclosure url="https://github.com/bohu8264/NuPhyLab-next/releases/download/v1.2.59/NuPhyLab-1.2.59-macOS-AppleSilicon.dmg" length="53332137" type="application/octet-stream" sparkle:edSignature="FRubAsS/1qsCip51luhN4cTHDZOn82P9s6Yg10wwSSvcU4R2TUXO3ULD+I1Vp7RpUZFqQPjQmaWM1tq7gWn6CA=="/>
         </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: NmNApyodPlND4WUeDvtxs4CIMEk6F6TluFRFYDs1h+Bj1bTLCoY2e67dTJE8nOlff53ARPS/befuvdu2MqCHBA==
-length: 1750
+edSignature: JBjT5qleHPbBRFrz2DgNeBDKeCCRC7C0sFQXrO2+XkT3pDXCwJ5gDsobsUazjKFm6DMBozQtKjL6elwTjIgPCw==
+length: 2126
 -->
