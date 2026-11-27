@@ -6,33 +6,29 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>NuPhy Lab</title>
         <item>
-            <title>1.2.57</title>
-            <pubDate>Thu, 26 Nov 2026 15:55:22 +0800</pubDate>
+            <title>1.2.58</title>
+            <pubDate>Fri, 27 Nov 2026 11:18:55 +0800</pubDate>
             <link>https://github.com/bohu8264/NuPhyLab-next</link>
-            <sparkle:version>1.2.57</sparkle:version>
-            <sparkle:shortVersionString>1.2.57</sparkle:shortVersionString>
+            <sparkle:version>1.2.58</sparkle:version>
+            <sparkle:shortVersionString>1.2.58</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.5</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <description sparkle:format="plain-text"><![CDATA[NUPHY-RELEASE-NOTES 1
-version:1.2.57
+version:1.2.58
 [zh-CN]
-NuPhy Lab 1.2.57
+NuPhy Lab 1.2.58
 
-• 桌面临时暂存台跨应用收集文件、链接、文字与图片，可多选拖出、本地处理，或主动交给已配置的 AI。
-• 拖到刘海后松手，素材即收入暂存台，面板随即收起。自动收集使用一个开关，可选择来源、目标暂存台和文件类型。
-• 右键选择「清空此台」后，可在暂存台内直接确认。取消或按 Esc 可恢复原选中项和滚动位置。原始文件和确认期间新加入的素材会保留。
+• 首次打开时，NuPhy Lab 会按 Mac 的首选语言顺序显示英文或简体中文。可在「设置 → 通用」选择跟随系统，也可固定使用简体中文或英文。
 [en]
-NuPhy Lab 1.2.57
+NuPhy Lab 1.2.58
 
-• Desktop Shelf collects files, links, text and images across apps. Drag items back out, process selected items locally or ask your configured AI.
-• Drop items at the notch and the shelf closes after release. Use one Auto-collect switch and choose the source folder, destination shelf, and file types.
-• Choose Clear This Shelf from the context menu to see the confirmation in the shelf. Cancel or press Esc to restore your selection and scroll position. Original files and items added while the confirmation is open are kept.
+• On first launch, NuPhy Lab uses the first supported language in your Mac’s preferred language list. Choose Follow System, English or Simplified Chinese in Settings → General.
 ]]></description>
-            <enclosure url="https://github.com/bohu8264/NuPhyLab-next/releases/download/v1.2.57/NuPhyLab-1.2.57-macOS-AppleSilicon.dmg" length="52880901" type="application/octet-stream" sparkle:edSignature="jePCjFibQgQcn/zA16oVj3K3rwRXuCuM6A4XfUmzh8agSLSFYWQouWRr0DQ4FFi8HZTI24cIvlRszvpulOubDw=="/>
+            <enclosure url="https://github.com/bohu8264/NuPhyLab-next/releases/download/v1.2.58/NuPhyLab-1.2.58-macOS-AppleSilicon.dmg" length="52794203" type="application/octet-stream" sparkle:edSignature="aQeTAYxHNtF+eVdWu5pmuQY+0nMo325D+jn1JM0pBNIVzUWDlRPwwJ7LnNb39T0TPBp7Dvs5WFesacFeENVkAQ=="/>
         </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: XC9KsvK9HqqztdCtoAQTNzNqcjAtrNxR2WhKBZ6VQ0tiz79wqj5UxfwpfRJ/Jy6RKm2DyBRcDiUU7tva/vKXCg==
-length: 2404
+edSignature: NmNApyodPlND4WUeDvtxs4CIMEk6F6TluFRFYDs1h+Bj1bTLCoY2e67dTJE8nOlff53ARPS/befuvdu2MqCHBA==
+length: 1750
 -->
