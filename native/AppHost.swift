@@ -695,7 +695,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         statusItem.button?.image=NSImage(systemSymbolName:"keyboard",accessibilityDescription:"NuPhy Lab")
         if let data=try? Data(contentsOf:dataDirectory.appendingPathComponent("library.json")),
            let library=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any],
-           let settings=library["settings"] as? [String:Any] { english=settings["language"] as? String == "en" }
+           let settings=library["settings"] as? [String:Any],
+           let saved=settings["language"] as? String, ["en","zh-CN"].contains(saved) {
+            english = saved == "en"
+        }
         audioCapture.report = { [weak self] packet in self?.sendAudio(packet) }
         buildMenus()
         #if canImport(Sparkle)
@@ -1070,7 +1073,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         NSWorkspace.shared.notificationCenter.addObserver(self,selector:#selector(didWake),name:NSWorkspace.didWakeNotification,object:nil)
         NSApp.servicesProvider = self
     }
-    var english=false
+    // Finder launches do not reliably supply a language via LANG or the terminal environment.
+    static let systemInterfaceLanguage: String = {
+        for identifier in Locale.preferredLanguages {
+            switch Locale(identifier: identifier).languageCode {
+            case "zh": return "zh-CN"
+            case "en": return "en"
+            default: continue
+            }
+        }
+        return "en"
+    }()
+    var english = AppDelegate.systemInterfaceLanguage == "en"
     let englishText:[String:String]=[
         "关于 NuPhy Lab": "About NuPhy Lab",
         "退出 NuPhy Lab": "Quit NuPhy Lab",
@@ -1179,6 +1193,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         if let data=try? Data(contentsOf:dataDirectory.appendingPathComponent("runtime.json")),
            let runtime=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any],
            let previous=runtime["port"] as? Int, previous>0 && previous<=65535 { env["AIR_STUDIO_PREFERRED_PORT"]=String(previous) }
+        env["AIR_STUDIO_SYSTEM_LANGUAGE"] = Self.systemInterfaceLanguage
         env["AIR_STUDIO_PARENT_PID"]=String(getpid())
         env["AIR_STUDIO_NATIVE_KEY_SECRET"]=nativeKeySigner.environmentSecret
         env.removeValue(forKey:"AIR_STUDIO_NATIVE_HOLD_SECRET");env.removeValue(forKey:"AIR_STUDIO_NATIVE_HOLD_PATH")

@@ -6,7 +6,7 @@ import { Button, Modal, run, Switch } from "./primitives";
 import { DurationField } from "./DurationField";
 import { DEFAULT_LIGHT_TIME_MS, lightingTimerDeadline } from "../../shared/lighting-power.mjs";
 import { useStartupCopy, OFFICIAL_DRIVER_URL } from "./StartupGuide";
-import { useLanguage, t } from "./i18n";
+import { t } from "./i18n";
 import type { AppState, Command } from "./types";
 import packageInfo from "../../package.json";
 import { readAppState } from "./api";
@@ -177,7 +177,6 @@ function AboutPreferences({ state, command }: {state: AppState | null; command: 
 
 export function Settings({ state, command, initialTab = "general", display, onNavigateStudio }: {state: AppState | null; command: Command; initialTab?: SettingsTab; display?: ConnectionDisplay; onNavigateStudio?: () => void}) {
   const copy = useStartupCopy();
-  const language = useLanguage();
   const normalizeTab = (value: SettingsTab): SettingsTab => value === "updates" ? "about" : value;
   const [tab, setTab] = useState<SettingsTab>(normalizeTab(initialTab));
   useEffect(() => { setTab(normalizeTab(initialTab)); }, [initialTab]);
@@ -186,7 +185,7 @@ export function Settings({ state, command, initialTab = "general", display, onNa
     <div className="lab-settings-tabs" role="tablist" aria-label={copy("设置分类", "Settings categories")}>{tabs.map(([id,label]) => <button key={id} id={`settings-tab-${id}`} role="tab" aria-selected={tab === id} aria-controls={`settings-panel-${id}`} onClick={() => setTab(id)}>{label}{id==='about'&&availableFirmwareUpdate(state)&&<i className="settings-update-dot" aria-label={copy('键盘固件有可用更新','Keyboard firmware update available')}/>}</button>)}</div>
     <div className="lab-settings-content" id={`settings-panel-${tab}`} role="tabpanel" aria-labelledby={`settings-tab-${tab}`}>
       {tab === "ai" && <SelectionAPISettings/>}
-      {tab === "general" && <div className="lab-setting-panel lab-general-panel"><div className="lab-setting-row"><h3>{copy("语言 / Language", "Language")}</h3><select aria-label={copy("Language / 语言", "Language")} disabled={!state} value={language} onChange={event => run(command({op: "settings", settings: {language:event.target.value}}))}><option value="zh-CN">简体中文</option><option value="en">English</option></select></div><div className="lab-setting-row"><Switch label={copy("插线后自动连接", "Connect automatically when plugged in")} disabled={!state} checked={Boolean(state?.settings.autoConnect)} onChange={autoConnect => run(command({op:"settings",settings:{autoConnect}}))}/></div></div>}
+      {tab === "general" && <div className="lab-setting-panel lab-general-panel"><div className="lab-setting-row"><h3>{copy("语言 / Language", "Language")}</h3><select aria-label={copy("Language / 语言", "Language")} disabled={!state} value={state?.settings.languagePreference ?? "system"} onChange={event => run(command({op: "settings", settings: {language:event.target.value}}))}><option value="system">{copy("跟随系统", "Follow System")}</option><option value="zh-CN">简体中文</option><option value="en">English</option></select></div><div className="lab-setting-row"><Switch label={copy("插线后自动连接", "Connect automatically when plugged in")} disabled={!state} checked={Boolean(state?.settings.autoConnect)} onChange={autoConnect => run(command({op:"settings",settings:{autoConnect}}))}/></div></div>}
       {tab === "lighting" && <LightingPreferences state={state} command={command} display={display} onNavigateStudio={onNavigateStudio}/>}
       {tab === "permissions" && <SelectionPermissionSettings/>}
       {tab === "about" && <AboutPreferences state={state} command={command}/>}

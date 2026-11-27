@@ -176,6 +176,7 @@ export type AppState = {
   scenes: Scene[];
   previewColors?: string[];
   settings: {
+    languagePreference?: "system" | "zh-CN" | "en";
     ambientLighting?: AmbientLightingSettings;
     airTopRightModule?: "rotary" | "keycap";
     brightness: number;

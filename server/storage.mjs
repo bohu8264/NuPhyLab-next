@@ -124,7 +124,7 @@ export const defaultSettings = {
   audio: {...DEFAULT_AUDIO},
   codexTaskKeys: [...DEFAULT_TASK_KEYS],
   codexCommandKeys: [...DEFAULT_COMMAND_KEYS],
-  language: "zh-CN",
+  language: "system",
   sidebarFeatures: [...DEFAULT_SIDEBAR_FEATURES],
   airTopRightModule: "rotary",
   lightDurationMs: DEFAULT_LIGHT_TIME_MS,
@@ -237,7 +237,7 @@ export function validateSettings(input, previous = defaultSettings) {
       if (!validLightTime(v, {allowOff:k !== "codexHintMs", maximum:k === "codexHintMs" ? 600000 : 86400000})) throw new Error("时间应为 1 秒至 24 小时，提示亮灯最长 10 分钟；0 表示关闭定时。");
       s[k] = v;
     } else if (k === "language") {
-      if (!["zh-CN", "en"].includes(v)) throw new Error("不支持的界面语言");
+      if (!["system", "zh-CN", "en"].includes(v)) throw new Error("不支持的界面语言");
       s[k] = v;
     } else if (k === "airTopRightModule") {
       if (!["rotary", "keycap"].includes(v)) throw new Error("Air 右上角模块设置无效");
@@ -363,6 +363,8 @@ export class Store {
       );
     const tmp = this.file + ".tmp";
     const { sidebarFeatures, ...settings } = next.settings;
+    // Absence means follow the system. Earlier releases can still read this library.
+    if (settings.language === "system") delete settings.language;
     await writeFile(tmp, JSON.stringify({ ...next, settings }, null, 2), { mode: 0o600 });
     await rename(tmp, this.file);
     this.data = next;

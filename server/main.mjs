@@ -50,6 +50,13 @@ const musicRoutes=new MusicRoutes(dataDir,path.resolve(dataDir)===path.join(os.h
 const port = Number(process.env.AIR_STUDIO_PORT || process.env.AIR_STUDIO_PREFERRED_PORT || 0),
   token = process.env.AIR_STUDIO_TOKEN ?? randomBytes(32).toString("hex");
 const store = await new Store(dataDir).load();
+const hostLanguage = process.env.AIR_STUDIO_SYSTEM_LANGUAGE;
+const systemInterfaceLanguage = ["en", "zh-CN"].includes(hostLanguage) ? hostLanguage :
+  (new Intl.DateTimeFormat().resolvedOptions().locale.startsWith("zh") ? "zh-CN" : "en");
+function interfaceSettings(settings) {
+  return { ...settings, languagePreference: settings.language,
+    language: settings.language === "system" ? systemInterfaceLanguage : settings.language };
+}
 const ambientLighting = new AmbientLighting();
 const ambientSettings = () => store.data.settings.ambientLighting ?? DEFAULT_AMBIENT_LIGHTING;
 const verifiedNativeGesture=Symbol('verifiedNativeGesture');
@@ -528,7 +535,7 @@ function state() {
     colors,
     previewColors,
     scenes: store.data.scenes.filter(scene => (scene.modelId ?? "air75-v3") === getLayoutModel()),
-    settings: store.data.settings,
+    settings: interfaceSettings(store.data.settings),
     claude: { ...claudeState, slots: claudeSlots(),
       lighting: agentLightingSnapshot('claude', claudeLights, claudeWhole),
       taskAction: store.data.settings.claudeTaskAction ?? "focusApp", active: agentSource()==="claude" },
@@ -1741,7 +1748,7 @@ async function command(req) {
       await syncKeyAdaptation();
       await syncAgentSide();
       void codexCommandBridge.inspect();
-      return settings;
+      return interfaceSettings(settings);
     }
     case "triggerArm": {
       await codexGestures.release();
@@ -2268,7 +2275,7 @@ const server = http.createServer(async (req, res) => {
     if (path.extname(filename) === ".html") {
       body = body
         .toString()
-        .replace('<html lang="zh-CN">', `<html lang="${store.data.settings.language}">`)
+        .replace('<html>', `<html lang="${interfaceSettings(store.data.settings).language}">`)
         .replace(
           "<head>",
           `<head><script>window.__AIR_TOKEN__=${JSON.stringify(token)}</script>`,

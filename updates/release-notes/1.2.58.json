@@ -1,0 +1,9 @@
+{
+  "version": "1.2.58",
+  "en": [
+    "On first launch, NuPhy Lab uses the first supported language in your Mac’s preferred language list. Choose Follow System, English or Simplified Chinese in Settings → General."
+  ],
+  "zh-CN": [
+    "首次打开时，NuPhy Lab 会按 Mac 的首选语言顺序显示英文或简体中文。可在「设置 → 通用」选择跟随系统，也可固定使用简体中文或英文。"
+  ]
+}

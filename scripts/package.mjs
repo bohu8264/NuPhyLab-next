@@ -131,6 +131,8 @@ for (const [locale,microphone] of Object.entries({
   const folder=path.join(resources,locale+'.lproj');await mkdir(folder,{recursive:true});
   await writeFile(path.join(folder,'ServicesMenu.strings'), '"Run My Commands in NuPhy Lab" = '+JSON.stringify(locale==='en'?'Run My Commands in NuPhy Lab':'使用 NuPhy Lab 处理选中文字')+';\n');
   await writeFile(path.join(folder,'InfoPlist.strings'),'"NSMicrophoneUsageDescription" = '+JSON.stringify(microphone)+';\n' +
+    '"NSAudioCaptureUsageDescription" = '+JSON.stringify(locale==='en'?'Analyzes audio playing on this Mac to animate keyboard lighting. Audio is processed locally and is never saved or uploaded.':'将电脑播放的声音转换为键盘律动灯效。声音仅在本机分析，不保存或上传。')+';\n' +
+    '"NSInputMonitoringUsageDescription" = '+JSON.stringify(locale==='en'?'Monitors key presses for key-triggered lighting, global shortcuts or typing sounds when enabled. Typed content is never recorded.':'仅在启用按键触发、全局快捷键或模拟声浪后监听按键，保留正常输入，不记录输入内容。')+';\n' +
     '"NSScreenCaptureUsageDescription" = '+JSON.stringify(locale==='en'?'Smart Selection captures the selected region. When Instant Replay is on, the last 15 seconds of the display are buffered locally without audio. Saving writes a clip to Movies.':'智能框选截取选区供识别。开启全屏回放后，在本机内存中缓存最近 15 秒的无声画面，按保存时写入影片文件夹。')+';\n' +
     '"NSSpeechRecognitionUsageDescription" = '+JSON.stringify(locale==='en'?'Transcribes voice commands and Smart Selection questions on this Mac. Command or question text goes to your configured model service.':'在本机识别语音指令和框选问题，指令或问题文字发送至你配置的模型服务。')+';\n');
 }

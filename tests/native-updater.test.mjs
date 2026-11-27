@@ -11,6 +11,9 @@ test('real Sparkle delegate compiles; reminder and signed version-specific langu
  const directory=await mkdtemp(path.join(tmpdir(),'nuphy-updater-unit-'));t.after(()=>rm(directory,{recursive:true,force:true}));
  const source=await readFile(new URL('../native/AppHost.swift',import.meta.url),'utf8');
  const checks=`
+if let expected = UserDefaults.standard.string(forKey:"ExpectedInterfaceLanguage") {
+    precondition(AppDelegate.systemInterfaceLanguage == expected)
+}
 let reminder=AppUpdateReminder(version:"2.0.0",remindAfter:86400)
 precondition(!reminder.allows(version:"2.0.0",userInitiated:false,now:86399))
 precondition(reminder.allows(version:"2.0.0",userInitiated:false,now:86400))
@@ -32,7 +35,12 @@ if !CommandLine.arguments.contains("--update-ui-qa") {print("{\\"checks\\":13,\\
  const presentationChecks=await readFile(new URL('./fixtures/native-update-ui-checks.swift',import.meta.url),'utf8');
  await writeFile(main,source+'\n'+checks+'\n'+presentationChecks);
  const run=promisify(execFile);await run('swiftc',[main,...['../tests/fixtures/selection-host-boundary.swift','AppInstance.swift','UpdateUserDriver.swift','AudioCapture.swift','KeyGestureGate.swift'].map(name=>fileURLToPath(new URL('../native/'+name,import.meta.url))),'-o',binary,'-F',framework,'-framework','Sparkle','-Xlinker','-rpath','-Xlinker',framework,...['AppKit','WebKit','Carbon','AVFoundation','CoreAudio','Accelerate'].flatMap(name=>['-framework',name])]);
- assert.deepEqual(JSON.parse((await run(binary)).stdout.trim()),{checks:13,network:false,hardware:false});
+ for (const [preferred, expected] of [
+   ['(en-GB,zh-Hans)', 'en'], ['(ja,zh-Hant,en)', 'zh-CN'], ['(fr,ja)', 'en']
+ ]) {
+   const result = await run(binary,['-AppleLanguages',preferred,'-ExpectedInterfaceLanguage',expected]);
+   assert.deepEqual(JSON.parse(result.stdout.trim()),{checks:13,network:false,hardware:false});
+ }
  // An argument-domain locale only affects this temporary child process. No
  // defaults command or persisted AppleLanguages preference is ever written.
  const snapshotArgs=process.env.NUPHY_UPDATE_QA_SCREENSHOTS?['--update-layout-snapshots',process.env.NUPHY_UPDATE_QA_SCREENSHOTS]:[];

@@ -1,7 +1,11 @@
 import { useSyncExternalStore } from "react";
 import { translate } from "../../shared/i18n.mjs";
 export type Language = "zh-CN" | "en";
-let currentLanguage:Language = document.documentElement.lang === "en" ? "en" : "zh-CN";
+// The desktop service sets lang before the first paint. A standalone web preview
+// uses the browser's ordered preferences when there is no native host.
+const initialLanguage = document.documentElement.lang || navigator.languages.find(tag => /^(en|zh)(-|$)/i.test(tag));
+let currentLanguage:Language = /^zh(-|$)/i.test(initialLanguage ?? "") ? "zh-CN" : "en";
+document.documentElement.lang = currentLanguage;
 const listeners = new Set<()=>void>();
 export function setLanguage(value:Language) {
   if (value === currentLanguage) return;
